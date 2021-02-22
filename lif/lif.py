@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import brian2 as bn
 import brian2tools as bnt
 
-import rf_stim
+import receptive_field.rf_stim
 
 
 def single_rf_resp(

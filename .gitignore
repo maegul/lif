@@ -1,4 +1,7 @@
-test*
 *.pkl
 
 *.ipynb
+
+
+# Ignore hypothesis cache
+.hypothesis

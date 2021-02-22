@@ -1,13 +1,13 @@
-"""Module for generation of stimuli
-
-
+"""Functions and classes for the generation of spatial and temporal filters
 """
 
-import numpy as np
-import matplotlib.pyplot as plt
+from typing import Union
 
-import pyqtgraph as pg
-from pyqtgraph.Qt import QtGui
+import numpy as np
+# import matplotlib.pyplot as plt
+
+# import pyqtgraph as pg
+# from pyqtgraph.Qt import QtGui
 
 
 def mk_coords(
@@ -320,7 +320,12 @@ def mk_tqtempfilt(
         return tf
 
 
-def mk_tq_fft(f, tau=16, w=4 * 2 * np.pi, phi=0.24, return_abs=True):
+def mk_tq_ft(
+        f: Union[float, np.ndarray], 
+        tau: float = 16, 
+        w: float = 4 * 2 * np.pi, 
+        phi: float = 0.24, 
+        return_abs: bool = True) -> np.ndarray:
     """Cerate Fourier Transform of function used in mk_tqtempfilt
 
     Employs analytical solution from Chen (2001)
@@ -364,270 +369,3 @@ def mk_tq_fft(f, tau=16, w=4 * 2 * np.pi, phi=0.24, return_abs=True):
         fourier = np.abs(fourier)
 
     return fourier
-
-
-# %%%%%%%%%%%
-fs = np.linspace(0, 64, 100) * 2 *np.pi
-tq_fft = mk_tq_fft(fs)
-
-plt.plot(fs, tq_fft)
-
-# -----------
-
-
-
-
-def mk_sinstim(
-        ori=90, spat_freq=1, temp_freq=1,
-        spat_ext=120, temp_ext=1000,
-        spat_res=1, temp_res=1):
-    '''Generate sinusoidal grating
-
-    Parameters
-    ----
-
-    ori : float (degrees)
-    spat_freq : float
-        spatial frequency of the sinusoidal grating in cycles/degree
-    temp_freq : float
-        temporal frequency in cycles per second
-        how many cycles are traversed in one second of time
-        how many cycles actually traversed in output depends on temp_ext also
-    spat_ext, temp_ext, spat_res, temp_res : float
-        passed to mk_coords
-
-
-    Unit conversions, from base of min of arc and milliSecs to requisite degrees-> radians
-    and milliseconds -> seconds is done within this function.
-    BIG PRESUMPTION here (important!) is that all units coming from the mk_coords func
-    are in minutes and milliSecs and so need to be converted for trigonometric functions
-    used here.
-
-    '''
-
-    # Orientation to radians
-    # add 90 so 0degs -> 3-o'clock, 90degs -> 12-o'clock
-    # depends on how scaling is done below
-    ori = np.radians(ori + 90)
-
-    # Spatial Frequency
-    # multiply by 2pi to change to whole cycles per unit
-    k = spat_freq * 2 * np.pi  # 1 cpd (?)
-
-    # X & Y scaling factors to incorporate orientation
-    # scale x coords by cos so constant at 90 degs (at which cos=0)
-    # scale y coords by sin so constant at 0 degs (at chich sin=0)
-    # then, as ori += 90, image rotated
-    # Movement through time (tc) is in +90degs direction,
-    # as coords are centered on zero and negative in bottom and left
-    # and tc coords are subtracted below
-    kx = k * np.cos(ori)
-    ky = k * np.sin(ori)
-
-    # Temporal Frequency
-    # again, multiply by 2pi to be cycles per unit time
-    omega = temp_freq * 2 * np.pi
-
-    # creating coords
-    xc, yc, tc = mk_coords(
-        spat_ext=spat_ext, temp_ext=temp_ext,
-        spat_res=spat_res, temp_res=temp_res
-    )
-
-    # Convert spatial coords to degs (from minutes)
-    # Convert temporal coords to secs (from milliSecs)
-    # scale coords so that unit -> spat_freq, temp_freq cycles
-    xc = kx * (xc / 60)
-    yc = ky * (yc / 60)
-    tc = omega * tc / 1000
-
-    img = 0.5 + 0.5 * np.cos(xc + yc - tc)
-
-    return img
-
-
-def mk_barstim(
-        height=None, width=None, speed=None, sweep=None,
-        mean_lum=0.5, bar_lum=1, max_contrast=False,
-        spat_ext=120, temp_ext=1000,
-        spat_res=1, temp_res=1):
-    '''
-    Spatial and temporal units are all in minutes and milliSecs
-
-    speed must be in minutes / milliSec (convert from deg/S by *60/1000)
-
-    mean_lum : float (0-1)
-        background value of returned image ... the mean luminance
-        of the stimulus.
-        Must be between zero (0) and one (1)
-    bar_lum : float (0-1)
-        value of the bar stimulus between 0 and 1
-    max_contrast : boolean
-        whether to always use maximum contrast for the background
-        and ignore mean_lum.  ie, if bar_lum is 1, background is 0
-        and vice versa.
-    spat_ext, temp_ext, spat_res, temp_res : float
-        passed to mk_coords
-    '''
-
-    # creating stim_space (y,x,t)
-    stim_space = mk_coords(
-        blank_grid=True,
-        spat_ext=spat_ext, temp_ext=temp_ext,
-        spat_res=spat_res, temp_res=temp_res
-    )
-
-    if max_contrast:
-        # pick whichever of (0,1) is furtherest away from bar lum
-        mean_lum = 1 if bar_lum < 0.5 else 0
-
-    stim_space += mean_lum
-
-    # Round, convert to minutes and ensure odd so that always has a center
-    height = round(height)
-    if height % 2 == 0:
-        height += 1
-
-    width = round(width)
-    if width % 2 == 0:
-        width += 1
-
-    sweep = round(sweep)
-    if sweep % 2 == 0:
-        sweep += 1
-
-    img_rad = (stim_space.shape[0] - 1) / 2  # also idx of cent
-    h_rad = (height - 1) / 2  # also idx of cent
-    w_rad = int((width - 1) / 2)
-    sweep_rad = (sweep - 1) / 2
-
-    h_bounds = np.array([img_rad - h_rad, img_rad + h_rad]).astype('int')
-    sweep_bounds = np.array([img_rad - sweep_rad, img_rad + sweep_rad]).astype('int')
-
-    # milliSecs per minute of movement
-    movement_stop = 1 / speed  # mS / min
-
-    n_movement_stops = sweep
-    time_needed = movement_stop * n_movement_stops
-
-    assert stim_space.shape[2] > time_needed, (
-        f'Time required for sweep {sweep} is {time_needed},'
-        f'which is more than total stim time {stim_space.shape[2]}'
-    )
-
-    # sweep + 1 , endpoint=True : purpose is to have, for every time_stop or frame, it's start and end
-    # the +1 for sweep ensures that the first and second time_stops (idx 0,1) code the beg and end time for which
-    # the bar is in the first position or minute.
-    # second and third (idx 1,2) code beg and end time for time in second position / m inute
-    # idx -2,-1 (second last and last) code time in last minute
-    time_stops = np.linspace(0, time_needed, sweep + 1, endpoint=True).round().astype('int')
-
-    # will have length of time_stops - 1 (due to time frame bracketing ... see above)
-    sweep_stops = np.arange(sweep_bounds[0], sweep_bounds[1] + 1).astype('int')
-
-    for t_idx in range(time_stops.size - 1):
-
-        sweep_loc = sweep_stops[t_idx]
-        time_beg, time_end = time_stops[[t_idx, t_idx + 1]]
-
-        stim_space[
-            h_bounds[0]: h_bounds[1] + 1,  # y
-            sweep_loc - w_rad: sweep_loc + w_rad + 1,  # x
-            time_beg: time_end
-        ] = bar_lum
-
-    return stim_space
-
-
-def view_stim(stim, axes={'y': 0, 'x': 1, 't': 2}, xvals=None):
-    #     if time_axis == 2:
-    #         stim = stim.swapaxes(0,2).swapaxes(1,2)
-    #     if time_axis == 1:
-    #         stim = stim.swapaxes(0,1)
-
-    if not xvals:
-        xvals = np.arange(stim.shape[axes['t']])
-    pg.image(stim, xvals=xvals, axes=axes)
-    QtGui.QApplication.instance().exec_()
-
-
-def mk_rf_spat_charact(rf, spat_freq, temp_freq, temp_res=10):
-    '''Characterise response properties of RF by simple prod with sin grating
-
-    Parameters
-    ----
-    rf : receptive field, output of mkRF
-    spat_freq : spatial frequency of stimulus
-        Passed to `spat_freq` arg of `mk_sinstim`
-    temp_freq : temporal frequency of stimulus
-        Passed to `temp_freq` arg of `mk_sinstim`
-    temp_res : temporal resolution of stimulus
-        Passed to `temp_res` of `mk_sinstim`
-
-
-    Returns
-    ----
-    resp : array (1D)
-        response of RF over temporal dimension of stimulusS
-    resp_off : array (1D)
-        Like resp, but inverted and translated by sum of rf
-    stim : array (1D)
-        Stimulus used ot generate response
-        Output of mk_sinstim using spat_freq and temp_freq
-    '''
-
-    shape = rf.shape[0]
-    # cent = shape//2
-
-    stim = mk_sinstim(temp_freq=temp_freq, spat_freq=spat_freq, spat_ext=shape, temp_res=temp_res)
-
-    rft = rf[..., np.newaxis] * np.ones(stim.shape[-1])
-
-    resp = (rft * stim).sum(axis=(0, 1))
-    resp_off = (-rft * stim).sum(axis=(0, 1)) + rf.sum()
-
-    return resp, resp_off, stim
-
-
-def plot_rf_spat_charact(rf, resp, resp_off, stim, figsize=(20, 7)):
-    """Plot characterisation of rf resp
-
-    Takes output/args of mk_rf_spat_charact
-
-    Produces 3 subplots:
-
-    * Stim as 1D slice
-    * RF resp (putatively ON)
-    * RF OFF resp (presuming RF is on)
-    """
-
-    shape = rf.shape[0]
-    cent = shape // 2
-
-    min_val, max_val = resp.min(), resp.max()
-    min_val_off, max_val_off = resp_off.min(), resp_off.max()
-
-    plt.figure(figsize=figsize)
-
-    plt.subplot(1, 3, 1)
-    plt.plot(stim[cent, cent, :])
-    plt.title('stim')
-
-    plt.subplot(1, 3, 2)
-    plt.plot(resp)
-    plt.axhline(min_val, ls=':', c='k')
-    plt.axhline(max_val, ls=':', c='k')
-    plt.axhline((max_val + min_val) / 2, ls=':', c='k')
-
-    plt.title(f'sum: {rf.sum().round(4)}, offset: {np.mean([min_val, max_val]).round(4)}')
-
-    plt.subplot(1, 3, 3)
-
-    plt.plot(resp_off)
-    plt.axhline(min_val_off, ls=':', c='k')
-    plt.axhline(max_val_off, ls=':', c='k')
-    plt.axhline((max_val_off + min_val_off) / 2, ls=':', c='k')
-
-    plt.title(f'OFF sum: {rf.sum().round(4)}, offset: {np.mean([min_val_off, max_val_off]).round(4)}')
-
-    plt.tight_layout()

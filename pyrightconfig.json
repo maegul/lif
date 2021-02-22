@@ -1,3 +1,5 @@
 {
-	"venv": "comp_neuro"
+	"venv": "comp_neuro",
+	"pythonVersion": "3.7"
+
 }
