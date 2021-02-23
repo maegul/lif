@@ -2,6 +2,7 @@
 """
 
 from typing import Union
+from dataclasses import dataclass, astuple
 
 import numpy as np
 # import matplotlib.pyplot as plt
