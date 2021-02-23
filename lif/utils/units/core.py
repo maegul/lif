@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Union, Dict, cast
+from typing import Union, Dict, Type, Callable, Any
 from typing_extensions import Protocol
 
 
@@ -7,7 +7,11 @@ class UnitDefinition(Protocol):
     """Class that defines unit conversions
     """
     factors: Dict[str, Union[int, float]]
-    ...
+
+    __init__: Callable
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        ...
 
 
 class Quantity(UnitDefinition, Protocol):
@@ -17,8 +21,12 @@ class Quantity(UnitDefinition, Protocol):
     def __init__(self, quantity: Union[int, float], unit: str):
         ...
 
+    # # So that understands callable (don't know why necessary)
+    # def __call__(self, quantity: Union[int, float], unit: str):
+    #     ...
 
-def add_conversions(unit_class: UnitDefinition) -> Quantity:
+
+def add_conversions(unit_class: Type[UnitDefinition]) -> Type[Quantity]:
     """Class decorator that adds unit facilities to simple class with factors
     
     Apply to a class that defines a single class attr "factors"
@@ -54,12 +62,19 @@ def add_conversions(unit_class: UnitDefinition) -> Quantity:
     def init(self, quantity: Union[float, int], unit: str = default_unit):
 
         # always convert to base unit
-        self.quantity = quantity * unit_class.factors[unit]
+        try:
+            base_unit = unit_class.factors[unit]
+        except KeyError as e:
+            print('unit must be defined in the factors')
+            print(f'unit {unit} is not in {unit_class.factors}')
+            raise e
+        self.quantity = quantity * base_unit
         self.default_unit = default_unit
         for unit, factor in unit_class.factors.items():
             self.__setattr__('_'+unit, factor)
 
-    setattr(unit_class, '__init__', init)
+    # setattr(unit_class, '__init__', init)
+    unit_class.__init__ = init
 
     for unit in unit_class.factors:
 
@@ -74,6 +89,6 @@ def add_conversions(unit_class: UnitDefinition) -> Quantity:
             )
         )
 
-    unit_class = cast(Quantity, unit_class)  # to help type checker
+    # unit_class = cast(Type[Quantity], unit_class)  # to help type checker
 
     return unit_class
