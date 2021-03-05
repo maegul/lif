@@ -2,6 +2,12 @@ from __future__ import annotations
 from typing import Union, Dict, Type, Callable, Any
 from typing_extensions import Protocol
 
+from dataclasses import dataclass, field
+
+
+# > Monkey Patching approach
+# works great ... creates an easy to use interface for creating multiple unit systems
+# BUT ... pain to type annotate
 
 class UnitDefinition(Protocol):
     """Class that defines unit conversions
@@ -10,8 +16,8 @@ class UnitDefinition(Protocol):
 
     __init__: Callable
 
-    def __setattr__(self, name: str, value: Any) -> None:
-        ...
+    # def __setattr__(self, name: str, value: Any) -> None:
+    #     ...
 
 
 class Quantity(UnitDefinition, Protocol):
