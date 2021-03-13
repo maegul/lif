@@ -1,20 +1,55 @@
 """Functions and classes for the generation of spatial and temporal filters
 """
 
-from typing import Union
-from dataclasses import dataclass, astuple
+from typing import Union, cast, Tuple
 
-import numpy as np
+import numpy as np  # type: ignore
+
 # import matplotlib.pyplot as plt
 
 # import pyqtgraph as pg
 # from pyqtgraph.Qt import QtGui
 
+import scipy.stats as st
+
+from ...utils.units.units import SpatFrequency, TempFrequency
+from . import data_objects as do
+
+PI: float = np.pi
+# cast(float, PI)
+
+def mk_spat_coords_1d(spat_res: float = 1, spat_ext: float = 300) -> np.ndarray:
+    """1D spatial coords symmetrical about 0 with 0 being the central discrete point
+
+    Center point (value: 0) will be at index spat_ext // 2 if spat_res is 1
+    Or ... size // 2
+    """
+
+    spat_radius = np.floor(spat_ext / 2)
+    coords = np.arange(-spat_radius, spat_radius + spat_res, spat_res)
+
+    return coords
+
+
+def mk_sd_limited_spat_coords(
+        sd: float, spat_res: float = 1, sd_limit: int = 5):
+
+    # integer rounded max sd times rf_sd_limit -> img limit for RF
+    max_sd = sd_limit * np.ceil(sd)
+    # spatial extent (for mk_coords)
+    # add 1 to ensure number is odd so size of mk_coords output is as specified
+    spat_ext = (2 * max_sd) + 1
+
+    coords = mk_spat_coords_1d(spat_res=spat_res, spat_ext=spat_ext)
+
+    return coords
+
 
 def mk_coords(
         spat_res=1, temp_res=1,
         spat_ext=300, temp_ext=1000,
-        temp_dim=True, blank_grid=False):
+        temp_dim=True, blank_grid=False
+        ) -> Union[Tuple[np.ndarray, np.ndarray], Tuple[np.ndarray, np.ndarray, np.ndarray]]:
     '''
     Produces spatial and temporal coordinates (ie meshgrid) for
     generating RFs and stimuli
@@ -51,8 +86,10 @@ def mk_coords(
     If blank_grid, then single meshgrid (3D: x,y,t)
     '''
 
-    spat_radius = np.floor(spat_ext / 2)
-    x_coords = np.arange(-spat_radius, spat_radius + spat_res, spat_res)
+    # spat_radius = np.floor(spat_ext / 2)
+    # x_coords = np.arange(-spat_radius, spat_radius + spat_res, spat_res)
+
+    x_coords = mk_spat_coords_1d(spat_res, spat_ext)
     # treat as image (with origin at top left or upper)
     # y_cords positive at top and negative at bottom
     y_coords = x_coords[::-1]
@@ -72,12 +109,120 @@ def mk_coords(
         return xc, yc, tc
 
 
+
+def mk_gauss_1d(
+        coords: np.ndarray,
+        mag: float = 1, sd: float = 10) -> np.ndarray:
+    "Simple 1d gauss ... should be possible to multiply with another for 2d"
+
+    gauss_coeff = mag / (sd * (2*PI)**0.5)  # ensure sum of 1
+    gauss_1d = gauss_coeff * np.exp(-coords**2 / (2 * sd**2))
+
+    return gauss_1d
+
+
+def mk_gauss_1d_ft(
+        freqs: SpatFrequency,
+        amplitude: float = 1, sd: float = 10) -> np.ndarray:
+    """Returns normalised ft, treats freqs as being in hz
+
+    Works with mk_gauss_1d
+
+    Presumes normalised gaussian (relies on such for mk_gauss_1d).
+    Thus coefficient is 1
+
+    freqs: cpm
+
+    Question of what amplitude is ... arbitrary amplitude of spatial filter??
+    """
+    ft = amplitude * np.exp(-PI**2 * freqs.cpm**2 * 2 * sd**2)  # type: ignore
+
+    # Note: FT = T * FFT ~ amplitude of convolution
+    return ft
+
+
+def mk_gauss_2d(
+        x_coords: np.ndarray, y_coords: np.ndarray,
+        gauss_params: do.Gauss2DSpatFiltParams) -> np.ndarray:
+
+    amplitude, h_sd, v_sd = gauss_params.array()
+
+    gauss_x = mk_gauss_1d(x_coords, sd=h_sd)
+    gauss_y = mk_gauss_1d(y_coords, sd=v_sd)
+
+    gauss_2d = amplitude * gauss_x * gauss_y
+
+    return gauss_2d
+
+
+def mk_gauss_2d_ft(
+        freqs_x: TempFrequency, freqs_y: TempFrequency,
+        gauss_params: do.Gauss2DSpatFiltParams):
+
+    amplitude, h_sd, v_sd = gauss_params.array()
+
+    # amplitude is 1 for 1d so that amplitude for 2d applies to whole 2d
+    gauss_ft_x = mk_gauss_1d_ft(freqs_x, sd=h_sd, amplitude=1)
+    gauss_ft_y = mk_gauss_1d_ft(freqs_y, sd=v_sd, amplitude=1)
+
+    gauss_2d_ft = amplitude * gauss_ft_x * gauss_ft_y
+
+    # Note: FT = T * FFT ~ amplitude of convolution
+    return gauss_2d_ft
+
+
+def mk_dog_rf(
+        x_coords: np.ndarray, y_coords: np.ndarray,
+        dog_args: do.DOGSpatFiltArgs
+        ):
+
+    cent_gauss_2d = mk_gauss_2d(x_coords, y_coords, gauss_params=dog_args.cent)
+    surr_gauss_2d = mk_gauss_2d(x_coords, y_coords, gauss_params=dog_args.surr)
+
+    return cent_gauss_2d - surr_gauss_2d
+
+
+def mk_dog_rf_ft(
+        freqs_x: TempFrequency, freqs_y: TempFrequency,
+        dog_args: do.DOGSpatFiltArgs):
+
+    cent_ft = mk_gauss_2d_ft(freqs_x, freqs_y, gauss_params=dog_args.cent)
+    surr_ft = mk_gauss_2d_ft(freqs_x, freqs_y, gauss_params=dog_args.surr)
+
+    dog_rf_ft = cent_ft - surr_ft
+
+    # Note: FT = T * FFT ~ amplitude of convolution
+    return dog_rf_ft
+
+
+def mk_dog_rf_ft_1d(
+        freqs: TempFrequency,
+        dog_args: Union[do.DOGSpatFiltArgs, do.DOGSpatFiltArgs1D]) -> np.ndarray:
+    """Make 1D Fourier Transform of DoG RF but presume radial symmetry and return only 1D
+
+    dog_args: if full 2d DOGSpatFiltArgs then uses DOGSpatFiltArgs.to_dog_1d() to make 1d
+    """
+
+    if isinstance(dog_args, do.DOGSpatFiltArgs):
+        dog_args_1d: do.DOGSpatFiltArgs1D = dog_args.to_dog_1d()
+    else:
+        dog_args_1d: do.DOGSpatFiltArgs1D = dog_args
+
+    cent_ft = mk_gauss_1d_ft(freqs, amplitude=dog_args_1d.cent.amplitude, sd=dog_args_1d.cent.sd)
+    surr_ft = mk_gauss_1d_ft(freqs, amplitude=dog_args_1d.surr.amplitude, sd=dog_args_1d.surr.sd)
+
+    dog_ft_1d = cent_ft - surr_ft
+
+    return dog_ft_1d
+
+
 def mk_rf(
-        spat_res=1,
-        cent_h_sd=10.6, cent_v_sd=10.6, surr_h_sd=31.8, surr_v_sd=31.8,
-        mag_cent=1, mag_surr=1,
-        rf_sd_limit=5,
-        return_cent_surr=False, return_coords=False):
+        spat_res: float = 1,
+        cent_h_sd: float = 10.6, cent_v_sd: float = 10.6,
+        surr_h_sd: float = 31.8, surr_v_sd: float = 31.8,
+        mag_cent: float = 1, mag_surr: float = 1,
+        rf_sd_limit: int = 5,
+        return_cent_surr: bool = False, return_coords: bool = False):
     '''Generate DoG Rec Field
 
     Parameters

@@ -8,9 +8,9 @@ from scipy.signal import fftconvolve as conv
 import matplotlib.pyplot as plt
 
 import brian2 as bn
-import brian2tools as bnt
+# import brian2tools as bnt
 
-import receptive_field.rf_stim
+# import receptive_field.rf_stim
 
 
 def single_rf_resp(

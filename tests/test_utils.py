@@ -7,7 +7,7 @@ from typing import Union, Tuple
 from hypothesis import given, assume, strategies as st
 from pytest import mark
 
-import lif.utils.units as units
+import lif.utils.units.units as units
 
 # > units
 
@@ -37,6 +37,40 @@ def test_time_unit(
     converted_quantity = getattr(quantity, new_unit_desc)
 
     assert converted_quantity == (value * unit_factor) / new_unit_factor
+
+
+arclength_test_units = [
+    ('deg', 1),
+    ('min', 1/60),
+    ('sec', 1/(60*60))
+]
+
+# Essentially a replication of the code in Time
+# BUT, with separate units used above and hypothesis strategies, should provide
+# a safety net
+
+@given(
+    value=st.one_of(st.integers(), st.floats(allow_infinity=False, allow_nan=False)),
+    unit=st.one_of([st.just(val) for val in arclength_test_units]),
+    new_unit=st.one_of([st.just(val) for val in arclength_test_units])
+    )
+def test_arclength_unit(
+        value: Union[int, float],
+        unit: tuple[str, Union[int, float]], new_unit: tuple[str, Union[int, float]]):
+
+    unit_desc, unit_factor = unit
+    new_unit_desc, new_unit_factor = new_unit
+
+    quantity = units.ArcLength(value=value, unit=unit_desc)
+    converted_quantity = getattr(quantity, new_unit_desc)
+
+    assert converted_quantity == (value * unit_factor) / new_unit_factor
+
+
+def test_spat_frequency_unit(): ...
+
+def test_temp_frequency_unit(): ...
+
 
 # @mark.parametrize("unit", list(units.Time.factors.keys()))  # test for each factor
 # @given(
