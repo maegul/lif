@@ -1,4 +1,5 @@
 from __future__ import annotations
+from lif.receptive_field.filters.data_objects import PI
 from math import isnan
 import inspect
 import typing
@@ -67,7 +68,30 @@ def test_arclength_unit(
     assert converted_quantity == (value * unit_factor) / new_unit_factor
 
 
-def test_spat_frequency_unit(): ...
+spat_freq_test_units = [
+    ('cpd', 1),
+    ('cpm', 60),
+    ('cpd_w', 1/(2*PI))
+]
+
+
+@given(
+    value=st.one_of(st.integers(), st.floats(allow_infinity=False, allow_nan=False)),
+    unit=st.one_of([st.just(val) for val in spat_freq_test_units]),
+    new_unit=st.one_of([st.just(val) for val in spat_freq_test_units])
+    )
+def test_spat_frequency_unit(
+        value: Union[int, float], unit: tuple[str, Union[int, float]],
+        new_unit: tuple[str, Union[int, float]]):
+
+    unit_desc, unit_factor = unit
+    new_unit_desc, new_unit_factor = new_unit
+
+    quantity = units.SpatFrequency(value=value, unit=unit_desc)
+    converted_quantity = getattr(quantity, new_unit_desc)
+
+    assert converted_quantity == (value * unit_factor) / new_unit_factor
+
 
 def test_temp_frequency_unit(): ...
 

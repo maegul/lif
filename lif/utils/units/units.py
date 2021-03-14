@@ -102,7 +102,7 @@ class SpatFrequency:
     unit: str = 'cpd'
     _cpd: int = field(default=1, init=False)
     _cpm: float = field(default=60, init=False)  # 1 cpm -> 60 cpd
-    _w: float = field(default=1/(2*PI), init=False)  # magnitude in base units
+    _cpd_w: float = field(default=1/(2*PI), init=False)  # magnitude in base units
 
     @property
     def cpd(self) -> Union[float, np.ndarray]:
@@ -113,5 +113,5 @@ class SpatFrequency:
         return (self.value * getattr(self, f'_{self.unit}')) / self._cpm
 
     @property
-    def w(self) -> Union[float, np.ndarray]:
-        return (self.value * getattr(self, f'_{self.unit}')) / self._w
+    def cpd_w(self) -> Union[float, np.ndarray]:
+        return (self.value * getattr(self, f'_{self.unit}')) / self._cpd_w
