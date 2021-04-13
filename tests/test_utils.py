@@ -5,6 +5,8 @@ import inspect
 import typing
 from typing import Union, Tuple
 
+import numpy as np
+
 from hypothesis import given, assume, strategies as st
 from pytest import mark
 
@@ -68,6 +70,36 @@ def test_arclength_unit(
     assert converted_quantity == (value * unit_factor) / new_unit_factor
 
 
+@mark.parametrize(
+    'value,unit,new_value,new_unit',
+    [
+        (1, 'deg', 60, 'min'),
+        (1, 'sec', 1/60, 'min'),
+        (0.5, 'min', 0.5/60, 'deg'),
+        (np.arange(4).reshape(2, 2), 'min', np.arange(4).reshape(2, 2)/60, 'deg')
+    ]
+    )
+def test_arclength_unit_simple(value, unit, new_value, new_unit):
+
+    quantity = units.ArcLength(value, unit)
+
+    assert np.allclose(getattr(quantity, new_unit), new_value)  # type: ignore
+
+
+def test_arclength_multiple():
+
+    multi_vals = [1, 0.3, 100, np.arange(10)]
+    unit = 'sec'
+
+    multi_arclength = units.ArcLength.mk_multiple(multi_vals, unit=unit)
+    simple_multi_arclength = tuple(
+        units.ArcLength(val, unit=unit)
+        for val in multi_vals
+        )
+
+    assert multi_arclength == simple_multi_arclength
+
+
 spat_freq_test_units = [
     ('cpd', 1),
     ('cpm', 60),
@@ -93,7 +125,29 @@ def test_spat_frequency_unit(
     assert converted_quantity == (value * unit_factor) / new_unit_factor
 
 
-def test_temp_frequency_unit(): ...
+temp_freq_test_units = [
+    ('hz', 1),
+    ('w', 1/(2*PI))
+]
+
+
+@given(
+    value=st.one_of(st.integers(), st.floats(allow_infinity=False, allow_nan=False)),
+    unit=st.one_of([st.just(val) for val in temp_freq_test_units]),
+    new_unit=st.one_of([st.just(val) for val in temp_freq_test_units])
+    )
+def test_temp_frequency_unit_simple(
+        value: Union[int, float], unit: tuple[str, Union[int, float]],
+        new_unit: tuple[str, Union[int, float]]):
+
+    unit_desc, unit_factor = unit
+    new_unit_desc, new_unit_factor = new_unit
+
+    quantity = units.TempFrequency(value=value, unit=unit_desc)
+    converted_quantity = getattr(quantity, new_unit_desc)
+
+    assert converted_quantity == (value * unit_factor) / new_unit_factor
+
 
 
 # @mark.parametrize("unit", list(units.Time.factors.keys()))  # test for each factor

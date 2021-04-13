@@ -131,7 +131,8 @@ def _dog_ft_wrapper(
 
 def _fit_dog_ft(
         data: do.SpatFiltData,
-        x0: do.DOGSpatFiltArgs1D = do.DOGSpatFiltArgs1D.from_iter([1.1, 10, 0.9, 30]),
+        x0: do.DOGSpatFiltArgs1D = do.DOGSpatFiltArgs1D.from_iter(
+            [1.1, 10, 0.9, 30], arclength_unit = 'min'),
         bounds: Optional[Tuple[do.DOGSpatFiltArgs1D, do.DOGSpatFiltArgs1D]] = None
         ) -> OptimizeResult:
     "use least_squares to produced optimised parameters for mk_dog_rf"

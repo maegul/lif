@@ -51,6 +51,11 @@ class Time:
 
 @dataclass(frozen=True)
 class ArcLength:
+    """Length as an angle from an origin
+
+    value: length
+    unit: deg|min|sec (degrees, minutes, seconds)
+    """
 
     value: Union[int, float, np.ndarray]
     unit: str = 'deg'
@@ -60,18 +65,18 @@ class ArcLength:
 
     @property
     def deg(self) -> float:
-        return (self.value * getattr(self, f'_{self.unit}')) / self._deg
+        return (self.value * getattr(self, f"_{self.unit}")) / self._deg
 
     @property
     def min(self) -> float:
-        return (self.value * getattr(self, f'_{self.unit}')) / self._min
+        return (self.value * getattr(self, f"_{self.unit}")) / self._min
 
     @property
     def sec(self) -> float:
-        return (self.value * getattr(self, f'_{self.unit}')) / self._sec
+        return (self.value * getattr(self, f"_{self.unit}")) / self._sec
 
     @classmethod
-    def mk_multiple(cls, multi_vals: Iterable[float], unit) -> Tuple[ArcLength]:
+    def mk_multiple(cls, multi_vals: Iterable[float], unit: str) -> Tuple[ArcLength, ...]:
         "Return multiple ArcLength instances from an iterable of floats"
 
         return tuple(cls(value=val, unit=unit) for val in multi_vals)
@@ -84,7 +89,7 @@ class TempFrequency:
     value: Union[int, float, np.ndarray]
     unit: str = 'hz'
     _hz: int = field(default=1, init=False)
-    _w: float = field(default=1/(2*PI), init=False)  # magnitude in base units
+    _w: float = field(default=1/(2*PI), init=False)
 
     @property
     def hz(self) -> Union[float, np.ndarray]:
@@ -102,7 +107,7 @@ class SpatFrequency:
     unit: str = 'cpd'
     _cpd: int = field(default=1, init=False)
     _cpm: float = field(default=60, init=False)  # 1 cpm -> 60 cpd
-    _cpd_w: float = field(default=1/(2*PI), init=False)  # magnitude in base units
+    _cpd_w: float = field(default=1/(2*PI), init=False)
 
     @property
     def cpd(self) -> Union[float, np.ndarray]:

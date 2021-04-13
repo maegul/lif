@@ -1,3 +1,5 @@
+"""Manage settings: declaring default, finding custom"""
+
 from __future__ import annotations
 from typing import Dict, Union
 from pathlib import Path
@@ -10,7 +12,7 @@ CONFIG_FILE_NAME = Path('.lif_hws')
 
 @dataclass
 class Settings:
-    data_dir: str = "~/lif_hws_data"
+    data_dir: str = "~/.lif_hws_data"
 
 
 settings = Settings()

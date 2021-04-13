@@ -1,3 +1,5 @@
+"""Classes for handling and grouping basic data objects"""
+
 from __future__ import annotations
 from sys import meta_path
 from typing import Union, Optional, Iterable, Dict, Any, Tuple, List
@@ -136,7 +138,7 @@ class TQTempFiltParams(ConversionABC):
         a, tau, w, phi = data
 
         return cls(
-            amplitude=a, 
+            amplitude=a,
             arguments=TQTempFiltArgs(
                 tau=tau, w=w, phi=phi
                 ))
@@ -239,11 +241,12 @@ class Gauss2DSpatFiltArgs(ConversionABC):
 
     """
     h_sd: ArcLength
-    # h_sd: float
-    v_sd: float
+    v_sd: ArcLength
 
     def array(self) -> np.ndarray:
-        return np.array(astuple(self))
+        args_array: np.ndarray
+        args_array = np.array([self.h_sd.value, self.v_sd.value])  # type: ignore
+        return args_array
 
 
 @dataclass
@@ -257,14 +260,11 @@ class Gauss2DSpatFiltParams(ConversionABC):
     amplitude: float
     arguments: Gauss2DSpatFiltArgs
 
-    def array(self) -> np.ndarray:
-        return np.array(
-                (self.amplitude,) +
-                astuple(self.arguments)
-            )
+    def array(self) -> np.ndarray[np.float64]:
+        return np.r_[self.amplitude, self.arguments.array()]  # type: ignore
 
     @classmethod
-    def from_iter(cls, data: Iterable[float]) -> Gauss2DSpatFiltParams:
+    def from_iter(cls, data: Iterable[float], arclength_unit: str = 'deg') -> Gauss2DSpatFiltParams:
         """Create object from iterable: (a, h_sd, v_sd)
         """
         # IMPORTANT ... unpacking must match order above and in
@@ -274,7 +274,7 @@ class Gauss2DSpatFiltParams(ConversionABC):
         return cls(
             amplitude=a,
             arguments=Gauss2DSpatFiltArgs(
-                h_sd=h_sd, v_sd=v_sd
+                h_sd=ArcLength(h_sd, arclength_unit), v_sd=ArcLength(v_sd, arclength_unit)
                 ))
 
     def to_flat_dict(self) -> Dict[str, float]:
@@ -294,20 +294,20 @@ class Gauss1DSpatFiltParams(ConversionABC):
     arguments: Gauss2DSpatFiltArgs (main shape arguments)
     """
     amplitude: float
-    sd: float
+    sd: ArcLength
 
     def array(self) -> np.ndarray:
-        return np.array(astuple(self))
+        return np.array([self.amplitude, self.sd.value])  # type: ignore
 
     @classmethod
-    def from_iter(cls, data: Iterable[float]) -> Gauss1DSpatFiltParams:
+    def from_iter(cls, data: Iterable[float], arclength_unit: str = 'deg') -> Gauss1DSpatFiltParams:
         """Create object from iterable: (a, h_sd, v_sd)
         """
         # IMPORTANT ... unpacking must match order above and in
         # definition of dataclasses!
         a, sd = data
 
-        return cls(amplitude=a, sd=sd)
+        return cls(amplitude=a, sd=ArcLength(sd, arclength_unit))
 
 
 @dataclass
@@ -321,12 +321,12 @@ class DOGSpatFiltArgs1D(ConversionABC):
         return np.hstack((self.cent.array(), self.surr.array()))
 
     @classmethod
-    def from_iter(cls, data: Iterable[float]) -> DOGSpatFiltArgs1D:
+    def from_iter(cls, data: Iterable[float], arclength_unit: str = 'deg') -> DOGSpatFiltArgs1D:
         "cent_a, cent_sd, surr_a, surr_sd"
         cent_a, cent_sd, surr_a, surr_sd = data
 
-        cent = Gauss1DSpatFiltParams(cent_a, cent_sd)
-        surr = Gauss1DSpatFiltParams(surr_a, surr_sd)
+        cent = Gauss1DSpatFiltParams(cent_a, ArcLength(cent_sd, arclength_unit))
+        surr = Gauss1DSpatFiltParams(surr_a, ArcLength(surr_sd, arclength_unit))
 
         return cls(cent=cent, surr=surr)
 
