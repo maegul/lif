@@ -21,7 +21,7 @@ PI: float = np.pi
 
 def mk_spat_coords_1d(
         spat_res: ArcLength = ArcLength(1, 'min'),
-        spat_ext: ArcLength = ArcLength(300, 'min')) -> ArcLength:
+        spat_ext: ArcLength = ArcLength(300, 'min')) -> ArcLength[np.ndarray]:
     """1D spatial coords symmetrical about 0 with 0 being the central discrete point
 
     Center point (value: 0) will be at index spat_ext // 2 if spat_res is 1
@@ -39,7 +39,7 @@ def mk_spat_coords_1d(
 
 def mk_sd_limited_spat_coords(
         sd: ArcLength,
-        spat_res: ArcLength = ArcLength(1, 'min'), sd_limit: int = 5) -> ArcLength:
+        spat_res: ArcLength = ArcLength(1, 'min'), sd_limit: int = 5) -> ArcLength[np.ndarray]:
 
     # integer rounded max sd times rf_sd_limit -> img limit for RF
     max_sd = sd_limit * np.ceil(sd.min)
@@ -52,27 +52,107 @@ def mk_sd_limited_spat_coords(
     return coords
 
 
-@overload
-def mk_coords(
+def mk_blank_coords(
         spat_res: ArcLength = ArcLength(1, 'min'), temp_res: Time = Time(1, 'ms'),
         spat_ext: ArcLength = ArcLength(300, 'min'), temp_ext: Time = Time(1000, 'ms'),
-        blank_grid: bool = True, temp_dim: bool = False
-        ) -> np.ndarray: ...
-@overload
-def mk_coords(
+        ) -> np.ndarray:
+    '''
+    Produces blank coords for each spatial and temporal value
+    that would be ordinarily created
+    Base units are minutes of arc and milliSeconds
+
+    Parameters
+    ----
+    spat_res : float
+        resolution, in minutes of arc, of meshgrid
+    temp_res : float
+        resolution, in milliseconds, of temporal dimension of meshgrid
+    spat_ext : int
+        Width and height, in minutes of arc, of spatial dimensions of meshgrid
+        spat_ext is the total width (horiztontal or vertical) of the stimulus
+        image generated.
+        radial extent (horizontal or vertical, from center) will be
+        floor(spat_ext/2), and always centred on zero.
+        So actual extent will be 1*spat_res greater for even and as specified
+        for odd extents
+    temp_ext : int
+        duration, in milliseconds, of temporal dimension
+
+    Returns
+    ----
+    single meshgrid (3D: x,y,t)
+    '''
+
+    # spat_radius = np.floor(spat_ext / 2)
+    # x_coords = np.arange(-spat_radius, spat_radius + spat_res, spat_res)
+
+    x_coords = mk_spat_coords_1d(spat_res, spat_ext)
+    # treat as image (with origin at top left or upper)
+    # y_cords positive at top and negative at bottom
+    y_coords: ArcLength
+    y_coords = ArcLength(x_coords.min[::-1], 'min')  # type: ignore
+
+    t_coords = Time(np.arange(0, temp_ext.ms, temp_res.ms), 'ms')
+
+    # ie, one array with appropriate size, each coordinate represented by a single value
+    space: np.ndarray
+    space = np.zeros((y_coords.min.size, x_coords.min.size, t_coords.ms.size))  # type: ignore
+
+    return space
+
+
+def mk_spat_coords(
+        spat_res: ArcLength = ArcLength(1, 'min'),
+        spat_ext: ArcLength = ArcLength(300, 'min'),
+        ) -> Tuple[ArcLength[np.ndarray], ArcLength[np.ndarray]]:
+
+    '''
+    Produces spatial (ie meshgrid) for
+    generating RFs and stimuli
+    Base units are minutes of arc and milliSeconds
+
+    Parameters
+    ----
+    spat_res : float
+        resolution, in minutes of arc, of meshgrid
+    spat_ext : int
+        Width and height, in minutes of arc, of spatial dimensions of meshgrid
+        spat_ext is the total width (horiztontal or vertical) of the stimulus
+        image generated.
+        radial extent (horizontal or vertical, from center) will be
+        floor(spat_ext/2), and always centred on zero.
+        So actual extent will be 1*spat_res greater for even and as specified
+        for odd extents
+
+    Returns
+    ----
+    xc, yc
+
+    all meshgrids filled with appropriate coordinate values
+    '''
+
+    # spat_radius = np.floor(spat_ext / 2)
+    # x_coords = np.arange(-spat_radius, spat_radius + spat_res, spat_res)
+
+    x_coords = mk_spat_coords_1d(spat_res, spat_ext)
+    # treat as image (with origin at top left or upper)
+    # y_cords positive at top and negative at bottom
+    y_coords: ArcLength
+    y_coords = ArcLength(x_coords.min[::-1], 'min')
+
+    xc: ArcLength[np.ndarray]
+    yc: ArcLength[np.ndarray]
+    xc, yc = (
+        ArcLength(c, 'min') for c in np.meshgrid(x_coords.min, y_coords.min)  # type: ignore
+        )
+
+    return xc, yc
+
+
+def mk_spat_temp_coords(
         spat_res: ArcLength = ArcLength(1, 'min'), temp_res: Time = Time(1, 'ms'),
         spat_ext: ArcLength = ArcLength(300, 'min'), temp_ext: Time = Time(1000, 'ms'),
-        blank_grid: bool = False, temp_dim: bool = False
-        ) -> Tuple[ArcLength, ArcLength]: ...
-def mk_coords(
-        spat_res: ArcLength = ArcLength(1, 'min'), temp_res: Time = Time(1, 'ms'),
-        spat_ext: ArcLength = ArcLength(300, 'min'), temp_ext: Time = Time(1000, 'ms'),
-        blank_grid: bool = False, temp_dim: bool = True
-        ) -> Union[
-                np.ndarray,
-                Tuple[ArcLength, ArcLength],
-                Tuple[ArcLength, ArcLength, Time],
-            ]:
+        ) -> Tuple[ArcLength[np.ndarray], ArcLength[np.ndarray], Time[np.ndarray]]:
     '''
     Produces spatial and temporal coordinates (ie meshgrid) for
     generating RFs and stimuli
@@ -94,19 +174,12 @@ def mk_coords(
         for odd extents
     temp_ext : int
         duration, in milliseconds, of temporal dimension
-    temp_dim : boolean
-        Whether to include a temporal dimension in the meshgrid
-    blank_grid : boolean
-        Whether to return a meshhgrid with all values being zero
-        Useful for filling in the grid manually for stimulus creation
 
     Returns
     ----
-    xc, yc, tc (if temp_dim)
-    xc, yc if temp_dim==false
+    xc, yc, tc
 
     all meshgrids filled with appropriate coordinate values
-    If blank_grid, then single meshgrid (3D: x,y,t)
     '''
 
     # spat_radius = np.floor(spat_ext / 2)
@@ -120,24 +193,15 @@ def mk_coords(
 
     t_coords = Time(np.arange(0, temp_ext.ms, temp_res.ms), 'ms')
 
-    # ie, one array with appropriate size, each coordinate represented by a single value
-    if blank_grid:
-        space: np.ndarray
-        space = np.zeros((y_coords.min.size, x_coords.min.size, t_coords.ms.size))  # type: ignore
-        return space
+    _xc: np.ndarray
+    _yc: np.ndarray
+    _tc: np.ndarray
 
-    if not temp_dim:
-        xc: ArcLength
-        yc: ArcLength
-        xc, yc = (
-            ArcLength(c, 'min') for c in np.meshgrid(x_coords.min, y_coords.min)  # type: ignore
-            )
-        return xc, yc
-    else:
-        _xc, _yc, _tc = np.meshgrid(x_coords.min, y_coords.min, t_coords.ms)  # type: ignore
-        xc, yc = (ArcLength(c, 'min') for c in (_xc, _yc))
-        tc = Time(_tc, 'ms')
-        return xc, yc, tc
+    _xc, _yc, _tc = np.meshgrid(x_coords.min, y_coords.min, t_coords.ms)  # type: ignore
+    xc, yc = (ArcLength(c, 'min') for c in (_xc, _yc))
+    tc = Time(_tc, 'ms')
+
+    return xc, yc, tc
 
 
 def mk_gauss_1d(
