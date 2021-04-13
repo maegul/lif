@@ -1,7 +1,7 @@
 """Functions and classes for the generation of spatial and temporal filters
 """
 
-from typing import Union, cast, Tuple, overload
+from typing import Union, cast, Tuple
 
 import numpy as np  # type: ignore
 
@@ -89,8 +89,7 @@ def mk_blank_coords(
     x_coords = mk_spat_coords_1d(spat_res, spat_ext)
     # treat as image (with origin at top left or upper)
     # y_cords positive at top and negative at bottom
-    y_coords: ArcLength
-    y_coords = ArcLength(x_coords.min[::-1], 'min')  # type: ignore
+    y_coords = ArcLength(x_coords.min[::-1], 'min')
 
     t_coords = Time(np.arange(0, temp_ext.ms, temp_res.ms), 'ms')
 
@@ -137,7 +136,6 @@ def mk_spat_coords(
     x_coords = mk_spat_coords_1d(spat_res, spat_ext)
     # treat as image (with origin at top left or upper)
     # y_cords positive at top and negative at bottom
-    y_coords: ArcLength
     y_coords = ArcLength(x_coords.min[::-1], 'min')
 
     xc: ArcLength[np.ndarray]
@@ -188,8 +186,7 @@ def mk_spat_temp_coords(
     x_coords = mk_spat_coords_1d(spat_res, spat_ext)
     # treat as image (with origin at top left or upper)
     # y_cords positive at top and negative at bottom
-    y_coords: ArcLength
-    y_coords = ArcLength(x_coords.min[::-1], 'min')  # type: ignore
+    y_coords = ArcLength(x_coords.min[::-1], 'min')
 
     t_coords = Time(np.arange(0, temp_ext.ms, temp_res.ms), 'ms')
 
@@ -217,8 +214,8 @@ def mk_gauss_1d(
 
 
 def mk_gauss_1d_ft(
-        freqs: SpatFrequency,
-        amplitude: float = 1, sd: ArcLength = ArcLength(10, 'min')) -> np.ndarray:
+        freqs: SpatFrequency[np.ndarray],
+        amplitude: float = 1, sd: ArcLength[float] = ArcLength(10, 'min')) -> np.ndarray:
     """Returns normalised ft, treats freqs as being in hz
 
     Works with mk_gauss_1d
@@ -230,7 +227,7 @@ def mk_gauss_1d_ft(
 
     Question of what amplitude is ... arbitrary amplitude of spatial filter??
     """
-    ft = amplitude * np.exp(-PI**2 * freqs.cpm**2 * 2 * sd.min**2)  # type: ignore
+    ft = amplitude * np.exp(-PI**2 * freqs.cpm**2 * 2 * sd.min**2)
 
     # Note: FT = T * FFT ~ amplitude of convolution
     return ft
@@ -252,7 +249,7 @@ def mk_gauss_2d_ft(
         freqs_x: SpatFrequency, freqs_y: SpatFrequency,
         gauss_params: do.Gauss2DSpatFiltParams) -> np.ndarray:
 
-    amplitude, h_sd, v_sd = gauss_params.array()
+    amplitude, _, _ = gauss_params.array()
 
     # amplitude is 1 for 1d so that amplitude for 2d applies to whole 2d
     gauss_ft_x = mk_gauss_1d_ft(freqs_x, sd=gauss_params.arguments.h_sd, amplitude=1)
@@ -266,8 +263,7 @@ def mk_gauss_2d_ft(
 
 def mk_dog_rf(
         x_coords: ArcLength, y_coords: ArcLength,
-        dog_args: do.DOGSpatFiltArgs
-        ):
+        dog_args: do.DOGSpatFiltArgs) -> np.ndarray:
 
     cent_gauss_2d = mk_gauss_2d(x_coords, y_coords, gauss_params=dog_args.cent)
     surr_gauss_2d = mk_gauss_2d(x_coords, y_coords, gauss_params=dog_args.surr)
@@ -277,7 +273,7 @@ def mk_dog_rf(
 
 def mk_dog_rf_ft(
         freqs_x: SpatFrequency, freqs_y: SpatFrequency,
-        dog_args: do.DOGSpatFiltArgs):
+        dog_args: do.DOGSpatFiltArgs) -> np.ndarray:
 
     cent_ft = mk_gauss_2d_ft(freqs_x, freqs_y, gauss_params=dog_args.cent)
     surr_ft = mk_gauss_2d_ft(freqs_x, freqs_y, gauss_params=dog_args.surr)
@@ -310,97 +306,97 @@ def mk_dog_rf_ft_1d(
 
 
 # Redundant now? ... with mk_dog_rf above
-def mk_rf(
-        spat_res: float = 1,
-        cent_h_sd: float = 10.6, cent_v_sd: float = 10.6,
-        surr_h_sd: float = 31.8, surr_v_sd: float = 31.8,
-        mag_cent: float = 1, mag_surr: float = 1,
-        rf_sd_limit: int = 5,
-        return_cent_surr: bool = False, return_coords: bool = False
-        ) -> Union[np.ndarray, Tuple]:
-    '''Generate DoG Rec Field
+# def mk_rf(
+#         spat_res: float = 1,
+#         cent_h_sd: float = 10.6, cent_v_sd: float = 10.6,
+#         surr_h_sd: float = 31.8, surr_v_sd: float = 31.8,
+#         mag_cent: float = 1, mag_surr: float = 1,
+#         rf_sd_limit: int = 5,
+#         return_cent_surr: bool = False, return_coords: bool = False
+#         ) -> Union[np.ndarray, Tuple]:
+#     '''Generate DoG Rec Field
 
-    Parameters
-    ----
-    spat_res : float
-        resolution of meshgrid used to create RF
-        passed to mk_coords
-    cent/surr_h/v_sd : float
-        standard dev of gaussian used to generate RF
-        cent/surr -> center or surround component
-        h/v : vertical or horizontal axis
-    mag_cent/surr : float
-        absolute magnitude of cent/surr component
-    rf_sd_limit : float
-        span of underlying mesdhgrid in number of standard deviations
-        the maximum of of all cent/surr_h/v_sd are used
-        important to ensure that the sum of the surround is not arbitrarily
-        trunacated
-    return_cent_surr : boolean
-        whether to return the center and surround components also
-    return_coords : boolean
-        whether to also return the meshgrid for x and y
+#     Parameters
+#     ----
+#     spat_res : float
+#         resolution of meshgrid used to create RF
+#         passed to mk_coords
+#     cent/surr_h/v_sd : float
+#         standard dev of gaussian used to generate RF
+#         cent/surr -> center or surround component
+#         h/v : vertical or horizontal axis
+#     mag_cent/surr : float
+#         absolute magnitude of cent/surr component
+#     rf_sd_limit : float
+#         span of underlying mesdhgrid in number of standard deviations
+#         the maximum of of all cent/surr_h/v_sd are used
+#         important to ensure that the sum of the surround is not arbitrarily
+#         trunacated
+#     return_cent_surr : boolean
+#         whether to return the center and surround components also
+#     return_coords : boolean
+#         whether to also return the meshgrid for x and y
 
-    Units are defined in arc minutes
+#     Units are defined in arc minutes
 
-    Current defaults from Woergoetter and Koch (1991)
+#     Current defaults from Woergoetter and Koch (1991)
 
-    Returns
-    ----
+#     Returns
+#     ----
 
-    '''
+#     '''
 
-    # integer rounded max sd times rf_sd_limit -> img limit for RF
-    max_sd = rf_sd_limit * np.ceil(
-        np.max(np.array([cent_h_sd, cent_v_sd, surr_h_sd, surr_v_sd]))
-    )
-    # spatial extent (for mk_coords)
-    # add 1 to ensure number is odd so size of mk_coords output is as specified
-    spat_ext = (2 * max_sd) + 1
+#     # integer rounded max sd times rf_sd_limit -> img limit for RF
+#     max_sd = rf_sd_limit * np.ceil(
+#         np.max(np.array([cent_h_sd, cent_v_sd, surr_h_sd, surr_v_sd]))
+#     )
+#     # spatial extent (for mk_coords)
+#     # add 1 to ensure number is odd so size of mk_coords output is as specified
+#     spat_ext = (2 * max_sd) + 1
 
-    # only one coords necessary, as square/cartesion grid (how to noise hexagonal centering?)
-    x_coords: ArcLength
-    y_coords: ArcLength
-    x_coords, y_coords = mk_coords(
-        spat_res=ArcLength(spat_res, 'min'), spat_ext=ArcLength(spat_ext, 'min'), temp_dim=False)
+#     # only one coords necessary, as square/cartesion grid (how to noise hexagonal centering?)
+#     x_coords: ArcLength
+#     y_coords: ArcLength
+#     x_coords, y_coords = mk_coords(
+#         spat_res=ArcLength(spat_res, 'min'), spat_ext=ArcLength(spat_ext, 'min'), temp_dim=False)
 
-    rf_cent = (
-        # mag divide by normalising factor with both sds (equivalent to sq if they were identical)
-        (mag_cent / (2 * np.pi * cent_v_sd * cent_h_sd)) *
-        np.exp(
-            - (
-                (x_coords.min**2 / (2 * cent_h_sd**2)) +
-                (y_coords.min**2 / (2 * cent_v_sd**2))
-            )
-        )
-    )
+#     rf_cent = (
+#         # mag divide by normalising factor with both sds (equivalent to sq if they were identical)
+#         (mag_cent / (2 * np.pi * cent_v_sd * cent_h_sd)) *
+#         np.exp(
+#             - (
+#                 (x_coords.min**2 / (2 * cent_h_sd**2)) +
+#                 (y_coords.min**2 / (2 * cent_v_sd**2))
+#             )
+#         )
+#     )
 
-    rf_surr = (
-        (mag_surr / (2 * np.pi * surr_v_sd * surr_h_sd)) *
-        np.exp(
-            - (
-                (x_coords.min**2 / (2 * surr_h_sd**2)) +
-                (y_coords.min**2 / (2 * surr_v_sd**2))
-            )
-        )
-    )
+#     rf_surr = (
+#         (mag_surr / (2 * np.pi * surr_v_sd * surr_h_sd)) *
+#         np.exp(
+#             - (
+#                 (x_coords.min**2 / (2 * surr_h_sd**2)) +
+#                 (y_coords.min**2 / (2 * surr_v_sd**2))
+#             )
+#         )
+#     )
 
-    rf = rf_cent - rf_surr
-    rf = cast(np.ndarray, rf)
+#     rf = rf_cent - rf_surr
+#     rf = cast(np.ndarray, rf)
 
-    if not (return_cent_surr or return_coords):
+#     if not (return_cent_surr or return_coords):
 
-        return rf
+#         return rf
 
-    else:
-        ret_vars = (rf,)
+#     else:
+#         ret_vars = (rf,)
 
-        if return_cent_surr:
-            ret_vars += rf_cent, rf_surr
-        if return_coords:
-            ret_vars += x_coords, y_coords
+#         if return_cent_surr:
+#             ret_vars += rf_cent, rf_surr
+#         if return_coords:
+#             ret_vars += x_coords, y_coords
 
-        return ret_vars
+#         return ret_vars
 
 
 def mk_tempfilt(tau=10, temp_ext=100, temp_res=1, temp_ext_n_tau=None, return_t=False):
