@@ -24,6 +24,7 @@ time_test_units = [
 # BUT, with separate units used above and hypothesis strategies, should provide
 # a safety net
 
+
 @given(
     value=st.one_of(st.integers(), st.floats(allow_infinity=False, allow_nan=False)),
     unit=st.one_of([st.just(val) for val in time_test_units]),
@@ -44,7 +45,7 @@ def test_time_unit(
 
 arclength_test_units = [
     ('deg', 1),
-    ('min', 1/60),
+    ('mnt', 1/60),
     ('sec', 1/(60*60))
 ]
 
@@ -73,10 +74,10 @@ def test_arclength_unit(
 @mark.parametrize(
     'value,unit,new_value,new_unit',
     [
-        (1, 'deg', 60, 'min'),
-        (1, 'sec', 1/60, 'min'),
-        (0.5, 'min', 0.5/60, 'deg'),
-        (np.arange(4).reshape(2, 2), 'min', np.arange(4).reshape(2, 2)/60, 'deg')
+        (1, 'deg', 60, 'mnt'),
+        (1, 'sec', 1/60, 'mnt'),
+        (0.5, 'mnt', 0.5/60, 'deg'),
+        (np.arange(4).reshape(2, 2), 'mnt', np.arange(4).reshape(2, 2)/60, 'deg')
     ]
     )
 def test_arclength_unit_simple(value, unit, new_value, new_unit):

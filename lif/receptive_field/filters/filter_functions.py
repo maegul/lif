@@ -1,7 +1,7 @@
 """Functions and classes for the generation of spatial and temporal filters
 """
 
-from typing import Union, cast, Tuple
+from typing import Optional, Union, cast, Tuple
 
 import numpy as np  # type: ignore
 
@@ -19,30 +19,37 @@ PI: float = np.pi
 # cast(float, PI)
 
 
+# > Spatial
+
 def mk_spat_coords_1d(
-        spat_res: ArcLength = ArcLength(1, 'min'),
-        spat_ext: ArcLength = ArcLength(300, 'min')) -> ArcLength[np.ndarray]:
+        spat_res: ArcLength[float] = ArcLength(1, 'mnt'),
+        spat_ext: ArcLength[float] = ArcLength(300, 'mnt')) -> ArcLength[np.ndarray]:
     """1D spatial coords symmetrical about 0 with 0 being the central discrete point
 
     Center point (value: 0) will be at index spat_ext // 2 if spat_res is 1
     Or ... size // 2
     """
 
-    spat_radius = np.floor(spat_ext.min / 2)
+    spat_radius = np.floor(spat_ext.mnt / 2)
     coords = ArcLength(
-            np.arange(-spat_radius, spat_radius + spat_res.min, spat_res.min),
-            'min'
+            np.arange(-spat_radius, spat_radius + spat_res.mnt, spat_res.mnt),
+            'mnt'
         )
 
     return coords
 
 
 def mk_sd_limited_spat_coords(
-        sd: ArcLength,
-        spat_res: ArcLength = ArcLength(1, 'min'), sd_limit: int = 5) -> ArcLength[np.ndarray]:
+        sd: ArcLength[float],
+        spat_res: ArcLength = ArcLength(1, 'mnt'),
+        sd_limit: int = 5) -> ArcLength[np.ndarray]:
+    """Wrap mk_spat_coords_1d to limit extent by number of SD
+
+    SD is rounded to ceiling integer before multiplication
+    """
 
     # integer rounded max sd times rf_sd_limit -> img limit for RF
-    max_sd = sd_limit * np.ceil(sd.min)
+    max_sd = sd_limit * np.ceil(sd.mnt)
     # spatial extent (for mk_coords)
     # add 1 to ensure number is odd so size of mk_coords output is as specified
     spat_ext = ArcLength((2 * max_sd) + 1, spat_res.unit)
@@ -53,8 +60,8 @@ def mk_sd_limited_spat_coords(
 
 
 def mk_blank_coords(
-        spat_res: ArcLength = ArcLength(1, 'min'), temp_res: Time = Time(1, 'ms'),
-        spat_ext: ArcLength = ArcLength(300, 'min'), temp_ext: Time = Time(1000, 'ms'),
+        spat_res: ArcLength = ArcLength(1, 'mnt'), temp_res: Time = Time(1, 'ms'),
+        spat_ext: ArcLength = ArcLength(300, 'mnt'), temp_ext: Time = Time(1000, 'ms'),
         ) -> np.ndarray:
     '''
     Produces blank coords for each spatial and temporal value
@@ -89,20 +96,20 @@ def mk_blank_coords(
     x_coords = mk_spat_coords_1d(spat_res, spat_ext)
     # treat as image (with origin at top left or upper)
     # y_cords positive at top and negative at bottom
-    y_coords = ArcLength(x_coords.min[::-1], 'min')
+    y_coords = ArcLength(x_coords.mnt[::-1], 'mnt')
 
     t_coords = Time(np.arange(0, temp_ext.ms, temp_res.ms), 'ms')
 
     # ie, one array with appropriate size, each coordinate represented by a single value
     space: np.ndarray
-    space = np.zeros((y_coords.min.size, x_coords.min.size, t_coords.ms.size))  # type: ignore
+    space = np.zeros((y_coords.mnt.size, x_coords.mnt.size, t_coords.ms.size))  # type: ignore
 
     return space
 
 
 def mk_spat_coords(
-        spat_res: ArcLength = ArcLength(1, 'min'),
-        spat_ext: ArcLength = ArcLength(300, 'min'),
+        spat_res: ArcLength = ArcLength(1, 'mnt'),
+        spat_ext: ArcLength = ArcLength(300, 'mnt'),
         ) -> Tuple[ArcLength[np.ndarray], ArcLength[np.ndarray]]:
 
     '''
@@ -136,20 +143,20 @@ def mk_spat_coords(
     x_coords = mk_spat_coords_1d(spat_res, spat_ext)
     # treat as image (with origin at top left or upper)
     # y_cords positive at top and negative at bottom
-    y_coords = ArcLength(x_coords.min[::-1], 'min')
+    y_coords = ArcLength(x_coords.mnt[::-1], 'mnt')
 
     xc: ArcLength[np.ndarray]
     yc: ArcLength[np.ndarray]
     xc, yc = (
-        ArcLength(c, 'min') for c in np.meshgrid(x_coords.min, y_coords.min)  # type: ignore
+        ArcLength(c, 'mnt') for c in np.meshgrid(x_coords.mnt, y_coords.mnt)  # type: ignore
         )
 
     return xc, yc
 
 
 def mk_spat_temp_coords(
-        spat_res: ArcLength = ArcLength(1, 'min'), temp_res: Time = Time(1, 'ms'),
-        spat_ext: ArcLength = ArcLength(300, 'min'), temp_ext: Time = Time(1000, 'ms'),
+        spat_res: ArcLength = ArcLength(1, 'mnt'), temp_res: Time = Time(1, 'ms'),
+        spat_ext: ArcLength = ArcLength(300, 'mnt'), temp_ext: Time = Time(1000, 'ms'),
         ) -> Tuple[ArcLength[np.ndarray], ArcLength[np.ndarray], Time[np.ndarray]]:
     '''
     Produces spatial and temporal coordinates (ie meshgrid) for
@@ -186,7 +193,7 @@ def mk_spat_temp_coords(
     x_coords = mk_spat_coords_1d(spat_res, spat_ext)
     # treat as image (with origin at top left or upper)
     # y_cords positive at top and negative at bottom
-    y_coords = ArcLength(x_coords.min[::-1], 'min')
+    y_coords = ArcLength(x_coords.mnt[::-1], 'mnt')
 
     t_coords = Time(np.arange(0, temp_ext.ms, temp_res.ms), 'ms')
 
@@ -194,29 +201,29 @@ def mk_spat_temp_coords(
     _yc: np.ndarray
     _tc: np.ndarray
 
-    _xc, _yc, _tc = np.meshgrid(x_coords.min, y_coords.min, t_coords.ms)  # type: ignore
-    xc, yc = (ArcLength(c, 'min') for c in (_xc, _yc))
+    _xc, _yc, _tc = np.meshgrid(x_coords.mnt, y_coords.mnt, t_coords.ms)  # type: ignore
+    xc, yc = (ArcLength(c, 'mnt') for c in (_xc, _yc))
     tc = Time(_tc, 'ms')
 
     return xc, yc, tc
 
 
 def mk_gauss_1d(
-        coords: ArcLength,
-        mag: float = 1, sd: ArcLength = ArcLength(10, 'min')) -> np.ndarray:
+        coords: ArcLength[np.ndarray],
+        mag: float = 1, sd: ArcLength[float] = ArcLength(10, 'mnt')) -> np.ndarray:
     "Simple 1d gauss ... should be possible to multiply with another for 2d"
 
-    gauss_coeff = mag / (sd.min * (2*PI)**0.5)  # ensure sum of 1
-    gauss_1d: np.ndarray  # as coords SHOULD always be an np.array
-    gauss_1d = gauss_coeff * np.exp(-coords.min**2 / (2 * sd.min**2))  # type: ignore
+    gauss_coeff = mag / (sd.mnt * (2*PI)**0.5)  # ensure sum of 1
+    # gauss_1d: np.ndarray  # as coords SHOULD always be an np.array
+    gauss_1d = gauss_coeff * np.exp(-coords.mnt**2 / (2 * sd.mnt**2))  # type: ignore
 
     return gauss_1d
 
 
 def mk_gauss_1d_ft(
         freqs: SpatFrequency[np.ndarray],
-        amplitude: float = 1, sd: ArcLength[float] = ArcLength(10, 'min')) -> np.ndarray:
-    """Returns normalised ft, treats freqs as being in hz
+        amplitude: float = 1, sd: ArcLength[float] = ArcLength(10, 'mnt')) -> np.ndarray:
+    """Returns normalised ft, treats freqs as  cycs per minute
 
     Works with mk_gauss_1d
 
@@ -227,7 +234,7 @@ def mk_gauss_1d_ft(
 
     Question of what amplitude is ... arbitrary amplitude of spatial filter??
     """
-    ft = amplitude * np.exp(-PI**2 * freqs.cpm**2 * 2 * sd.min**2)
+    ft = amplitude * np.exp(-PI**2 * freqs.cpm**2 * 2 * sd.mnt**2)
 
     # Note: FT = T * FFT ~ amplitude of convolution
     return ft
@@ -249,20 +256,18 @@ def mk_gauss_2d_ft(
         freqs_x: SpatFrequency, freqs_y: SpatFrequency,
         gauss_params: do.Gauss2DSpatFiltParams) -> np.ndarray:
 
-    amplitude, _, _ = gauss_params.array()
-
     # amplitude is 1 for 1d so that amplitude for 2d applies to whole 2d
     gauss_ft_x = mk_gauss_1d_ft(freqs_x, sd=gauss_params.arguments.h_sd, amplitude=1)
     gauss_ft_y = mk_gauss_1d_ft(freqs_y, sd=gauss_params.arguments.v_sd, amplitude=1)
 
-    gauss_2d_ft = amplitude * gauss_ft_x * gauss_ft_y
+    gauss_2d_ft = gauss_params.amplitude * gauss_ft_x * gauss_ft_y
 
     # Note: FT = T * FFT ~ amplitude of convolution
     return gauss_2d_ft
 
 
 def mk_dog_rf(
-        x_coords: ArcLength, y_coords: ArcLength,
+        x_coords: ArcLength[np.ndarray], y_coords: ArcLength[np.ndarray],
         dog_args: do.DOGSpatFiltArgs) -> np.ndarray:
 
     cent_gauss_2d = mk_gauss_2d(x_coords, y_coords, gauss_params=dog_args.cent)
@@ -305,99 +310,166 @@ def mk_dog_rf_ft_1d(
     return dog_ft_1d
 
 
-# Redundant now? ... with mk_dog_rf above
-# def mk_rf(
-#         spat_res: float = 1,
-#         cent_h_sd: float = 10.6, cent_v_sd: float = 10.6,
-#         surr_h_sd: float = 31.8, surr_v_sd: float = 31.8,
-#         mag_cent: float = 1, mag_surr: float = 1,
-#         rf_sd_limit: int = 5,
-#         return_cent_surr: bool = False, return_coords: bool = False
-#         ) -> Union[np.ndarray, Tuple]:
-#     '''Generate DoG Rec Field
+# > Temporal
 
-#     Parameters
-#     ----
-#     spat_res : float
-#         resolution of meshgrid used to create RF
-#         passed to mk_coords
-#     cent/surr_h/v_sd : float
-#         standard dev of gaussian used to generate RF
-#         cent/surr -> center or surround component
-#         h/v : vertical or horizontal axis
-#     mag_cent/surr : float
-#         absolute magnitude of cent/surr component
-#     rf_sd_limit : float
-#         span of underlying mesdhgrid in number of standard deviations
-#         the maximum of of all cent/surr_h/v_sd are used
-#         important to ensure that the sum of the surround is not arbitrarily
-#         trunacated
-#     return_cent_surr : boolean
-#         whether to return the center and surround components also
-#     return_coords : boolean
-#         whether to also return the meshgrid for x and y
+def mk_temp_coords(
+        temp_res: Time[float], temp_ext: Time[float],
+        temp_ext_n_tau: Optional[float] = None,
+        tau: Optional[Time[float]] = None) -> Time[np.ndarray]:
+    """Generate array of times with resolution temp_res and extent temp_ext
 
-#     Units are defined in arc minutes
+    Temporal parameters must be Time objects.
+    Calculations all done in milliseconds (Time.ms)
 
-#     Current defaults from Woergoetter and Koch (1991)
+    temp_ext_n_tau and tau are optional parameters for
+    programmatically controlling the extent.
+    If both provided, temp_ext = tau.ms * temp_ext_n_tau (in ms units)
+    """
 
-#     Returns
-#     ----
+    if temp_ext_n_tau and tau:
+        assert temp_ext_n_tau >= 10, (
+            f'temp_ext_n_tau ({temp_ext_n_tau}) should be 10 or more\n'
+            f'Any lower and the sum of the filter will be diminished \n'
+            'by approx 0.1% or more for tq filt')
 
-#     '''
+        temp_ext = Time(tau.ms * temp_ext_n_tau, 'ms')
 
-#     # integer rounded max sd times rf_sd_limit -> img limit for RF
-#     max_sd = rf_sd_limit * np.ceil(
-#         np.max(np.array([cent_h_sd, cent_v_sd, surr_h_sd, surr_v_sd]))
-#     )
-#     # spatial extent (for mk_coords)
-#     # add 1 to ensure number is odd so size of mk_coords output is as specified
-#     spat_ext = (2 * max_sd) + 1
+    # converting to seconds from milliseconds
+    # parameters of teich and qian function are in seconds
+    t = Time(np.arange(0, temp_ext.ms, temp_res.ms), 'ms')
 
-#     # only one coords necessary, as square/cartesion grid (how to noise hexagonal centering?)
-#     x_coords: ArcLength
-#     y_coords: ArcLength
-#     x_coords, y_coords = mk_coords(
-#         spat_res=ArcLength(spat_res, 'min'), spat_ext=ArcLength(spat_ext, 'min'), temp_dim=False)
+    return t
 
-#     rf_cent = (
-#         # mag divide by normalising factor with both sds (equivalent to sq if they were identical)
-#         (mag_cent / (2 * np.pi * cent_v_sd * cent_h_sd)) *
-#         np.exp(
-#             - (
-#                 (x_coords.min**2 / (2 * cent_h_sd**2)) +
-#                 (y_coords.min**2 / (2 * cent_v_sd**2))
-#             )
-#         )
-#     )
 
-#     rf_surr = (
-#         (mag_surr / (2 * np.pi * surr_v_sd * surr_h_sd)) *
-#         np.exp(
-#             - (
-#                 (x_coords.min**2 / (2 * surr_h_sd**2)) +
-#                 (y_coords.min**2 / (2 * surr_v_sd**2))
-#             )
-#         )
-#     )
+# >> tq temp filt
 
-#     rf = rf_cent - rf_surr
-#     rf = cast(np.ndarray, rf)
+def mk_tqtempfilt(
+        t: Time[np.ndarray],
+        tau: Time[float] = Time(16, 'ms'),
+        w: float = 4 * 2 * np.pi,
+        phi: float = 0.24) -> np.ndarray:
+    # temp_ext=100, temp_ext_n_tau=None,
+    # temp_res=1, return_t=True):
+    r"""Generate single temp filter by modulating a negative exp with a cosine
 
-#     if not (return_cent_surr or return_coords):
+    Parameters
+    ----
+    tau : float (milliseconds)
+        Time constant of negative exponential
+    w : float (n*2*pi radians)
+        Frequency of modulation of negative exp
+        As in "n*2*pi" units, so that frequency is in Hertz
+    phi : float (0.24)
+        Phase translation of modulation
 
-#         return rf
+    Returns
+    ----
+    tf : (temporal filter) (array 1D)
+        Magnitudes of the filter over time for each time step defined by
+        the parameters
 
-#     else:
-#         ret_vars = (rf,)
+    Notes
+    ----
+    Taken from Teich and Qian (2006) and Chen et al (2001)
 
-#         if return_cent_surr:
-#             ret_vars += rf_cent, rf_surr
-#         if return_coords:
-#             ret_vars += x_coords, y_coords
+    On time constant and decay/growth dynamics for this filter, looking only at the
+    gamma function or exponential component, the integral is:
 
-#         return ret_vars
+    $$F(t) = \int \frac{t \cdot exp(\frac{-t}{\tau})}{\tau^2} dt =
+    -\frac{exp(\frac{-t}{\tau})(\tau + t)}{\tau}$$
 
+    The definite integral from zero to a number of time constants \(n\tau\) is:
+
+    $$ \begin{aligned}
+        F(t)|^{n\tau}_{0} &= -\frac{\tau+n\tau}{\tau}exp(\frac{-n\tau}{\tau})
+        - (-)\frac{\tau}{\tau}\exp(\frac{0}{\tau}) \\
+                                            &= -(1+n)exp(-n) + 1 \\
+                                            &= 1 - \frac{1+n}{e^n} \\
+                                            &= 1 - \frac{1}{e^n} - \frac{n}{e^n}
+    \end{aligned} $$
+
+    Here, \(1 - \frac{1}{e^n}\) is ordinary exponential growth/decay.
+    The additional term of \(- \frac{n}{e^n}\) slows the growth/decay, but converges
+    to zero by approx. 10 time constants (0.05%)
+    """
+
+    # if temp_ext_n_tau:
+
+    #     assert temp_ext_n_tau >= 10, (
+    #         f'temp_ext_n_tau ({temp_ext_n_tau}) should be 10 or more\n'
+    #         f'Any lower and the sum of the filter will be diminished by approx 0.1% or more')
+    #     temp_ext = tau * temp_ext_n_tau
+
+    # converting to seconds from milliseconds
+    # parameters of teich and qian function are in seconds
+    # t = np.arange(0, temp_ext, temp_res) / 1000
+    # tau /= 1000
+
+    # Note correction from teich and qian (apparent in Kuhlman as well as Chen(?) too)
+    tf = (t.s / tau.s**2) * np.exp(-t.s / tau.s) * np.cos((w * t.s) + phi)
+
+    return tf
+
+
+def mk_tq_ft(
+        f: TempFrequency[np.ndarray],
+        tau: Time[float] = Time(16, 'ms'),
+        w: float = 4 * 2 * np.pi,
+        phi: float = 0.24,
+        return_abs: bool = True) -> np.ndarray:
+    """Cerate Fourier Transform of function used in mk_tqtempfilt
+
+    Employs analytical solution from Chen (2001)
+
+    Parameters
+    ----
+    f : TempFrequency
+        Frequencies to calculate magnitude of in Fourier Transform
+        Used in cycs per radian
+    tau, w, phi : as in mk_tqtempfilt
+        tau is transformed to seconds but taken in milliseconds
+    return_abs : boolean (True)
+        Whether to return the absolute of the complex fourier
+        transform array.
+        This represents the magnitude of the fourier, and so is
+        True be default
+
+    Returns
+    ----
+    fourier : array
+
+    Notes
+    ----
+    For the magnitude of this fourier transform to correspond to that of a DFT (such as that
+    computed by a FFT) you must divide it by the temporal period or sampling interval of the
+    original filter or signal (ie, the tq filt being used in calculating the DFT)
+
+    $$DFT(FFT) \\Leftrightarrow \\frac{FT_{continuous}}{T}$$
+
+    This magnitude will also correspond with the result of convolving a sinusoid of the
+    same frequency with the same original filter or signal.  IE, the magnitude of that
+    frequency after filtering by this filter.
+
+    Does not take a discrete data object as used in fitting and optmisation, which
+    requires taking an array of values.
+    """
+
+    # tau /= 1000
+
+    a: np.ndarray
+    b: np.ndarray
+
+    a = np.exp(phi * 1j) / (1 / tau.s + ((f.w - w) * 1j))**2  # type: ignore
+    b = np.exp(-phi * 1j) / (1 / tau.s + ((f.w + w) * 1j))**2  # type: ignore
+
+    fourier = (1 / (2 * tau.s**2)) * (a + b)
+    if return_abs:
+        fourier = np.abs(fourier)
+
+    return fourier
+
+
+# >> Old Gauss (worgoter & Koch)
 
 def mk_tempfilt(tau=10, temp_ext=100, temp_res=1, temp_ext_n_tau=None, return_t=False):
     '''Generate a temporal filter
@@ -474,139 +546,3 @@ def mk_tempfilt2(
     else:
         return tf1, tf2
 
-
-def mk_tqtempfilt(
-        tau=16, w=4 * 2 * np.pi, phi=0.24,
-        temp_ext=100, temp_ext_n_tau=None,
-        temp_res=1, return_t=True):
-    r"""Generate single temp filter by modulating a negative exp with a cosine
-
-    Parameters
-    ----
-    tau : float (milliseconds)
-        Time constant of negative exponential
-    w : float (n*2*pi radians)
-        Frequency of modulation of negative exp
-        As in "n*2*pi" units, so that frequency is in Hertz
-    phi : float (0.24)
-        Phase translation of modulation
-    temp_ext : int
-        Number of temp_res units to evaluate filter for.
-        time array will be np.arange(0, temp_ext, temp_res)
-    temp_ext_n_tau : int (default None)
-        Substitute temp_ext with a multiple of time constant (tau)
-        temp_ext = temp_ext_n_tau * tau
-        Approx >=10 time constants of evaluation is appropriate.
-        Below 10, the integral or sum diminishes nonnegligibly.
-        Time constant dynamics are similar to ordinary negative exponential
-        but slower: see Notes.
-    temp_res : float (milliseconds) (default 1)
-        Temporal resolution of the filter
-    return_t : boolean
-        Whether to return the time array along with the filter array
-
-    Returns
-    ----
-    tf : (temporal filter) (array 1D)
-        Magnitudes of the filter over time for each time step defined by
-        the parameters
-    t : (time) (array 1D)
-        Time steps for which filter is calculated
-        Only if `return_t=True`
-
-
-    Notes
-    ----
-    Taken from Teich and Qian (2006) and Chen et al (2001)
-
-    On time constant and decay/growth dynamics for this filter, looking only at the
-    gamma function or exponential component, the integral is:
-
-    $$F(t) = \int \frac{t \cdot exp(\frac{-t}{\tau})}{\tau^2} dt =
-    -\frac{exp(\frac{-t}{\tau})(\tau + t)}{\tau}$$
-
-    The definite integral from zero to a number of time constants \(n\tau\) is:
-
-    $$ \begin{aligned}
-        F(t)|^{n\tau}_{0} &= -\frac{\tau+n\tau}{\tau}exp(\frac{-n\tau}{\tau})
-        - (-)\frac{\tau}{\tau}\exp(\frac{0}{\tau}) \\
-                                            &= -(1+n)exp(-n) + 1 \\
-                                            &= 1 - \frac{1+n}{e^n} \\
-                                            &= 1 - \frac{1}{e^n} - \frac{n}{e^n}
-    \end{aligned} $$
-
-    Here, \(1 - \frac{1}{e^n}\) is ordinary exponential growth/decay.
-    The additional term of \(- \frac{n}{e^n}\) slows the growth/decay, but converges
-    to zero by approx. 10 time constants (0.05%)
-    """
-
-    if temp_ext_n_tau:
-
-        assert temp_ext_n_tau >= 10, (
-            f'temp_ext_n_tau ({temp_ext_n_tau}) should be 10 or more\n'
-            f'Any lower and the sum of the filter will be diminished by approx 0.1% or more')
-        temp_ext = tau * temp_ext_n_tau
-
-    # converting to seconds from milliseconds
-    # parameters of teich and qian function are in seconds
-    t = np.arange(0, temp_ext, temp_res) / 1000
-    tau /= 1000
-
-    # Note correction from teich and qian (apparent in Kuhlman as well as Chen(?) too)
-    tf = (t / tau**2) * np.exp(-t / tau) * np.cos((w * t) + phi)
-
-    if return_t:
-        return tf, t
-    else:
-        return tf
-
-
-def mk_tq_ft(
-        f: Union[float, np.ndarray], 
-        tau: float = 16, 
-        w: float = 4 * 2 * np.pi, 
-        phi: float = 0.24, 
-        return_abs: bool = True) -> np.ndarray:
-    """Cerate Fourier Transform of function used in mk_tqtempfilt
-
-    Employs analytical solution from Chen (2001)
-
-    Parameters
-    ----
-    f : float/array
-        Frequencies to calculate magnitude of in Fourier Transform
-    tau, w, phi : as in mk_tqtempfilt
-        tau is transformed to seconds but taken in milliseconds
-    return_abs : boolean (True)
-        Whether to return the absolute of the complex fourier
-        transform array.
-        This represents the magnitude of the fourier, and so is
-        True be default
-
-    Returns
-    ----
-    fourier : array
-
-    Notes
-    ----
-    For the magnitude of this fourier transform to correspond to that of a DFT (such as that
-    computed by a FFT) you must divide it by the temporal period or sampling interval of the
-    original filter or signal (ie, the tq filt being used in calculating the DFT)
-
-    $$DFT(FFT) \\Leftrightarrow \\frac{FT_{continuous}}{T}$$
-
-    This magnitude will also correspond with the result of convolving a sinusoid of the
-    same frequency with the same original filter or signal.  IE, the magnitude of that
-    frequency after filtering by this filter.
-    """
-
-    tau /= 1000
-
-    a = np.exp(phi * 1j) / (1 / tau + ((f - w) * 1j))**2
-    b = np.exp(-phi * 1j) / (1 / tau + ((f + w) * 1j))**2
-
-    fourier = (1 / (2 * tau**2)) * (a + b)
-    if return_abs:
-        fourier = np.abs(fourier)
-
-    return fourier

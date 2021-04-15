@@ -7,7 +7,7 @@ import math
 PI = math.pi
 
 # generic values ... share arithmetic operators
-val_gen = TypeVar('val_gen', float, np.ndarray)
+val_gen = TypeVar('val_gen', float, np.ndarray, Iterable[float])
 
 # from .core import add_conversions
 
@@ -30,16 +30,14 @@ val_gen = TypeVar('val_gen', float, np.ndarray)
 # And generates tab completion for the properties (as coded explicitly)
 
 
-
-
 @dataclass(frozen=True)
 class Time(Generic[val_gen]):
 
     value: val_gen
     unit: str = 's'
-    _s: int = field(default=1, init=False)
-    _ms: float = field(default=10**-3, init=False)  # magnitude of this unit in base units
-    _us: float = field(default=10**-6, init=False)
+    _s: int = field(default=1, init=False, repr=False)
+    _ms: float = field(default=10**-3, init=False, repr=False)  # magnitude in base units
+    _us: float = field(default=10**-6, init=False, repr=False)
 
     @property
     def s(self) -> val_gen:
@@ -54,7 +52,6 @@ class Time(Generic[val_gen]):
         return (self.value * getattr(self, f'_{self.unit}')) / self._us
 
 
-
 @dataclass(frozen=True)
 class ArcLength(Generic[val_gen]):
     """Length as an angle from an origin
@@ -67,7 +64,7 @@ class ArcLength(Generic[val_gen]):
     # value: Union[float, np.ndarray]
     unit: str = 'deg'
     _deg: int = field(default=1, init=False, repr=False)
-    _min: float = field(default=1/60, init=False, repr=False)  # 1 min -> 1/60 degs
+    _mnt: float = field(default=1/60, init=False, repr=False)  # 1 min -> 1/60 degs
     _sec: float = field(default=1/(60*60), init=False, repr=False)
 
     @property
@@ -76,8 +73,8 @@ class ArcLength(Generic[val_gen]):
 
     @property
     # def min(self) -> Union[float, np.ndarray]:
-    def min(self) -> val_gen:
-        return (self.value * getattr(self, f"_{self.unit}")) / self._min
+    def mnt(self) -> val_gen:
+        return (self.value * getattr(self, f"_{self.unit}")) / self._mnt
 
     @property
     def sec(self) -> val_gen:
@@ -99,8 +96,8 @@ class TempFrequency(Generic[val_gen]):
 
     value: val_gen
     unit: str = 'hz'
-    _hz: int = field(default=1, init=False)
-    _w: float = field(default=1/(2*PI), init=False)
+    _hz: int = field(default=1, init=False, repr=False)
+    _w: float = field(default=1/(2*PI), init=False, repr=False)  # 1 cyc/rad -> 1/2pi hz
 
     @property
     def hz(self) -> val_gen:
@@ -116,9 +113,9 @@ class SpatFrequency(Generic[val_gen]):
 
     value: val_gen
     unit: str = 'cpd'
-    _cpd: int = field(default=1, init=False)
-    _cpm: float = field(default=60, init=False)  # 1 cpm -> 60 cpd
-    _cpd_w: float = field(default=1/(2*PI), init=False)
+    _cpd: int = field(default=1, init=False, repr=False)
+    _cpm: float = field(default=60, init=False, repr=False)  # 1 cpm -> 60 cpd
+    _cpd_w: float = field(default=1/(2*PI), init=False, repr=False)
 
     @property
     def cpd(self) -> val_gen:

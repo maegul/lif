@@ -7,25 +7,28 @@ import numpy as np
 from scipy.optimize import least_squares, OptimizeResult
 
 from . import data_objects as do, filter_functions as ff
-from ...utils.units.units import SpatFrequency, TempFrequency
+from ...utils.units.units import ArcLength, SpatFrequency, TempFrequency, Time
 
 PI: float = np.pi  # type: ignore
-
+TIME_UNIT: str = 'ms'
 
 # from ...utils import settings
 
 # > Temp Filters
 
+
 def _tq_ft_wrapper(
         x: np.ndarray, 
-        freqs: np.ndarray, amplitude_real: np.ndarray
+        freqs: TempFrequency[np.ndarray], amplitude_real: np.ndarray
         ) -> np.float64:
 
     """Wraps mk_tq_ft() for use with least_squares()
     """
 
-    A, tau, w, phi = x[0], x[1], x[2], x[3]  # unpack array into vars
-    fit_values = A * ff.mk_tq_ft(freqs*2*PI, tau=tau, w=w, phi=phi)
+    # unpack array into vars
+    A, tau, w, phi = x[0], x[1], x[2], x[3]
+    tau = Time(tau, TIME_UNIT)
+    fit_values = A * ff.mk_tq_ft(freqs, tau=tau, w=w, phi=phi)
 
     # return np.sum((fit_values - amplitude_real)**2)
     # not necessary to square and sum for least_squares?
@@ -34,23 +37,31 @@ def _tq_ft_wrapper(
 
 def _fit_tq_temp_filt(
         data: do.TempFiltData,
-        x0: do.TQTempFiltParams = do.TQTempFiltParams.from_iter([20, 16, 4*2*PI, 0.24]),
-        # x0: list = [20, 16, 4*2*PI, 0.24],
+        x0: do.TQTempFiltParams = do.TQTempFiltParams.from_iter(
+            [20, 16, 4*2*PI, 0.24], tau_time_unit=TIME_UNIT),
         bounds: Optional[Tuple[do.TQTempFiltParams, do.TQTempFiltParams]] = None
         ) -> OptimizeResult:
     """Fit tq_temp_filt to given data using least_squares method
 
     both initial guess (x0) and bounds can be passed in.
 
+    NOTE: time always presumed in milliseconds
+
     Default bounds are defined in code as:
 
-    bounds = (
-        np.array([0, 1, PI, 0]),  # mins
+    opt_bounds_arg = (
+        do.TQTempFiltParams(
+            amplitude=0, arguments=do.TQTempFiltArgs(
+                tau=Time(1, 'ms'), w=PI, phi=0)
+            ).array(),  # mins
         # amp: double to 1 then 3 times max data
         # tau: 3 taus ~ 95% ... 100ms ... no lower level visual neuron should be longer?!
         # w: 100 (*2pi) ... 100 hz ... half-wave at 0.005 seconds (near 3* min tau)
         # phi: max phase is 2pi
-        np.array([max_amplitude*2*3, 100, 100*2*PI, 2*PI])  # maxes
+        do.TQTempFiltParams(
+            amplitude=max_amplitude*2*3, arguments=do.TQTempFiltArgs(
+                tau=Time(100, 'ms'), w=100*2*PI, phi=2*PI)
+            ).array()  # maxes
         )
     """
 
@@ -59,7 +70,6 @@ def _fit_tq_temp_filt(
 
     # guesses
     guesses: np.ndarray = x0.array()
-
 
     # bounds
     opt_bounds_arg: Tuple[np.ndarray, np.ndarray]
@@ -70,7 +80,8 @@ def _fit_tq_temp_filt(
         max_amplitude: float
         opt_bounds_arg = (
             do.TQTempFiltParams(
-                amplitude=0, arguments=do.TQTempFiltArgs(tau=1, w=PI, phi=0)
+                amplitude=0, arguments=do.TQTempFiltArgs(
+                    tau=Time(1, TIME_UNIT), w=PI, phi=0)
                 ).array(),  # mins
             # amp: double to 1 then 3 times max data
             # tau: 3 taus ~ 95% ... 100ms ... no lower level visual neuron should be longer?!
@@ -78,10 +89,12 @@ def _fit_tq_temp_filt(
             # phi: max phase is 2pi
             do.TQTempFiltParams(
                 amplitude=max_amplitude*2*3, arguments=do.TQTempFiltArgs(
-                    tau=100, w=100*2*PI, phi=2*PI)
+                    tau=Time(100, TIME_UNIT), w=100*2*PI, phi=2*PI)
                 ).array()  # maxes
             )
 
+    # [><] WARNING [><] #
+    # type checking doesn't penetrate this structure: _tq_ft_wrapper func args indirectly by dict
     opt_res = least_squares(
         _tq_ft_wrapper, guesses, bounds=opt_bounds_arg,
         kwargs=dict(freqs=data.frequencies, amplitude_real=data.amplitudes))
@@ -95,7 +108,7 @@ def make_tq_temp_filt(parameters: do.TempFiltParams) -> do.TQTempFilter:
 
     assert optimised_result.success is True, 'optimisation is not successful'
 
-    params = do.TQTempFiltParams.from_iter(data=optimised_result.x)
+    params = do.TQTempFiltParams.from_iter(data=optimised_result.x, tau_time_unit=TIME_UNIT)
 
     temp_filt = do.TQTempFilter(
         source_data=parameters,
@@ -132,12 +145,10 @@ def _dog_ft_wrapper(
 def _fit_dog_ft(
         data: do.SpatFiltData,
         x0: do.DOGSpatFiltArgs1D = do.DOGSpatFiltArgs1D.from_iter(
-            [1.1, 10, 0.9, 30], arclength_unit = 'min'),
+            [1.1, 10, 0.9, 30], arclength_unit='mnt'),
         bounds: Optional[Tuple[do.DOGSpatFiltArgs1D, do.DOGSpatFiltArgs1D]] = None
         ) -> OptimizeResult:
     "use least_squares to produced optimised parameters for mk_dog_rf"
-
-    freqs = SpatFrequency(data.frequencies, unit='cpd')
 
     # guesses
     guesses: np.ndarray = x0.array()
@@ -147,22 +158,24 @@ def _fit_dog_ft(
         opt_bounds_args = (bounds[0].array(), bounds[1].array())
     else:
         max_amplitude: float
-        max_amplitude = max(data.amplitudes)  # type:ignore
+        max_amplitude = max(data.amplitudes)
         max_rf_width: float = 100  # could be objectively picked ??
         opt_bounds_args = (
             do.DOGSpatFiltArgs1D(
-                cent=do.Gauss1DSpatFiltParams(amplitude=0, sd=1),
-                surr=do.Gauss1DSpatFiltParams(amplitude=0, sd=1)
+                cent=do.Gauss1DSpatFiltParams(amplitude=0, sd=ArcLength(1, 'mnt')),
+                surr=do.Gauss1DSpatFiltParams(amplitude=0, sd=ArcLength(1, 'mnt'))
                 ).array(),
             do.DOGSpatFiltArgs1D(
-                cent=do.Gauss1DSpatFiltParams(amplitude=max_amplitude*5, sd=max_rf_width),
-                surr=do.Gauss1DSpatFiltParams(amplitude=max_amplitude*5, sd=3*max_rf_width)
+                cent=do.Gauss1DSpatFiltParams(amplitude=max_amplitude*5,
+                                              sd=ArcLength(max_rf_width, 'mnt')),
+                surr=do.Gauss1DSpatFiltParams(amplitude=max_amplitude*5,
+                                              sd=ArcLength(3*max_rf_width, 'mnt'))
                 ).array(),
             )
 
     opt_res = least_squares(
         _dog_ft_wrapper, guesses, bounds=opt_bounds_args,
-        kwargs=dict(freqs=freqs, amplitude_real=data.amplitudes)
+        kwargs=dict(freqs=data.frequencies, amplitude_real=data.amplitudes)
         )
 
     return opt_res

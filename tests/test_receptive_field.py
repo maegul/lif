@@ -1,6 +1,7 @@
 from typing import cast
+from dataclasses import astuple, asdict
 
-from lif.utils.units.units import ArcLength, SpatFrequency, TempFrequency
+from lif.utils.units.units import ArcLength, SpatFrequency, TempFrequency, Time
 from pytest import mark
 from hypothesis import given, strategies as st
 
@@ -44,17 +45,25 @@ def test_metadata_make_key(metadata: dict, expected: str):
 
 # > Temp Filters
 
+def test_tq_filt_args_array_round_trip():
+    test_args = filters.do.TQTempFiltArgs(
+            tau=Time(3), w=10, phi=100
+        )
+
+
+    assert np.all(test_args.array() == np.array([3, 10, 100]))
+
 
 t = filters.do.TQTempFiltParams(
     amplitude=44, 
     arguments=filters.do.TQTempFiltArgs(
-        tau=15, w=3, phi=0.3))
+        tau=Time(15), w=3, phi=0.3))
 
 
 def test_tq_params_dict_conversion():
     putative_dict = {
         'amplitude': t.amplitude,
-        'tau': t.arguments.tau,
+        'tau': asdict(t.arguments.tau),
         'w': t.arguments.w,
         'phi': t.arguments.phi
     }
@@ -70,7 +79,7 @@ def test_tq_params_array_round_trip():
 def test_fit_tq_temp_filt():
 
     # mock data known to lead to a fit
-    fs = np.array([0.25, 0.5, 1, 2, 4, 8, 16, 32, 64])
+    fs = TempFrequency(np.array([0.25, 0.5, 1, 2, 4, 8, 16, 32, 64]))
     amps = np.array([32, 30, 34, 40, 48, 48, 28, 20, 3])
 
     data = filters.do.TempFiltData(frequencies=fs, amplitudes=amps)
@@ -112,24 +121,26 @@ def test_dog_spat_filt_1d_round_trip():
     mag=basic_float_strat
     )
 def test_gauss_2d_sum(x_sd: float, y_sd: float, mag: float):
-    # spat_res = 1
-    # x_sd, y_sd = 10, 20
-    # mag = 1
+    """Sum of gauss_2d is defined by magnitude
+
+    Generate gauss_2d from ff.mk_gauss_2d and check that integral
+    (sum * resolution) is the same as the magnitude (ie, integral==1)
+    """
 
     gauss_params = do.Gauss2DSpatFiltParams(
         amplitude=mag,
-        arguments=do.Gauss2DSpatFiltArgs(ArcLength(x_sd, 'min'), ArcLength(y_sd, 'min')))
+        arguments=do.Gauss2DSpatFiltArgs(ArcLength(x_sd, 'mnt'), ArcLength(y_sd, 'mnt')))
 
     # ensure resolution high enough for sd
-    spat_res = ArcLength((np.floor(np.min(np.array([x_sd, y_sd])))) / 10, 'min')
+    spat_res = ArcLength((np.floor(np.min(np.array([x_sd, y_sd])))) / 10, 'mnt')
     # ensure extent high enough for capture full gaussian
-    spat_ext = ArcLength((2 * 5*np.ceil(np.max(np.array([x_sd, y_sd]))) + 1), 'min')
+    spat_ext = ArcLength((2 * 5*np.ceil(np.max(np.array([x_sd, y_sd]))) + 1), 'mnt')
 
-    xc, yc = ff.mk_coords(temp_dim=False, spat_res=spat_res, spat_ext=spat_ext)
+    xc, yc = ff.mk_spat_coords(spat_res=spat_res, spat_ext=spat_ext)
 
     gauss_2d = ff.mk_gauss_2d(xc, yc, gauss_params=gauss_params)
 
-    assert np.isclose(gauss_2d.sum()*spat_res.min**2, mag)  # type: ignore
+    assert np.isclose(gauss_2d.sum()*spat_res.mnt**2, mag)  # type: ignore
 
 
 @given(
@@ -144,7 +155,10 @@ def test_dog_rf(
         cent_h_sd: float, cent_v_sd: float,
         surr_h_sd: float, surr_v_sd: float,
         mag_cent: float, mag_surr: float):
+    """mk_dog_rf produces same output as manual 2d rf calc
 
+    Significance being that mk_dog_rf treats 1d gaussians as separable
+    """
 
     ####
     # all sd vals are presumed in minutes
@@ -153,10 +167,10 @@ def test_dog_rf(
     dog_rf_params = do.DOGSpatFiltArgs(
         cent=do.Gauss2DSpatFiltParams.from_iter(
             [mag_cent, cent_h_sd, cent_v_sd],
-            arclength_unit='min'),
+            arclength_unit='mnt'),
         surr=do.Gauss2DSpatFiltParams.from_iter(
             [mag_surr, surr_h_sd, surr_v_sd],
-            arclength_unit='min')
+            arclength_unit='mnt')
         )
 
     # ensure resolution high enough for sd
@@ -167,12 +181,13 @@ def test_dog_rf(
 
     xc: ArcLength
     yc: ArcLength
-    xc, yc = ff.mk_coords(
-        temp_dim=False, spat_res=ArcLength(spat_res), spat_ext=ArcLength(spat_ext))
+    xc, yc = ff.mk_spat_coords(spat_res=ArcLength(spat_res), spat_ext=ArcLength(spat_ext))
 
+    ###############
     # making dog rf
     dog_rf = ff.mk_dog_rf(xc, yc, dog_args=dog_rf_params)
 
+    ###############
     # making rf with direct code
 
     rf_cent = (
@@ -180,8 +195,8 @@ def test_dog_rf(
         (mag_cent / (2 * np.pi * cent_v_sd * cent_h_sd)) *
         np.exp(
             - (
-                (xc.min**2 / (2 * cent_h_sd**2)) +
-                (yc.min**2 / (2 * cent_v_sd**2))
+                (xc.mnt**2 / (2 * cent_h_sd**2)) +
+                (yc.mnt**2 / (2 * cent_v_sd**2))
             )
         )
     )
@@ -189,8 +204,8 @@ def test_dog_rf(
         (mag_surr / (2 * np.pi * surr_v_sd * surr_h_sd)) *
         np.exp(
             - (
-                (xc.min**2 / (2 * surr_h_sd**2)) +
-                (yc.min**2 / (2 * surr_v_sd**2))
+                (xc.mnt**2 / (2 * surr_h_sd**2)) +
+                (yc.mnt**2 / (2 * surr_v_sd**2))
             )
         )
     )
@@ -217,29 +232,34 @@ def test_dog_rf_gauss2d_fft(
         cent_h_sd: float, cent_v_sd: float,
         surr_h_sd: float, surr_v_sd: float,
         mag_cent: float, mag_surr: float):
+    """mk_dog_rf_ft produces same output as manual fft
+
+    Significance being that x and y separability are used by mk_dog_rf_ft to
+    produce a 2d ft from 1d fts
+    """
 
     dog_rf_params = do.DOGSpatFiltArgs(
         cent=do.Gauss2DSpatFiltParams.from_iter(
-            [mag_cent, cent_h_sd, cent_v_sd], arclength_unit='min'),
+            [mag_cent, cent_h_sd, cent_v_sd], arclength_unit='mnt'),
         surr=do.Gauss2DSpatFiltParams.from_iter(
-            [mag_surr, surr_h_sd, surr_v_sd], arclength_unit='min')
+            [mag_surr, surr_h_sd, surr_v_sd], arclength_unit='mnt')
         )
 
     # ensure resolution high enough for sd
     spat_res = ArcLength(
-        (np.floor(np.min(np.array([cent_h_sd, cent_v_sd, surr_h_sd, surr_v_sd])))) / 10, 'min')
+        (np.floor(np.min(np.array([cent_h_sd, cent_v_sd, surr_h_sd, surr_v_sd])))) / 10, 'mnt')
     # ensure extent high enough for capture full gaussian
     spat_ext = ArcLength(
-        2 * 5*np.ceil(np.max(np.array([cent_h_sd, cent_v_sd, surr_h_sd, surr_v_sd]))) + 1, 'min')
+        2 * 5*np.ceil(np.max(np.array([cent_h_sd, cent_v_sd, surr_h_sd, surr_v_sd]))) + 1, 'mnt')
 
     xc: ArcLength
     yc: ArcLength
-    xc, yc = ff.mk_coords(temp_dim=False, spat_res=spat_res, spat_ext=spat_ext)
+    xc, yc = ff.mk_spat_coords(spat_res=spat_res, spat_ext=spat_ext)
 
     dog_rf = ff.mk_dog_rf(xc, yc, dog_args=dog_rf_params)
 
     dog_rf_fft = np.abs(fft.fftshift(fft.fft2(dog_rf)))
-    dog_rf_fft_freqs = fft.fftshift(fft.fftfreq(xc.min.shape[0], d=spat_res.value))  # type: ignore
+    dog_rf_fft_freqs = fft.fftshift(fft.fftfreq(xc.mnt.shape[0], d=spat_res.value))  # type: ignore
 
     fx, fy = (
         SpatFrequency(f, unit='cpm') for f 
@@ -293,14 +313,14 @@ def test_dog_ft_2d_to_1d(
 
     # ensure resolution high enough for sd
     spat_res = ArcLength(
-        (np.floor(np.min(np.array([cent_h_sd_al.min, surr_h_sd_al.min])))) / 10, 'min')
+        (np.floor(np.min(np.array([cent_h_sd_al.mnt, surr_h_sd_al.mnt])))) / 10, 'mnt')
     # ensure extent high enough for capture full gaussian
     spat_ext = ArcLength((
-        2 * 5*np.ceil(np.max(np.array([cent_h_sd_al.min, surr_h_sd_al.min]))) + 1), 'min')
+        2 * 5*np.ceil(np.max(np.array([cent_h_sd_al.mnt, surr_h_sd_al.mnt]))) + 1), 'mnt')
 
     # spat_res, spat_ext = 1, 300
     coords = ff.mk_spat_coords_1d(spat_res=spat_res, spat_ext=spat_ext)
-    ft_freq = fft.fftshift(fft.fftfreq(coords.min.size, d=spat_res.value))  # type: ignore
+    ft_freq = fft.fftshift(fft.fftfreq(coords.mnt.size, d=spat_res.value))  # type: ignore
     fx, fy = (
         SpatFrequency(f) for f 
         in np.meshgrid(ft_freq, ft_freq))  # type: ignore
@@ -308,7 +328,7 @@ def test_dog_ft_2d_to_1d(
     # 2d ft
     dog_ft = ff.mk_dog_rf_ft(fx, fy, dog_args=dog_sf_args)
     # take center slice
-    x_cent_dog_ft = dog_ft[int(coords.min.size//2), :]
+    x_cent_dog_ft = dog_ft[int(coords.mnt.size//2), :]
 
     # make 1d for cent and surr
     cent_ft = ff.mk_gauss_1d_ft(

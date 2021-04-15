@@ -12,11 +12,12 @@ import numpy as np
 from scipy.optimize import OptimizeResult
 
 from ...utils import settings
-from ...utils.units.units import ArcLength, TempFrequency, SpatFrequency
+from ...utils.units.units import (
+    ArcLength, TempFrequency, SpatFrequency, Time
+    )
 
 
-numerical_iter = Union[np.ndarray, Iterable[Union[int, float]]]
-# numerical_iter = np.ndarray
+numerical_iter = Union[np.ndarray, Iterable[float]]
 
 PI: float = np.pi  # type: ignore
 
@@ -71,7 +72,7 @@ class CitationMetaData(ConversionABC):
 class TFRespMetaData(ConversionABC):
     "Metadata or additional data on context of temp filter data"
     dc: float
-    sf: float
+    sf: SpatFrequency[float]
     mean_lum: float
     contrast: Optional[float] = None
 
@@ -83,8 +84,8 @@ class TempFiltData(ConversionABC):
     frequencies: iter
     amplitudes: iter
     """
-    frequencies: numerical_iter
-    amplitudes: numerical_iter
+    frequencies: TempFrequency[np.ndarray]
+    amplitudes: np.ndarray
 
 
 @dataclass
@@ -103,12 +104,16 @@ class TQTempFiltArgs(ConversionABC):
 
     tau, w, phi
     """
-    tau: float
+    tau: Time[float]
     w: float
     phi: float
 
     def array(self) -> np.ndarray:
-        return np.array(astuple(self))
+        """[tau.value, w, phi]
+        tau.value will be in original units
+        """
+        return np.array([self.tau.value, self.w, self.phi])
+        # return np.array(astuple(self))
 
 
 @dataclass
@@ -124,14 +129,13 @@ class TQTempFiltParams(ConversionABC):
     arguments: TQTempFiltArgs
 
     def array(self) -> np.ndarray:
-        return np.array(
-                (self.amplitude,) +
-                astuple(self.arguments)
-            )
+        return np.r_[self.amplitude, self.arguments.array()]  # type: ignore
 
     @classmethod
-    def from_iter(cls, data: Iterable[float]) -> TQTempFiltParams:
+    def from_iter(cls, data: Iterable[float], tau_time_unit: str = 's') -> TQTempFiltParams:
         """Create object from iterable: (a, tau, w, phi)
+
+        tau_time_unit: unit for tau Time object
         """
         # IMPORTANT ... unpacking must match order above and in
         # definition of dataclasses!
@@ -140,8 +144,9 @@ class TQTempFiltParams(ConversionABC):
         return cls(
             amplitude=a,
             arguments=TQTempFiltArgs(
-                tau=tau, w=w, phi=phi
-                ))
+                tau=Time(tau, tau_time_unit), w=w, phi=phi
+                )
+            )
 
     def to_flat_dict(self) -> Dict[str, float]:
         """returns flat dictionary"""
@@ -211,15 +216,15 @@ class TQTempFilter(ConversionABC):
 @dataclass
 class SpatFiltData(ConversionABC):
 
-    amplitudes: numerical_iter
-    frequencies: numerical_iter
+    amplitudes: np.ndarray
+    frequencies: SpatFrequency[np.ndarray]
 
 
 @dataclass
 class SFRespMetaData(ConversionABC):
     "Metadata or additional data on context of spat filter data"
     dc: float
-    tf: float  # temp frequency
+    tf: TempFrequency[float]  # temp frequency
     mean_lum: float
     contrast: Optional[float] = None
 
@@ -240,12 +245,11 @@ class Gauss2DSpatFiltArgs(ConversionABC):
     v_sd: standard deviation along y-axis (vertical)
 
     """
-    h_sd: ArcLength
-    v_sd: ArcLength
+    h_sd: ArcLength[float]
+    v_sd: ArcLength[float]
 
     def array(self) -> np.ndarray:
-        args_array: np.ndarray
-        args_array = np.array([self.h_sd.value, self.v_sd.value])  # type: ignore
+        args_array = np.array([self.h_sd.value, self.v_sd.value])
         return args_array
 
 
@@ -288,13 +292,13 @@ class Gauss2DSpatFiltParams(ConversionABC):
 
 @dataclass
 class Gauss1DSpatFiltParams(ConversionABC):
-    """Args for a 2d gaussian spatial filter
+    """Args for a 1D gaussian spatial filter
 
     amplitude: magnitude
     arguments: Gauss2DSpatFiltArgs (main shape arguments)
     """
     amplitude: float
-    sd: ArcLength
+    sd: ArcLength[float]
 
     def array(self) -> np.ndarray:
         return np.array([self.amplitude, self.sd.value])  # type: ignore
