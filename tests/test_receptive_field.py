@@ -8,7 +8,7 @@ from hypothesis import given, strategies as st
 from lif.receptive_field.filters import filters, filter_functions as ff, data_objects as do
 
 import numpy as np
-from numpy import fft
+from numpy import fft  # type: ignore
 
 
 def test_metadata_make_key_dt():
@@ -185,7 +185,7 @@ def test_dog_rf(
 
     ###############
     # making dog rf
-    dog_rf = ff.mk_dog_rf(xc, yc, dog_args=dog_rf_params)
+    dog_rf = ff.mk_dog_sf(xc, yc, dog_args=dog_rf_params)
 
     ###############
     # making rf with direct code
@@ -252,11 +252,9 @@ def test_dog_rf_gauss2d_fft(
     spat_ext = ArcLength(
         2 * 5*np.ceil(np.max(np.array([cent_h_sd, cent_v_sd, surr_h_sd, surr_v_sd]))) + 1, 'mnt')
 
-    xc: ArcLength
-    yc: ArcLength
     xc, yc = ff.mk_spat_coords(spat_res=spat_res, spat_ext=spat_ext)
 
-    dog_rf = ff.mk_dog_rf(xc, yc, dog_args=dog_rf_params)
+    dog_rf = ff.mk_dog_sf(xc, yc, dog_args=dog_rf_params)
 
     dog_rf_fft = np.abs(fft.fftshift(fft.fft2(dog_rf)))
     dog_rf_fft_freqs = fft.fftshift(fft.fftfreq(xc.mnt.shape[0], d=spat_res.value))  # type: ignore
@@ -265,8 +263,8 @@ def test_dog_rf_gauss2d_fft(
         SpatFrequency(f, unit='cpm') for f 
         in np.meshgrid(dog_rf_fft_freqs, dog_rf_fft_freqs)  # type: ignore
         )
-    # FT = T * FFT ~ amplitude of convolution
-    dog_rf_ft = ff.mk_dog_rf_ft(fx, fy, dog_args=dog_rf_params) / spat_res.value
+    # FT = T * FFT ~ amplitude of convolution (T -> spatial resolution)
+    dog_rf_ft = ff.mk_dog_sf_ft(fx, fy, dog_args=dog_rf_params) / spat_res.value
 
     # atol adjusted as there's some systemic error in comparing continuous with FFT DFT
     # check graphs of the difference to see
@@ -326,7 +324,7 @@ def test_dog_ft_2d_to_1d(
         in np.meshgrid(ft_freq, ft_freq))  # type: ignore
 
     # 2d ft
-    dog_ft = ff.mk_dog_rf_ft(fx, fy, dog_args=dog_sf_args)
+    dog_ft = ff.mk_dog_sf_ft(fx, fy, dog_args=dog_sf_args)
     # take center slice
     x_cent_dog_ft = dog_ft[int(coords.mnt.size//2), :]
 

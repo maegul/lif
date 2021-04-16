@@ -22,13 +22,13 @@ def _tq_ft_wrapper(
         freqs: TempFrequency[np.ndarray], amplitude_real: np.ndarray
         ) -> np.float64:
 
-    """Wraps mk_tq_ft() for use with least_squares()
+    """Wraps _mk_tq_ft() for use with least_squares()
     """
 
     # unpack array into vars
     A, tau, w, phi = x[0], x[1], x[2], x[3]
     tau = Time(tau, TIME_UNIT)
-    fit_values = A * ff.mk_tq_ft(freqs, tau=tau, w=w, phi=phi)
+    fit_values = A * ff._mk_tqtempfilt_ft(freqs, tau=tau, w=w, phi=phi)
 
     # return np.sum((fit_values - amplitude_real)**2)
     # not necessary to square and sum for least_squares?

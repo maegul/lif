@@ -7,7 +7,7 @@ import math
 PI = math.pi
 
 # generic values ... share arithmetic operators
-val_gen = TypeVar('val_gen', float, np.ndarray, Iterable[float])
+val_gen = TypeVar('val_gen', float, np.ndarray)
 
 # from .core import add_conversions
 

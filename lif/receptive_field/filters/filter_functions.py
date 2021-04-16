@@ -12,7 +12,7 @@ import numpy as np  # type: ignore
 
 # import scipy.stats as st
 
-from ...utils.units.units import SpatFrequency, TempFrequency, ArcLength, Time
+from ...utils.units.units import SpatFrequency, TempFrequency, ArcLength, Time, val_gen
 from . import data_objects as do
 
 PI: float = np.pi
@@ -266,7 +266,9 @@ def mk_gauss_2d_ft(
     return gauss_2d_ft
 
 
-def mk_dog_rf(
+# sf = spatial filter
+# abbreviated as not intended for public facing use
+def mk_dog_sf(
         x_coords: ArcLength[np.ndarray], y_coords: ArcLength[np.ndarray],
         dog_args: do.DOGSpatFiltArgs) -> np.ndarray:
 
@@ -276,7 +278,7 @@ def mk_dog_rf(
     return cent_gauss_2d - surr_gauss_2d
 
 
-def mk_dog_rf_ft(
+def mk_dog_sf_ft(
         freqs_x: SpatFrequency, freqs_y: SpatFrequency,
         dog_args: do.DOGSpatFiltArgs) -> np.ndarray:
 
@@ -289,7 +291,7 @@ def mk_dog_rf_ft(
     return dog_rf_ft
 
 
-def mk_dog_rf_ft_1d(
+def mk_dog_sf_ft_1d(
         freqs: SpatFrequency,
         dog_args: Union[do.DOGSpatFiltArgs, do.DOGSpatFiltArgs1D]) -> np.ndarray:
     """Make 1D Fourier Transform of DoG RF but presume radial symmetry and return only 1D
@@ -343,13 +345,16 @@ def mk_temp_coords(
 
 # >> tq temp filt
 
-def mk_tqtempfilt(
-        t: Time[np.ndarray],
+# this is a hidden function because temp filters are simpler than spatial
+# thus, spatial don't need hidden as simpler 1D functions are used for fitting
+# for temporal, to suit the array args needed for fitting, a separation
+# of all the args is helpful
+
+def _mk_tqtempfilt(
+        t: Time[val_gen],
         tau: Time[float] = Time(16, 'ms'),
         w: float = 4 * 2 * np.pi,
-        phi: float = 0.24) -> np.ndarray:
-    # temp_ext=100, temp_ext_n_tau=None,
-    # temp_res=1, return_t=True):
+        phi: float = 0.24) -> val_gen:
     r"""Generate single temp filter by modulating a negative exp with a cosine
 
     Parameters
@@ -406,17 +411,74 @@ def mk_tqtempfilt(
     # tau /= 1000
 
     # Note correction from teich and qian (apparent in Kuhlman as well as Chen(?) too)
-    tf = (t.s / tau.s**2) * np.exp(-t.s / tau.s) * np.cos((w * t.s) + phi)
+    exp_term: val_gen = np.exp(-t.s / tau.s)  # type: ignore
+    cos_term: val_gen = np.cos((w * t.s) + phi)  # type: ignore
+
+    tf = (t.s / tau.s**2) * exp_term * cos_term
 
     return tf
 
 
-def mk_tq_ft(
-        f: TempFrequency[np.ndarray],
+def mk_tq_tf(
+        t: Time[val_gen],
+        tf_params: do.TQTempFiltParams) -> val_gen:
+    r"""Generate single temp filter by modulating a negative exp with a cosine
+
+    Args passed to _mk_tqtempfilt
+
+    Parameters
+    ----
+    t: time
+    tf_params: data object with amp, tau, w, phi
+
+
+    Returns
+    ----
+    tf : (temporal filter) (array 1D)
+        Magnitudes of the filter over time for each time step defined by
+        the parameters
+
+    Notes
+    ----
+    Taken from Teich and Qian (2006) and Chen et al (2001)
+
+    On time constant and decay/growth dynamics for this filter, looking only at the
+    gamma function or exponential component, the integral is:
+
+    $$F(t) = \int \frac{t \cdot exp(\frac{-t}{\tau})}{\tau^2} dt =
+    -\frac{exp(\frac{-t}{\tau})(\tau + t)}{\tau}$$
+
+    The definite integral from zero to a number of time constants \(n\tau\) is:
+
+    $$ \begin{aligned}
+        F(t)|^{n\tau}_{0} &= -\frac{\tau+n\tau}{\tau}exp(\frac{-n\tau}{\tau})
+        - (-)\frac{\tau}{\tau}\exp(\frac{0}{\tau}) \\
+                                            &= -(1+n)exp(-n) + 1 \\
+                                            &= 1 - \frac{1+n}{e^n} \\
+                                            &= 1 - \frac{1}{e^n} - \frac{n}{e^n}
+    \end{aligned} $$
+
+    Here, \(1 - \frac{1}{e^n}\) is ordinary exponential growth/decay.
+    The additional term of \(- \frac{n}{e^n}\) slows the growth/decay, but converges
+    to zero by approx. 10 time constants (0.05%)
+    """
+
+    tf = tf_params.amplitude * _mk_tqtempfilt(
+                    t,
+                    tau=tf_params.arguments.tau,
+                    w=tf_params.arguments.w,
+                    phi=tf_params.arguments.phi
+                )
+
+    return tf
+
+
+def _mk_tqtempfilt_ft(
+        f: TempFrequency[val_gen],
         tau: Time[float] = Time(16, 'ms'),
         w: float = 4 * 2 * np.pi,
         phi: float = 0.24,
-        return_abs: bool = True) -> np.ndarray:
+        return_abs: bool = True) -> val_gen:
     """Cerate Fourier Transform of function used in mk_tqtempfilt
 
     Employs analytical solution from Chen (2001)
@@ -456,17 +518,46 @@ def mk_tq_ft(
 
     # tau /= 1000
 
-    a: np.ndarray
-    b: np.ndarray
+    a: val_gen
+    b: val_gen
 
     a = np.exp(phi * 1j) / (1 / tau.s + ((f.w - w) * 1j))**2  # type: ignore
     b = np.exp(-phi * 1j) / (1 / tau.s + ((f.w + w) * 1j))**2  # type: ignore
 
-    fourier = (1 / (2 * tau.s**2)) * (a + b)
+    fourier: val_gen
+    fourier = (1 / (2 * tau.s**2)) * (a + b)  # type: ignore
     if return_abs:
-        fourier = np.abs(fourier)
+        fourier: val_gen = np.abs(fourier)  # type: ignore
 
     return fourier
+
+
+def mk_tq_tf_ft(
+        freqs: TempFrequency[val_gen],
+        tf_params: do.TQTempFiltParams) -> val_gen:
+    """Generates fourer of temporal filter generated by mk_tq_tf
+
+    Arguments passed to _mk_tqtempfilt_ft
+    Fourer is analytical
+
+    Parameters
+    ----
+    freqs: frequencies to generate fourier for
+    tf_params: parameters defined by data object
+
+    Returns
+    ----
+    fourier of tq temp filt
+    """
+
+    tf_ft = tf_params.amplitude * _mk_tqtempfilt_ft(
+                                        f=freqs,
+                                        tau=tf_params.arguments.tau,
+                                        w=tf_params.arguments.w,
+                                        phi=tf_params.arguments.phi
+                                    )
+
+    return tf_ft
 
 
 # >> Old Gauss (worgoter & Koch)
@@ -535,7 +626,9 @@ def mk_tempfilt2(
 
     temp_ext = max([tau1, tau2]) * temp_ext_n_tau
     t, tf1 = mk_tempfilt(tau1, temp_ext, temp_res=temp_res, return_t=True)
-    tf2 = mk_tempfilt(tau2, temp_ext, temp_res=temp_res)
+    tf2 = mk_tempfilt(tau2, temp_ext, temp_res=temp_res)  # type: ignore
+    tf1: np.ndarray
+    tf2: np.ndarray
 
     if correct_integral_errors:
         tf1 /= tf1.sum()

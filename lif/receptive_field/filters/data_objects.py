@@ -353,7 +353,7 @@ class DOGSpatFiltArgs(ConversionABC):
     def to_dog_1d(self) -> DOGSpatFiltArgs1D:
         "Take h_sd values, presume radial symmetry, return 1D DoG spat fil"
 
-        cent_a, cent_h_sd, cent_v_sd, surr_a, surr_h_sd, surr_v_sd = self.array()
+        cent_a, cent_h_sd, _, surr_a, surr_h_sd, _ = self.array()
         return DOGSpatFiltArgs1D.from_iter([cent_a, cent_h_sd, surr_a, surr_h_sd])
 
 
