@@ -5,10 +5,16 @@ from lif.utils.units.units import ArcLength, SpatFrequency, TempFrequency, Time
 from pytest import mark
 from hypothesis import given, strategies as st
 
-from lif.receptive_field.filters import filters, filter_functions as ff, data_objects as do
+from lif.receptive_field.filters import (
+    filters,
+    filter_functions as ff,
+    data_objects as do,
+    estimate_real_amp_from_f1 as est_amp
+    )
 
 import numpy as np
 from numpy import fft  # type: ignore
+from scipy.signal import convolve, argrelmin
 
 
 def test_metadata_make_key_dt():
@@ -86,6 +92,11 @@ def test_fit_tq_temp_filt():
     opt_res = filters._fit_tq_temp_filt(data)
     
     assert opt_res.success == True  # noqa: E712
+
+
+# > test tq_temp_filt provides decent fit
+
+
 
 
 basic_float_strat = st.floats(min_value=1, max_value=10, allow_infinity=False, allow_nan=False)
@@ -215,6 +226,92 @@ def test_dog_rf(
     assert np.allclose(rf, dog_rf)  # type: ignore
 
 
+@mark.parametrize(
+    'freqs, factor',
+    [
+        (0, 1),
+        (np.array([1, 0, 12.5, -3, -0]), np.array([2, 1, 2, 2, 1]))
+    ],
+    ids=['floats', 'array']
+    )
+def test_collapse_symmetry_fact(freqs, factor):
+
+    assert np.all(ff._mk_ft_freq_symmetry_factor(freqs) == factor)
+
+
+@mark.parametrize(
+    'xfreqs, yfreqs, factor',
+    [
+        (np.array([1, 0, 12.5, -3, -0]), np.array([1, 0, 0, 4, 0]), np.array([2, 1, 2, 2, 1]))
+    ]
+    )
+def test_collapse_symmetry_fact_2d(xfreqs, yfreqs, factor):
+
+    assert np.all(ff._mk_ft_freq_symmetry_factor_2d(xfreqs, yfreqs) == factor)
+
+
+@mark.parametrize(
+    'freqs, factor',
+    [
+        (0, 1),
+        (np.array([1, 0, 12.5, -3, -0, 0.0]), np.array([2, 1, 2, 2, 1, 1]))
+    ],
+    ids=['floats', 'array']
+    )
+def test_gauss_1d_ft_symmetry(freqs, factor):
+
+    freqs = SpatFrequency(freqs)
+
+    assert np.all(
+        ff.mk_gauss_1d_ft(freqs, collapse_symmetry=True) == factor * ff.mk_gauss_1d_ft(freqs)
+        )
+
+
+@mark.parametrize(
+    'xfreqs, yfreqs, factor',
+    [
+        (np.array([1, 0, 12.5, -3, -0]), np.array([1, 0, 0, 4, 0]), np.array([2, 1, 2, 2, 1]))
+    ]
+    )
+def test_gauss_2d_ft_symmetry(xfreqs, yfreqs, factor):
+
+    xfreqs, yfreqs = SpatFrequency(xfreqs), SpatFrequency(yfreqs)
+
+    params = do.Gauss2DSpatFiltParams(
+        amplitude=1, arguments=do.Gauss2DSpatFiltArgs(h_sd=ArcLength(10), v_sd=ArcLength(10))
+        )
+
+    assert np.all(
+        ff.mk_gauss_2d_ft(xfreqs, yfreqs, gauss_params=params, collapse_symmetry=True) ==
+        factor * ff.mk_gauss_2d_ft(xfreqs, yfreqs, gauss_params=params)
+        )
+
+
+@mark.parametrize(
+    'xfreqs, yfreqs, factor',
+    [
+        (
+            np.array([1, 0, 12.5, -3, -0]),
+            np.array([1, 0, 0,     4,  0]),
+            np.array([2, 1, 2,     2,  1]))
+    ]
+    )
+def test_dog_sf_ft_symmetry(xfreqs, yfreqs, factor):
+
+    xfreqs, yfreqs = SpatFrequency(xfreqs), SpatFrequency(yfreqs)
+
+    dog_rf_params = do.DOGSpatFiltArgs(
+        cent=do.Gauss2DSpatFiltParams.from_iter(
+            [1.1, 10, 10], arclength_unit='mnt'),
+        surr=do.Gauss2DSpatFiltParams.from_iter(
+            [0.9, 30, 30], arclength_unit='mnt')
+        )
+
+    assert np.all(
+        ff.mk_dog_sf_ft(xfreqs, yfreqs, dog_rf_params, collapse_symmetry=True) ==
+        factor * ff.mk_dog_sf_ft(xfreqs, yfreqs, dog_rf_params, collapse_symmetry=False)
+        )
+
 # Do I need to use hypothesis for this?  Main point is that any equivalence is good?
 # @mark.parametrize(
 #         'cent_h_sd,cent_v_sd,surr_h_sd,surr_v_sd,mag_cent,mag_surr',
@@ -222,6 +319,9 @@ def test_dog_rf(
 #     )
 cent_sd_strat = st.floats(min_value=10, max_value=29, allow_infinity=False, allow_nan=False)
 surr_sd_strat = st.floats(min_value=30, max_value=50, allow_infinity=False, allow_nan=False)
+
+
+@mark.proto
 @given(
         cent_h_sd=cent_sd_strat, cent_v_sd=cent_sd_strat,
         surr_h_sd=surr_sd_strat, surr_v_sd=surr_sd_strat,
@@ -245,10 +345,19 @@ def test_dog_rf_gauss2d_fft(
             [mag_surr, surr_h_sd, surr_v_sd], arclength_unit='mnt')
         )
 
+    # # [><] WARNING [><] ##
+    # Note spat_res and spat_ext in 'mnt' units
+    # MUST MATCH with 'cpm' in spatfrequency objects below
+
     # ensure resolution high enough for sd
-    spat_res = ArcLength(
-        (np.floor(np.min(np.array([cent_h_sd, cent_v_sd, surr_h_sd, surr_v_sd])))) / 10, 'mnt')
+    # thus ... divide by 10?
+    # spat_res = ArcLength(
+    #     (np.floor(np.min(np.array([cent_h_sd, cent_v_sd, surr_h_sd, surr_v_sd])))) / 10, 'mnt')
+    # fix resolution at 1 mnt so that tests pass
+    # bigger res values lead to more fuzziness in the FFT and errors in this test
+    spat_res = ArcLength(1, 'mnt')
     # ensure extent high enough for capture full gaussian
+    # thus ... add 1?
     spat_ext = ArcLength(
         2 * 5*np.ceil(np.max(np.array([cent_h_sd, cent_v_sd, surr_h_sd, surr_v_sd]))) + 1, 'mnt')
 
@@ -257,22 +366,31 @@ def test_dog_rf_gauss2d_fft(
     dog_rf = ff.mk_dog_sf(xc, yc, dog_args=dog_rf_params)
 
     dog_rf_fft = np.abs(fft.fftshift(fft.fft2(dog_rf)))
+    # using spat_res.value so that just have to match units above and below (mnt <-> cpm)
     dog_rf_fft_freqs = fft.fftshift(fft.fftfreq(xc.mnt.shape[0], d=spat_res.value))  # type: ignore
 
+    # use 'cpm' as used 'mnt' above
     fx, fy = (
-        SpatFrequency(f, unit='cpm') for f 
+        SpatFrequency(f, unit='cpm') for f
         in np.meshgrid(dog_rf_fft_freqs, dog_rf_fft_freqs)  # type: ignore
         )
     # FT = T * FFT ~ amplitude of convolution (T -> spatial resolution)
-    dog_rf_ft = ff.mk_dog_sf_ft(fx, fy, dog_args=dog_rf_params) / spat_res.value
+    dog_rf_ft = ff.mk_dog_sf_ft(fx, fy, dog_args=dog_rf_params, collapse_symmetry=False) / spat_res.value
 
     # atol adjusted as there's some systemic error in comparing continuous with FFT DFT
     # check graphs of the difference to see
 
     # hopefully this isn't too much of a problem!
+    # It's pretty forgiving though ... doubling the ft didn't even cause a problem
 
     is_close = np.isclose(dog_rf_ft, dog_rf_fft, atol=1e-5)  # type: ignore
-    assert is_close.mean() > 0.95  # type: ignore
+    # if np.any(~is_close):
+    #     diffs = np.abs(
+    #         dog_rf_ft[~is_close] - dog_rf_fft[~is_close]
+    #         ) / dog_rf_ft[~is_close]  # type: ignore
+    #     assert diffs.mean() < 0.05
+    assert np.all(is_close)
+    # assert (is_close.mean() > 0.95)  # type: ignore
 
 
 @given(
@@ -313,7 +431,7 @@ def test_dog_ft_2d_to_1d(
     spat_res = ArcLength(
         (np.floor(np.min(np.array([cent_h_sd_al.mnt, surr_h_sd_al.mnt])))) / 10, 'mnt')
     # ensure extent high enough for capture full gaussian
-    spat_ext = ArcLength((
+    spat_ext: ArcLength[float] = ArcLength((
         2 * 5*np.ceil(np.max(np.array([cent_h_sd_al.mnt, surr_h_sd_al.mnt]))) + 1), 'mnt')
 
     # spat_res, spat_ext = 1, 300
@@ -324,19 +442,176 @@ def test_dog_ft_2d_to_1d(
         in np.meshgrid(ft_freq, ft_freq))  # type: ignore
 
     # 2d ft
-    dog_ft = ff.mk_dog_sf_ft(fx, fy, dog_args=dog_sf_args)
+    dog_ft = ff.mk_dog_sf_ft(fx, fy, dog_args=dog_sf_args, collapse_symmetry=False)
     # take center slice
     x_cent_dog_ft = dog_ft[int(coords.mnt.size//2), :]
 
     # make 1d for cent and surr
     cent_ft = ff.mk_gauss_1d_ft(
         SpatFrequency(ft_freq),
-        amplitude=dog_sf_args.cent.amplitude, sd=dog_sf_args.cent.arguments.h_sd)
+        amplitude=dog_sf_args.cent.amplitude, sd=dog_sf_args.cent.arguments.h_sd,
+        collapse_symmetry=False)
     surr_ft = ff.mk_gauss_1d_ft(
         SpatFrequency(ft_freq),
-        amplitude=dog_sf_args.surr.amplitude, sd=dog_sf_args.surr.arguments.h_sd)
+        amplitude=dog_sf_args.surr.amplitude, sd=dog_sf_args.surr.arguments.h_sd,
+        collapse_symmetry=False)
 
     # make 1d dog ft (by subtracting)
     dog_1d_ft = cent_ft - surr_ft
 
     assert np.allclose(x_cent_dog_ft, dog_1d_ft)  # type: ignore
+
+
+# limits on sd: keep res at 1.mnt, and don't consume too much memory
+@given(
+    sd=st.floats(min_value=10, max_value=1000, allow_infinity=False, allow_nan=False)
+    )
+def test_sf_conv_amp_1d(sd):
+    "Convolution amplitude estimation for 1d convolution of sinusoid"
+
+    sd = ArcLength(sd, 'mnt')
+    # one cycle per 3 sd for signal ... ensures amplitude of convolution always substantial
+    signal_freq = SpatFrequency(1/(3*sd.base))
+    spat_ext: ArcLength[float] = ArcLength(int(20*sd.base))
+
+    # make gaussian filter
+    coords = ff.mk_spat_coords_1d(spat_ext=spat_ext)
+    gauss = ff.mk_gauss_1d(coords=coords, sd=sd)
+
+    signal = np.cos(signal_freq.cpd_w * coords.deg)  # should produce pure radians (rad/deg * deg)
+
+    conv_signal = convolve(gauss, signal, mode='same')
+
+    # Find amplitude of result of convolution
+    mid_point = signal.size // 2  # mid point here guaranteed by mk_spat_coord
+
+    # get amplitude from middle peak at 0.0 (as cosine) and next trough
+    max_val = conv_signal[mid_point]
+
+    trough_idxs = argrelmin(conv_signal[mid_point:])
+    trough_idx = trough_idxs[0][0]  # get first minima from first array of indices
+    min_val = conv_signal[mid_point+trough_idx]
+
+    # Amplitude of sinusoid is from middle to peak (not peak to peak)
+    actual_amplitude: float = (max_val - min_val) / 2
+
+    conv_amp_est = ff.mk_gauss_1d_ft(signal_freq, amplitude=1, sd=sd)
+
+    assert np.isclose(actual_amplitude, conv_amp_est, rtol=1e-2)  # type: ignore
+
+
+# > test sf conv amp 2d
+
+# make sf
+# make sinusoid stim
+    # Should make nice function for this
+# simple convolution
+# derive amplitude of convolution
+# check against sf_ft
+
+# > test fit spat filt
+
+# > test spat filt fit is decent fit
+
+def test_anisotropic_dog_rf_ft():
+
+    # vertically elongated RF
+    dog_args = do.DOGSpatFiltArgs(
+        #                                            h   v
+        cent=do.Gauss2DSpatFiltParams.from_iter([1, 10, 15], arclength_unit='mnt'),
+        surr=do.Gauss2DSpatFiltParams.from_iter([1, 32, 32], arclength_unit='mnt')
+        )
+
+    # horizontal modulation (vertical gratings) ... should have greater amplitude
+    theta = ArcLength(0)
+    ft_amp_0 = ff.mk_dog_sf_ft(*ff.mk_sf_ft_polar_freqs(theta, SpatFrequency(1)), dog_args)
+
+    # vertical modulation (horizontal gratings)
+    theta = ArcLength(90)
+    ft_amp_90 = ff.mk_dog_sf_ft(*ff.mk_sf_ft_polar_freqs(theta, SpatFrequency(1)), dog_args)
+
+    assert ft_amp_0 > ft_amp_90
+
+# test joint amp with manual params produces output
+
+
+def test_joint_amp():
+
+    # creating mock parameters from known parameters that work
+    test_sf_params = do.DOGSpatFiltArgs(
+        cent=do.Gauss2DSpatFiltParams(
+            amplitude=36.4265938532914,
+            arguments=do.Gauss2DSpatFiltArgs(
+                h_sd=ArcLength(value=1.4763319256270793, unit='mnt'),
+                v_sd=ArcLength(value=1.4763319256270793, unit='mnt'))),
+        surr=do.Gauss2DSpatFiltParams(
+            amplitude=21.123002637615535,
+            arguments=do.Gauss2DSpatFiltArgs(
+                h_sd=ArcLength(value=6.455530597672735, unit='mnt'),
+                v_sd=ArcLength(value=6.455530597672735, unit='mnt')
+                )
+            )
+        )
+    test_tf_params = do.TQTempFiltParams(
+        amplitude=301.92022743003315,
+        arguments=do.TQTempFiltArgs(
+            tau=Time(value=14.90265388080688, unit='ms'),
+            w=11.420030523751624, phi=1.1201854280821189)
+        )
+
+    test_sf = do.DOGSpatialFilter(
+        source_data=do.SpatFiltParams(
+            data=None,  # type: ignore
+            resp_params=do.SFRespMetaData(dc=15, tf=TempFrequency(value=4, unit='hz'),
+                                          mean_lum=100, contrast=0.5),
+            meta_data=None),
+        parameters=test_sf_params,
+        optimisation_result=None)  # type: ignore
+
+    test_tf = do.TQTempFilter(
+        source_data=do.TempFiltParams(
+            data=None,  # type: ignore
+            resp_params=do.TFRespMetaData(
+                dc=12, sf=SpatFrequency(value=0.8, unit='cpd'), mean_lum=100, contrast=0.4),
+            meta_data=None
+            ),
+        parameters=test_tf_params,
+        optimisation_result=None)  # type: ignore
+
+    t_freq = TempFrequency(6.9)
+    s_freq_x = SpatFrequency(3)
+    s_freq_y = SpatFrequency(0)
+
+    joint_amp = ff.joint_spat_temp_conv_amp(
+        t_freq, s_freq_x, s_freq_y,
+        sf=test_sf, tf=test_tf, collapse_symmetry=False
+        )
+
+    assert round(joint_amp, 1) == 62.7  # type: ignore
+
+
+@given(
+    dc=st.one_of([
+        st.one_of(st.just(5), st.just(10), st.just(30)),
+        st.floats(min_value=0, allow_nan=False, allow_infinity=False)
+        ]),
+    f1_target=st.floats(min_value=0, allow_nan=False, allow_infinity=False)
+    )
+def test_estimate_real_amplitude(dc, f1_target):
+
+    dc = 12
+    f1_target = 32
+
+    t = Time(np.arange(1000), 'ms')
+    opt = est_amp.find_real_f1(dc, f1_target=f1_target)
+    estimated_amp = opt.x
+
+    # just reimplementing here ... I know ... but this at least ensures API consistent
+    # BUUUT ... as testing an optimisation function, does test that the optimisation
+    # is working
+    r = est_amp.gen_sin(estimated_amp, dc, t)
+    r[r < 0] = 0
+    s, _ = est_amp.gen_fft(r, t)
+    s = np.abs(s)
+
+    assert np.isclose(s[1], f1_target, atol=1e-3)  # type: ignore

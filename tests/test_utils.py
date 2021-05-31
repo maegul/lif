@@ -46,7 +46,8 @@ def test_time_unit(
 arclength_test_units = [
     ('deg', 1),
     ('mnt', 1/60),
-    ('sec', 1/(60*60))
+    ('sec', 1/(60*60)),
+    ('rad', 180/PI)
 ]
 
 # Essentially a replication of the code in Time
@@ -77,6 +78,7 @@ def test_arclength_unit(
         (1, 'deg', 60, 'mnt'),
         (1, 'sec', 1/60, 'mnt'),
         (0.5, 'mnt', 0.5/60, 'deg'),
+        (50, 'mnt', (50/60)*PI/180, 'rad'),
         (np.arange(4).reshape(2, 2), 'mnt', np.arange(4).reshape(2, 2)/60, 'deg')
     ]
     )

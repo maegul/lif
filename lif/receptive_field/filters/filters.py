@@ -127,6 +127,8 @@ def _dog_ft_wrapper(
 
     cent_a, cent_sd, surr_a, surr_sd = x  # must match order in do.DOGSpatFiltArgs1D.array()
 
+    cent_sd = ArcLength(cent_sd, 'mnt')
+    surr_sd = ArcLength(surr_sd, 'mnt')
     # if cent_a < surr_a:  # cent should be greater than surr (some DC)
     #     return np.ones_like(amplitude_real) * 1e8
     # if cent_a > surr_a*3:  # cent shouldn't be too much greater (some band bass)
@@ -149,6 +151,10 @@ def _fit_dog_ft(
         bounds: Optional[Tuple[do.DOGSpatFiltArgs1D, do.DOGSpatFiltArgs1D]] = None
         ) -> OptimizeResult:
     "use least_squares to produced optimised parameters for mk_dog_rf"
+
+    ### [><] WARNING [><] ###
+    # units are lost in this process
+    # all arclength: minuts (mnt)
 
     # guesses
     guesses: np.ndarray = x0.array()
@@ -182,12 +188,17 @@ def _fit_dog_ft(
 
 
 def make_dog_spat_filt(parameters: do.SpatFiltParams) -> do.DOGSpatialFilter:
+    """Make a DOG filter from data"""
 
     opt_res = _fit_dog_ft(parameters.data)
 
     assert opt_res.success is True, 'Optmisation not successful'
 
     cent_a, cent_sd, surr_a, surr_sd = opt_res.x
+    cent_sd = ArcLength(cent_sd, 'mnt')
+    surr_sd = ArcLength(surr_sd, 'mnt')
+
+
     params = do.DOGSpatFiltArgs(
         cent=do.Gauss2DSpatFiltParams(
                 amplitude=cent_a,

@@ -17,7 +17,7 @@ from ...utils.units.units import (
     )
 
 
-numerical_iter = Union[np.ndarray, Iterable[float]]
+# numerical_iter = Union[np.ndarray, Iterable[float]]
 
 PI: float = np.pi  # type: ignore
 
@@ -249,7 +249,7 @@ class Gauss2DSpatFiltArgs(ConversionABC):
     v_sd: ArcLength[float]
 
     def array(self) -> np.ndarray:
-        args_array = np.array([self.h_sd.value, self.v_sd.value])
+        args_array = np.array([self.h_sd.base, self.v_sd.base])
         return args_array
 
 
@@ -410,3 +410,7 @@ class DOGSpatialFilter(ConversionABC):
             spat_filt = pkl.load(f)
 
         return spat_filt
+
+
+# > Stimuli and Coords
+
