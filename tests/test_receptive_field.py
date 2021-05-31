@@ -321,7 +321,6 @@ cent_sd_strat = st.floats(min_value=10, max_value=29, allow_infinity=False, allo
 surr_sd_strat = st.floats(min_value=30, max_value=50, allow_infinity=False, allow_nan=False)
 
 
-@mark.proto
 @given(
         cent_h_sd=cent_sd_strat, cent_v_sd=cent_sd_strat,
         surr_h_sd=surr_sd_strat, surr_v_sd=surr_sd_strat,
@@ -501,6 +500,55 @@ def test_sf_conv_amp_1d(sd):
 
 
 # > test sf conv amp 2d
+
+# > test tf conv amp
+
+
+@given(
+    t_freq=st.floats(min_value=0, max_value=100, allow_infinity=False, allow_nan=False)
+    )
+def test_tq_tf_conv_amp_est(t_freq: float):
+    "Test that estimate of tq tf accurate"
+
+    temp_freq = TempFrequency(t_freq)
+
+    temp_res = Time(value=0.5, unit='ms')  # high-ish resolution for accuracy
+    temp_ext = Time(1.0, 's')
+
+    temp_coords = ff.mk_temp_coords(temp_res, temp_ext)
+    signal = np.cos(temp_freq.w * temp_coords.s)
+
+    # ordinary tq temp filter
+    tq_tf = do.TQTempFiltParams(
+        amplitude=300,
+        arguments=do.TQTempFiltArgs(
+            tau=Time(value=14.0, unit='ms'), w=10, phi=1.12)
+        )
+    temp_filter = ff.mk_tq_tf(t=temp_coords, tf_params=tq_tf)
+
+    # convolve and take only first part corresponding to filter size
+    conv_signal = convolve(signal, temp_filter, mode='full')[:temp_coords.base.shape[0]]
+
+    inner_idx = int(temp_coords.base.shape[0] * 0.15)
+    inner_conv_signal = conv_signal[inner_idx:-inner_idx]
+
+    # conv_amp = (inner_conv_signal.max() - inner_conv_signal.min()) / 2
+
+    # if DC stays zero (as DC of original signal is zero), then amplitude is simply max
+    # as this is the magnitude from zero to positive peak
+    conv_amp = inner_conv_signal.max()
+    est_conv_amp = ff.mk_tq_tf_conv_amp(temp_freq, tq_tf, temp_res)
+
+    # print(temp_freq, conv_amp, est_conv_amp)
+
+    assert np.isclose(conv_amp, est_conv_amp, rtol=1e-2)  # type: ignore
+
+
+
+
+
+
+
 
 # make sf
 # make sinusoid stim

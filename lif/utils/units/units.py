@@ -136,10 +136,12 @@ class TempFrequency(UnitBC[val_gen]):
 
     @property
     def hz(self) -> val_gen:
+        "Hertz: Cycles per second"
         return (self.value * getattr(self, f'_{self.unit}')) / self._hz
 
     @property
     def w(self) -> val_gen:
+        "Angular Frequency: radians per second (1Hz = 1cyc/s = 2pi/s"
         return (self.value * getattr(self, f'_{self.unit}')) / self._w
 
 
