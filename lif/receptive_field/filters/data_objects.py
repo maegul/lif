@@ -3,7 +3,7 @@
 from __future__ import annotations
 from sys import meta_path
 from typing import Union, Optional, Iterable, Dict, Any, Tuple, List
-from dataclasses import dataclass, astuple, asdict
+from dataclasses import dataclass, astuple, asdict, field
 import datetime as dt
 from pathlib import Path
 import pickle as pkl
@@ -414,3 +414,38 @@ class DOGSpatialFilter(ConversionABC):
 
 # > Stimuli and Coords
 
+@dataclass
+class SpaceTimeParams(ConversionABC):
+    "Spatial and Temporal Canvas"
+
+    spat_ext: ArcLength[float]
+    spat_res: ArcLength[float]
+    temp_ext: Time[float]
+    temp_res: Time[float]
+
+
+@dataclass
+class GratingStimulusParams(ConversionABC):
+    "Definition of grating stimulus"
+
+    spat_freq: SpatFrequency[float]
+    temp_freq: TempFrequency[float]
+    orientation: ArcLength[float]
+    amplitude: float = 1
+    DC: float = 1
+
+    @property
+    def spat_freq_x(self) -> SpatFrequency[float]:
+        freq = SpatFrequency(
+            np.cos(self.orientation.rad * self.spat_freq.cpd), 'cpd'  # type: ignore
+            )
+
+        return freq
+
+    @property
+    def spat_freq_y(self) -> SpatFrequency[float]:
+        freq = SpatFrequency(
+            np.sin(self.orientation.rad * self.spat_freq.cpd), 'cpd'  # type: ignore
+            )
+
+        return freq

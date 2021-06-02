@@ -654,3 +654,30 @@ def test_estimate_real_amplitude(dc, f1_target):
     s = np.abs(s)
 
     assert np.isclose(s[1], f1_target, atol=1e-3)  # type: ignore
+
+
+# > Stimuli
+
+
+@mark.parametrize(
+    'ori,x,y',
+    [
+        (90.0, 0, 1),
+        (30.0, (3**0.5)/2, 0.5)
+    ]
+    )
+def test_stimuli_cartesion_spat_freq(ori, x, y):
+    "Ensure cartesion spatial frequencies correctly derived from orientation"
+
+    orientation = ArcLength(ori, 'deg')
+
+    stim = do.GratingStimulusParams(
+        spat_freq=SpatFrequency(1), temp_freq=TempFrequency(1),
+        orientation=orientation
+        )
+
+    assert (
+        np.isclose(stim.spat_freq_x.cpd, x)  # type: ignore
+        and
+        np.isclose(stim.spat_freq_y.cpd, y)  # type: ignore
+        )
