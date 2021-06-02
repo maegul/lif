@@ -437,7 +437,7 @@ class GratingStimulusParams(ConversionABC):
     @property
     def spat_freq_x(self) -> SpatFrequency[float]:
         freq = SpatFrequency(
-            np.cos(self.orientation.rad * self.spat_freq.cpd), 'cpd'  # type: ignore
+            self.spat_freq.cpd * np.cos(self.orientation.rad), 'cpd'  # type: ignore
             )
 
         return freq
@@ -445,7 +445,31 @@ class GratingStimulusParams(ConversionABC):
     @property
     def spat_freq_y(self) -> SpatFrequency[float]:
         freq = SpatFrequency(
-            np.sin(self.orientation.rad * self.spat_freq.cpd), 'cpd'  # type: ignore
+            self.spat_freq.cpd * np.sin(self.orientation.rad), 'cpd'  # type: ignore
             )
 
         return freq
+
+
+@dataclass
+class EstSpatTempConvResp(ConversionABC):
+    "Response amp and dc estimated from fourier transfroms of filters"
+
+    amplitude: float
+    DC: float
+
+
+@dataclass
+class JointSpatTempResp(ConversionABC):
+    "Response of combining a Spat and a Temp Filt"
+
+    ampitude: float
+    DC: float
+
+@dataclass
+class ConvRespAdjParams(ConversionABC):
+    "Parameters for adjusting the response of convolution"
+
+    amplitude: float
+    DC: float
+

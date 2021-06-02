@@ -112,12 +112,19 @@ def opt_f1(
 def find_real_f1(
         DC_amp: float, f1_target: float,
         time: Optional[Time[np.ndarray]] = None) -> opt.OptimizeResult:
-    """Find pure sin amplitude for given empirical mean resp and empirical f1"""
+    """Find pure sin amplitude for given empirical mean resp and empirical f1
+
+    Done by minimisation.  If not successful, raises TypeError
+    """
 
     time = Time(np.arange(1000), 'ms') if time is None else time
 
     obj_f = opt_f1(time=time, c=DC_amp, f1_target=f1_target)
 
     opt_results = minimize(obj_f, np.array([40]), method="Nelder-Mead")
+
+    # check of optimisation success
+    if not opt_results.success:
+        raise TypeError('Real Unrectified amplitude could not be derived')
 
     return opt_results

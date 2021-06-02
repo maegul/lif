@@ -658,21 +658,22 @@ def test_estimate_real_amplitude(dc, f1_target):
 
 # > Stimuli
 
-
+@mark.proto
 @mark.parametrize(
-    'ori,x,y',
+    'sf,ori,x,y',
     [
-        (90.0, 0, 1),
-        (30.0, (3**0.5)/2, 0.5)
+        (1, 90.0, 0, 1),
+        (1, 30.0, (3**0.5)/2, 0.5),
+        (2, 30.0, (3**0.5), 1)
     ]
     )
-def test_stimuli_cartesion_spat_freq(ori, x, y):
+def test_stimuli_cartesion_spat_freq(sf, ori, x, y):
     "Ensure cartesion spatial frequencies correctly derived from orientation"
 
     orientation = ArcLength(ori, 'deg')
 
     stim = do.GratingStimulusParams(
-        spat_freq=SpatFrequency(1), temp_freq=TempFrequency(1),
+        spat_freq=SpatFrequency(sf), temp_freq=TempFrequency(1),
         orientation=orientation
         )
 

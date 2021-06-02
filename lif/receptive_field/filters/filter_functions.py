@@ -3,7 +3,8 @@
 
 from typing import Optional, Union, cast, Tuple, overload
 
-import numpy as np  # type: ignore
+import numpy as np
+from numpy.lib.function_base import gradient  # type: ignore
 
 # import matplotlib.pyplot as plt
 
@@ -824,13 +825,94 @@ def joint_spat_temp_conv_amp(
     return joint_amp
 
 
-# ===========
-def conv_amp_adjustment_factor(
-        stim_amp: float, spat_res: ArcLength[float], temp_res: Time[float],
-        tf: do.TQTempFilter, sf: do.DOGSpatialFilter,
-        temp_freqs: TempFrequency[float],
-        spat_freqs_x: SpatFrequency[float], spat_freqs_y: SpatFrequency[float]
-        ) -> float:
+def joint_dc(tf: do.TQTempFilter, sf: do.DOGSpatialFilter) -> float:
+    """Calculate joint DC of temp and spat filters by averaging
+    (must be within 30% of eachother)
+
+    """
+
+    # Joint DC Amplitude
+    tf_dc = tf.source_data.resp_params.dc
+    sf_dc = sf.source_data.resp_params.dc
+
+    if abs(tf_dc - sf_dc) > 0.3*min([tf_dc, sf_dc]):
+        raise ValueError(
+            f'DC amplitudes of Temp Filt and Spat Filt are too differente\n'
+            f'filters: {tf.source_data.meta_data.make_key()}, {sf.source_data.meta_data.make_key()}'
+            f'DC amps: TF: {tf_dc}, SF: {sf_dc}'
+            )
+    # Just take the average
+    joint_dc = (tf_dc + sf_dc) / 2
+
+    return joint_dc
+
+
+def mk_joint_sf_tf_resp_params(
+        grating_stim_params: do.GratingStimulusParams,
+        sf: do.DOGSpatialFilter, tf: do.TQTempFilter
+        ) -> do.JointSpatTempResp:
+
+    amplitude = joint_spat_temp_conv_amp(
+        spat_freqs_x=grating_stim_params.spat_freq_x,
+        spat_freqs_y=grating_stim_params.spat_freq_y,
+        temp_freqs=grating_stim_params.temp_freq,
+        sf=sf, tf=tf
+        )
+
+    DC = joint_dc(tf, sf)
+
+    resp_estimate = do.JointSpatTempResp(amplitude, DC)
+
+    return resp_estimate
+
+
+def mk_estimate_sf_tf_conv_params(
+        spacetime_params: do.SpaceTimeParams,
+        grating_stim_params: do.GratingStimulusParams,
+        sf: do.DOGSpatialFilter,
+        tf: do.TQTempFilter
+        ) -> do.EstSpatTempConvResp:
+    """Produce estimate/analytical amplitude of response after convolving stim with tf and sf
+
+    Presumes that convolving both a spatial (sf) and temporal (tf) filter with a grating
+    grating stimulus defined by grating_stim_params
+    """
+
+    # should be convolution_amplitude after full sf and tf convolution with stim!!
+    sf_conv_amp = mk_dog_sf_conv_amp(
+        freqs_x=grating_stim_params.spat_freq_x,
+        freqs_y=grating_stim_params.spat_freq_y,
+        dog_args=sf.parameters, spat_res=spacetime_params.spat_res
+        )
+    tf_conv_amp = mk_tq_tf_conv_amp(
+        freqs=grating_stim_params.temp_freq,
+        temp_res=spacetime_params.temp_res,
+        tf_params=tf.parameters
+        )
+
+    convolution_amp = grating_stim_params.amplitude * sf_conv_amp * tf_conv_amp
+
+    sf_dc = mk_dog_sf_conv_amp(
+                SpatFrequency(0), SpatFrequency(0), sf.parameters, spacetime_params.spat_res
+                )
+    tf_dc = mk_tq_tf_conv_amp(TempFrequency(0), tf.parameters, spacetime_params.temp_res)
+
+    estimated_dc = grating_stim_params.amplitude * sf_dc * tf_dc
+
+    conv_params = do.EstSpatTempConvResp(
+        amplitude=convolution_amp,
+        DC=estimated_dc
+        )
+
+    return conv_params
+
+
+def mk_conv_resp_adjustment_params(
+        spacetime_params: do.SpaceTimeParams,
+        grating_stim_params: do.GratingStimulusParams,
+        sf: do.DOGSpatialFilter,
+        tf: do.TQTempFilter
+        ) -> do.ConvRespAdjParams:
     """Factor to adjust amplitude of convolution to what filters dictate
 
     joint_spat_temp_conv_amp used to unify sf and tf
@@ -862,49 +944,39 @@ def conv_amp_adjustment_factor(
 
     """
 
-    # Joint amplitude
-    joint_sf_tf_amp = joint_spat_temp_conv_amp(
-        temp_freqs=temp_freqs, spat_freqs_x=spat_freqs_x, spat_freqs_y=spat_freqs_y,
-        tf=tf, sf=sf)
+    # should be convolution_amplitude after full sf and tf convolution with stim!!
+    conv_resp_params = mk_estimate_sf_tf_conv_params(
+        spacetime_params, grating_stim_params, sf, tf)
 
-    # Joint DC Amplitude
-    tf_dc = tf.source_data.resp_params.dc
-    sf_dc = sf.source_data.resp_params.dc
-
-    if abs(tf_dc - sf_dc) > 0.3*min([tf_dc, sf_dc]):
-        raise ValueError(
-            f'DC amplitudes of Temp Filt and Spat Filt are too differente\n'
-            f'filters: {tf.source_data.meta_data.make_key()}, {sf.source_data.meta_data.make_key()}'
-            f'DC amps: TF: {tf_dc}, SF: {sf_dc}'
-            )
-    # Just take the average
-    joint_dc = (tf_dc + sf_dc) / 2
+    # Joint response
+    joint_resp_params = mk_joint_sf_tf_resp_params(grating_stim_params, sf, tf)
 
     # derive real unrectified amplitude
     real_unrect_joint_amp_opt = est_amp.find_real_f1(
-        DC_amp=joint_dc, f1_target=joint_sf_tf_amp)
-
-    # check of optimisation success
-    if not real_unrect_joint_amp_opt.success:
-        raise TypeError('Real Unrectified amplitude could not be derived')
+        DC_amp=joint_resp_params.DC, f1_target=joint_resp_params.ampitude)
 
     real_unrect_joint_amp = real_unrect_joint_amp_opt.x[0]
 
-    # should be convolution_amplitude after full sf and tf convolution with stim!!
-    convolution_amp = (
-        stim_amp *
-        mk_dog_sf_conv_amp(
-            spat_freqs_x, spat_freqs_y, dog_args=sf.parameters, spat_res=spat_res) *
-        mk_tq_tf_conv_amp(temp_freqs, tf_params=tf.parameters, temp_res=temp_res)
-        )
-
     # factor to adjust convolution result by to provide realistic amplitude and firing rate
     # after convolution with a stimulus
-    adjustment_factor = real_unrect_joint_amp / convolution_amp
+    amp_adjustment_factor = real_unrect_joint_amp / conv_resp_params.amplitude
 
-    return adjustment_factor
+    dc_shift_factor = joint_resp_params.DC - conv_resp_params.DC
 
-# -----------
+    adjustment_params = do.ConvRespAdjParams(
+        amplitude=amp_adjustment_factor,
+        DC=dc_shift_factor
+        )
+
+    return adjustment_params
+
+
+def adjust_conv_resp(conv_resp: val_gen, adjustment: do.ConvRespAdjParams) -> val_gen:
+
+    adjusted_resp = (conv_resp + adjustment.DC) * adjustment.amplitude
+
+    return adjusted_resp
+
 
 # >> Temp Old Gauss (worgoter & Koch)
 
