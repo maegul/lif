@@ -501,9 +501,6 @@ def test_sf_conv_amp_1d(sd):
 
 # > test sf conv amp 2d
 
-# > test tf conv amp
-
-
 @given(
     t_freq=st.floats(min_value=0, max_value=100, allow_infinity=False, allow_nan=False)
     )
@@ -542,12 +539,6 @@ def test_tq_tf_conv_amp_est(t_freq: float):
     # print(temp_freq, conv_amp, est_conv_amp)
 
     assert np.isclose(conv_amp, est_conv_amp, rtol=1e-2)  # type: ignore
-
-
-
-
-
-
 
 
 # make sf

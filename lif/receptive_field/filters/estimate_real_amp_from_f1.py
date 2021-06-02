@@ -44,8 +44,14 @@ def gen_fft(
         view_max=20) -> Tuple[np.ndarray, np.ndarray]:
     """Generate FFT of signal over time, returning spectrum and freqs
 
+    FFT is normalised to the size of the signal.
+
     view_max: number of items returned from beginning for both
         spectrum and frequency
+
+    Returns
+    -------
+    spectrum, frequencies
     """
 
     signal_size = time.value.size
