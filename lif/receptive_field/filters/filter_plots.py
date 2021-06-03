@@ -1,9 +1,10 @@
-from lif.receptive_field.filters.data_objects import DOGSpatialFilter, TQTempFilter
 from typing import Optional
 
 from . import filter_functions as ff
 from .filter_functions import do, ArcLength, SpatFrequency, Time, TempFrequency
 from . import estimate_real_amp_from_f1 as est_amp
+# from lif.receptive_field.filters.data_objects import DOGSpatialFilter, TQTempFilter
+from ...utils.data_objects import DOGSpatialFilter, TQTempFilter
 
 import plotly.express as px
 from plotly.subplots import make_subplots

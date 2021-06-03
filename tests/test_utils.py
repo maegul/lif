@@ -1,5 +1,4 @@
 from __future__ import annotations
-from lif.receptive_field.filters.data_objects import PI
 from math import isnan
 import inspect
 import typing
@@ -11,6 +10,7 @@ from hypothesis import given, assume, strategies as st
 from pytest import mark
 
 import lif.utils.units.units as units
+from lif.utils.data_objects import PI
 
 # > units
 

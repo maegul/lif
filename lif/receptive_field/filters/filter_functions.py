@@ -13,8 +13,9 @@ from numpy.lib.function_base import gradient  # type: ignore
 
 # import scipy.stats as st
 
+from ...utils import data_objects as do
 from ...utils.units.units import SpatFrequency, TempFrequency, ArcLength, Time, val_gen
-from . import data_objects as do, estimate_real_amp_from_f1 as est_amp
+from . import estimate_real_amp_from_f1 as est_amp
 
 PI: float = np.pi
 # cast(float, PI)
@@ -156,8 +157,10 @@ def mk_spat_coords(
 
 
 def mk_spat_temp_coords(
-        spat_res: ArcLength = ArcLength(1, 'mnt'), temp_res: Time = Time(1, 'ms'),
-        spat_ext: ArcLength = ArcLength(300, 'mnt'), temp_ext: Time = Time(1000, 'ms'),
+        spat_res: ArcLength[float] = ArcLength(1, 'mnt'),
+        temp_res: Time[float] = Time(1, 'ms'),
+        spat_ext: ArcLength[float] = ArcLength(300, 'mnt'),
+        temp_ext: Time[float] = Time(1000, 'ms'),
         ) -> Tuple[ArcLength[np.ndarray], ArcLength[np.ndarray], Time[np.ndarray]]:
     '''
     Produces spatial and temporal coordinates (ie meshgrid) for

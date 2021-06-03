@@ -11,8 +11,8 @@ import pickle as pkl
 import numpy as np
 from scipy.optimize import OptimizeResult
 
-from ...utils import settings
-from ...utils.units.units import (
+from . import settings
+from .units.units import (
     ArcLength, TempFrequency, SpatFrequency, Time
     )
 
@@ -435,20 +435,31 @@ class GratingStimulusParams(ConversionABC):
     DC: float = 1
 
     @property
+    def direction(self) -> ArcLength[float]:
+        "Direction of grating modulation (orientation-90 degs)"
+
+        direction = ArcLength(self.orientation.deg - 90, 'deg')
+
+        return direction
+
+    @property
     def spat_freq_x(self) -> SpatFrequency[float]:
+        "Frequency in cartesion direction derived from grating direction (ori-90)"
         freq = SpatFrequency(
-            self.spat_freq.cpd * np.cos(self.orientation.rad), 'cpd'  # type: ignore
+            self.spat_freq.cpd * np.cos(self.direction.rad), 'cpd'  # type: ignore
             )
 
         return freq
 
     @property
     def spat_freq_y(self) -> SpatFrequency[float]:
+        "Frequency in cartesion direction derived from grating direction (ori-90)"
         freq = SpatFrequency(
-            self.spat_freq.cpd * np.sin(self.orientation.rad), 'cpd'  # type: ignore
+            self.spat_freq.cpd * np.sin(self.direction.rad), 'cpd'  # type: ignore
             )
 
         return freq
+
 
 
 @dataclass
@@ -466,10 +477,10 @@ class JointSpatTempResp(ConversionABC):
     ampitude: float
     DC: float
 
+
 @dataclass
 class ConvRespAdjParams(ConversionABC):
     "Parameters for adjusting the response of convolution"
 
     amplitude: float
     DC: float
-

@@ -1,14 +1,16 @@
+from pathlib import Path
 from typing import cast
 from dataclasses import astuple, asdict
 
-from lif.utils.units.units import ArcLength, SpatFrequency, TempFrequency, Time
 from pytest import mark
 from hypothesis import given, strategies as st
+
+from lif.utils.units.units import ArcLength, SpatFrequency, TempFrequency, Time
+from lif.utils import data_objects as do
 
 from lif.receptive_field.filters import (
     filters,
     filter_functions as ff,
-    data_objects as do,
     estimate_real_amp_from_f1 as est_amp
     )
 
@@ -562,11 +564,11 @@ def test_anisotropic_dog_rf_ft():
         )
 
     # horizontal modulation (vertical gratings) ... should have greater amplitude
-    theta = ArcLength(0)
+    theta = ArcLength(0.0)
     ft_amp_0 = ff.mk_dog_sf_ft(*ff.mk_sf_ft_polar_freqs(theta, SpatFrequency(1)), dog_args)
 
     # vertical modulation (horizontal gratings)
-    theta = ArcLength(90)
+    theta = ArcLength(90.0)
     ft_amp_90 = ff.mk_dog_sf_ft(*ff.mk_sf_ft_polar_freqs(theta, SpatFrequency(1)), dog_args)
 
     assert ft_amp_0 > ft_amp_90
@@ -656,6 +658,51 @@ def test_estimate_real_amplitude(dc, f1_target):
     assert np.isclose(s[1], f1_target, atol=1e-3)  # type: ignore
 
 
+@mark.proto
+@mark.integration
+def test_conv_resp_adjustment_process():
+    "Test whole convolutional adjustment process is relatively accurate"
+
+    # get filters from file
+    data_dir = do.settings.get_data_dir()
+    sf_path = (
+        data_dir /
+        'Kaplan_et_al_1987_contrast_affects_transmission_fig_6a_open_circles-TQTempFilter.pkl')
+    tf_path = (
+        data_dir /
+        'Kaplan_et_al_1987_contrast_affects_transmission_fig_6a_open_circles-TQTempFilter.pkl')
+
+    assert sf_path.exists() and tf_path.exists()
+
+    sf = do.DOGSpatialFilter.load(sf_path)
+    tf = do.TQTempFilter.load(tf_path)
+
+    stim_amp=0.5
+    stim_dc = 0.5
+    spat_res=ArcLength(1., 'mnt')
+    spat_ext=ArcLength(120., 'mnt')
+    temp_res=Time(1., 'ms')
+    temp_ext=Time(1000., 'ms')
+    temp_freq = TempFrequency(8.)
+    spat_freq = SpatFrequency(2.)
+    orientation = ArcLength(0., 'deg')
+
+    st_params = do.SpaceTimeParams(spat_ext, spat_res, temp_ext, temp_res)
+    stim_params = do.GratingStimulusParams(
+        spat_freq, temp_freq, orientation=orientation,
+        amplitude=stim_amp, DC=stim_dc
+    )
+
+    joint_resp_params = ff.mk_joint_sf_tf_resp_params(
+        stim_params, sf=sf, tf=tf
+        )
+
+    conv_resp_params = ff.mk_estimate_sf_tf_conv_params(
+        st_params, stim_params, sf, tf)
+
+
+
+
 # > Stimuli
 
 @mark.proto
@@ -664,7 +711,7 @@ def test_estimate_real_amplitude(dc, f1_target):
     [
         (1, 90.0, 0, 1),
         (1, 30.0, (3**0.5)/2, 0.5),
-        (2, 30.0, (3**0.5), 1)
+        (2, 30.0, (3**0.5), 1)  # test magnitude scales cartesian spat freqs (double here)
     ]
     )
 def test_stimuli_cartesion_spat_freq(sf, ori, x, y):

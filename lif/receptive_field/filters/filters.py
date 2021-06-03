@@ -6,7 +6,9 @@ from typing import Optional, Tuple
 import numpy as np
 from scipy.optimize import least_squares, OptimizeResult
 
-from . import data_objects as do, filter_functions as ff
+# from . import data_objects as do, filter_functions as ff
+from . import filter_functions as ff
+from ...utils import data_objects as do
 from ...utils.units.units import ArcLength, SpatFrequency, TempFrequency, Time
 
 PI: float = np.pi  # type: ignore
@@ -197,7 +199,6 @@ def make_dog_spat_filt(parameters: do.SpatFiltParams) -> do.DOGSpatialFilter:
     cent_a, cent_sd, surr_a, surr_sd = opt_res.x
     cent_sd = ArcLength(cent_sd, 'mnt')
     surr_sd = ArcLength(surr_sd, 'mnt')
-
 
     params = do.DOGSpatFiltArgs(
         cent=do.Gauss2DSpatFiltParams(

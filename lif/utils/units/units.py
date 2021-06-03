@@ -159,7 +159,7 @@ class SpatFrequency(UnitBC[val_gen]):
     _base_unit: str = field(default='cpd', init=False, repr=False)
     _cpd: int = field(default=1, init=False, repr=False)
     _cpm: float = field(default=60, init=False, repr=False)  # 1 cpm -> 60 cpd
-    _cpd_w: float = field(default=1/(2*PI), init=False, repr=False)
+    _cpd_w: float = field(default=1/(2*PI), init=False, repr=False)  # rad/deg -> 1/2pi cpd
 
     @property
     def base(self) -> val_gen:
@@ -176,4 +176,5 @@ class SpatFrequency(UnitBC[val_gen]):
 
     @property
     def cpd_w(self) -> val_gen:
+        "Spatial Angular Frequency: radians per degree (1cpd = 1cyc/deg = 2pi rad/deg"
         return (self.value * getattr(self, f'_{self.unit}')) / self._cpd_w

@@ -5,8 +5,9 @@ from typing import cast
 
 # ===========
 from lif.utils.units.units import ArcLength, SpatFrequency, TempFrequency, Time
+from lif.utils import data_objects as do
 from lif.receptive_field.filters import (
-    data_objects as do, filter_functions as ff, filters)
+    filter_functions as ff, filters)
 # -----------
 
 
