@@ -1,10 +1,12 @@
 from pathlib import Path
+import re
 from typing import cast
 from dataclasses import astuple, asdict
 
 from pytest import mark
 from hypothesis import given, strategies as st
 
+from lif import convolve as conv
 from lif.utils.units.units import ArcLength, SpatFrequency, TempFrequency, Time
 from lif.utils import data_objects as do
 
@@ -463,6 +465,42 @@ def test_dog_ft_2d_to_1d(
     assert np.allclose(x_cent_dog_ft, dog_1d_ft)  # type: ignore
 
 
+def test_sf_ft_positive_for_negative_freq():
+    """Ensure that spatial ft function is radially invariant (positive for neg freqs)
+
+    In many ways a test of the specific mathematics of the FT function for DOG sf
+    """
+
+    #  Make radially symmetric DOG filter
+    sf = do.DOGSpatFiltArgs(
+        cent=do.Gauss2DSpatFiltParams(
+            amplitude=36.,
+            arguments=do.Gauss2DSpatFiltArgs(
+                h_sd=ArcLength(value=1., unit='mnt'),
+                v_sd=ArcLength(value=1., unit='mnt'))
+            ),
+        surr=do.Gauss2DSpatFiltParams(
+            amplitude=21.,
+            arguments=do.Gauss2DSpatFiltArgs(
+                h_sd=ArcLength(value=6., unit='mnt'),
+                v_sd=ArcLength(value=6., unit='mnt')))
+        )
+
+    oris = [0, 45, 90, 135, 180, 225, 270, 315, 360]
+    spat_freq = SpatFrequency(2)
+    ft_vals = []
+
+    for o in oris:
+        freq_x, freq_y = ff.mk_sf_ft_polar_freqs(ArcLength(o, 'deg'), spat_freq)
+        ft_val = ff.mk_dog_sf_ft(freq_x, freq_y, sf)
+        ft_vals.append(ft_val)
+
+    assert all([
+            np.isclose(ft_val, ft_vals[0])
+            for ft_val in ft_vals
+        ])
+
+
 # limits on sd: keep res at 1.mnt, and don't consume too much memory
 @given(
     sd=st.floats(min_value=10, max_value=1000, allow_infinity=False, allow_nan=False)
@@ -658,16 +696,28 @@ def test_estimate_real_amplitude(dc, f1_target):
     assert np.isclose(s[1], f1_target, atol=1e-3)  # type: ignore
 
 
-@mark.proto
 @mark.integration
-def test_conv_resp_adjustment_process():
-    "Test whole convolutional adjustment process is relatively accurate"
+@mark.parametrize(
+    'spat_freq,temp_freq',
+    [
+        (0, 4),
+        (20, 0),  # high spat freq for accurate est at 0 temp_freq
+        (1, 1), (2, 2), (4, 8)
+    ]
+    )
+def test_conv_resp_adjustment_process(spat_freq, temp_freq):
+    """Test whole convolutional adjustment process is relatively accurate
+
+    Struggles to be accurate for 0 temp frequency.  Because spat_freq must be high
+    enough for the stationary grating to integrate the whole RF accurately enough.
+    Thus, 20 cpd for spat_freq when temp_freq = 0.
+    """
 
     # get filters from file
     data_dir = do.settings.get_data_dir()
     sf_path = (
         data_dir /
-        'Kaplan_et_al_1987_contrast_affects_transmission_fig_6a_open_circles-TQTempFilter.pkl')
+        'Kaplan_et_al_1987_contrast_affects_transmission_fig8A_open_circle-DOGSpatialFilter.pkl')
     tf_path = (
         data_dir /
         'Kaplan_et_al_1987_contrast_affects_transmission_fig_6a_open_circles-TQTempFilter.pkl')
@@ -677,14 +727,14 @@ def test_conv_resp_adjustment_process():
     sf = do.DOGSpatialFilter.load(sf_path)
     tf = do.TQTempFilter.load(tf_path)
 
-    stim_amp=0.5
+    stim_amp = 0.5
     stim_dc = 0.5
-    spat_res=ArcLength(1., 'mnt')
-    spat_ext=ArcLength(120., 'mnt')
-    temp_res=Time(1., 'ms')
-    temp_ext=Time(1000., 'ms')
-    temp_freq = TempFrequency(8.)
-    spat_freq = SpatFrequency(2.)
+    spat_res = ArcLength(1., 'mnt')
+    spat_ext = ArcLength(120., 'mnt')
+    temp_res = Time(1., 'ms')
+    temp_ext = Time(1000., 'ms')
+    spat_freq = SpatFrequency(spat_freq)
+    temp_freq = TempFrequency(temp_freq)
     orientation = ArcLength(0., 'deg')
 
     st_params = do.SpaceTimeParams(spat_ext, spat_res, temp_ext, temp_res)
@@ -693,19 +743,44 @@ def test_conv_resp_adjustment_process():
         amplitude=stim_amp, DC=stim_dc
     )
 
-    joint_resp_params = ff.mk_joint_sf_tf_resp_params(
-        stim_params, sf=sf, tf=tf
+    resp = conv.mk_single_sf_tf_response(
+        sf=sf, tf=tf, st_params=st_params, stim_params=stim_params,
+        rectified=False
         )
 
-    conv_resp_params = ff.mk_estimate_sf_tf_conv_params(
-        st_params, stim_params, sf, tf)
+    slice_idx = int(0.2 * resp.shape[0])
+    resp_slice = resp[slice_idx:]
 
+    resp_rect = resp.copy()
+    resp_rect[resp_rect < 0] = 0
+
+    theoretical_resp_params = ff.mk_joint_sf_tf_resp_params(
+        stim_params, sf, tf
+        )
+
+    spectrum, _ = est_amp.gen_fft(resp_rect, ff.mk_temp_coords(temp_res, temp_ext))
+    spectrum = np.abs(spectrum)
+
+    est_DC = resp_slice.min() + ((resp_slice.max() - resp_slice.min()) / 2)
+
+    # if temp_freq is zero, then the steady state will be amp + DC
+    expected_amp = (
+        theoretical_resp_params.ampitude
+        if temp_freq.base > 0
+        else
+        theoretical_resp_params.ampitude + theoretical_resp_params.DC
+        )
+
+    assert np.isclose(
+        spectrum[int(temp_freq.hz)], expected_amp,  # type: ignore
+        rtol=0.1)
+
+    assert np.isclose(est_DC, theoretical_resp_params.DC, rtol=0.1)  # type: ignore
 
 
 
 # > Stimuli
 
-@mark.proto
 @mark.parametrize(
     'sf,ori,x,y',
     [

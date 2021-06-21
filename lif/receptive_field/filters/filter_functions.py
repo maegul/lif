@@ -964,7 +964,9 @@ def mk_conv_resp_adjustment_params(
     # after convolution with a stimulus
     amp_adjustment_factor = real_unrect_joint_amp / conv_resp_params.amplitude
 
-    dc_shift_factor = joint_resp_params.DC - conv_resp_params.DC
+    # have to shift conv_resp estimate to same scale as joint_resp
+    # means that must apply DC shift after (re-)scaling the response
+    dc_shift_factor = joint_resp_params.DC - (conv_resp_params.DC * amp_adjustment_factor)
 
     adjustment_params = do.ConvRespAdjParams(
         amplitude=amp_adjustment_factor,
@@ -976,7 +978,7 @@ def mk_conv_resp_adjustment_params(
 
 def adjust_conv_resp(conv_resp: val_gen, adjustment: do.ConvRespAdjParams) -> val_gen:
 
-    adjusted_resp = (conv_resp + adjustment.DC) * adjustment.amplitude
+    adjusted_resp = (conv_resp * adjustment.amplitude) + adjustment.DC
 
     return adjusted_resp
 

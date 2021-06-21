@@ -107,6 +107,10 @@ ff.mk_tq_tf_ft(freqs=ff.TempFrequency(10), tf_params=tqtf.parameters)
 # ===========
 tqtf.save()
 # -----------
+# >>> overwrite previous
+# ===========
+tqtf.save(overwrite=True)
+# -----------
 
 # >> load filter
 # ===========
