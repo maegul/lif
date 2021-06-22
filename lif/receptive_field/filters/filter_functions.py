@@ -429,9 +429,27 @@ def mk_dog_sf_ft_1d(
     return dog_ft_1d
 
 
+@overload
 def mk_sf_ft_polar_freqs(
             theta: ArcLength[float],
-            freq: SpatFrequency[val_gen]) -> Tuple[SpatFrequency[val_gen], SpatFrequency[val_gen]]:
+            freq: SpatFrequency[float]
+            ) -> Tuple[SpatFrequency[float], SpatFrequency[float]]: ...
+
+@overload
+def mk_sf_ft_polar_freqs(
+            theta: ArcLength[val_gen],
+            freq: SpatFrequency[float]
+            ) -> Tuple[SpatFrequency[val_gen], SpatFrequency[val_gen]]: ...
+
+@overload
+def mk_sf_ft_polar_freqs(
+            theta: ArcLength[float],
+            freq: SpatFrequency[val_gen]
+            ) -> Tuple[SpatFrequency[val_gen], SpatFrequency[val_gen]]: ...
+
+def mk_sf_ft_polar_freqs(
+            theta: ArcLength[val_gen],
+            freq: SpatFrequency[val_gen]) -> Tuple[SpatFrequency, SpatFrequency]:
     """Return 2D x and y freq values equivalent to polar args provided
 
     To aid in use of ft functions like mk_dog_sf_ft which require both
@@ -449,7 +467,7 @@ def mk_sf_ft_polar_freqs(
     ----
     theta: angle in FFT image
         Also the angle of the direction of modulation
-        0degs: |__> (horizontal)
+        0degs: |--> (horizontal)
 
     freq: Actual frequency
         Magnitude of polar coordinate from center
