@@ -540,7 +540,6 @@ def test_sf_conv_amp_1d(sd):
 
 
 # > test sf conv amp 2d
-
 @given(
     t_freq=st.floats(min_value=0, max_value=100, allow_infinity=False, allow_nan=False)
     )
@@ -549,7 +548,7 @@ def test_tq_tf_conv_amp_est(t_freq: float):
 
     temp_freq = TempFrequency(t_freq)
 
-    temp_res = Time(value=0.5, unit='ms')  # high-ish resolution for accuracy
+    temp_res = Time(value=0.1, unit='ms')  # high-ish resolution for accuracy
     temp_ext = Time(1.0, 's')
 
     temp_coords = ff.mk_temp_coords(temp_res, temp_ext)
@@ -777,20 +776,19 @@ def test_conv_resp_adjustment_process(spat_freq, temp_freq):
 
     assert np.isclose(est_DC, theoretical_resp_params.DC, rtol=0.1)  # type: ignore
 
-
-
 # > Stimuli
+
 
 @mark.parametrize(
     'sf,ori,x,y',
     [
-        (1, 90.0, 0, 1),
-        (1, 30.0, (3**0.5)/2, 0.5),
-        (2, 30.0, (3**0.5), 1)  # test magnitude scales cartesian spat freqs (double here)
+        (1, 90.0, 1, 0),
+        (1, 30.0, 0.5, -(3**0.5)/2),  # direction of drift (ori - 90)
+        (2, 30.0, 1, -(3**0.5))  # test magnitude scales cartesian spat freqs (double here)
     ]
     )
 def test_stimuli_cartesion_spat_freq(sf, ori, x, y):
-    "Ensure cartesion spatial frequencies correctly derived from orientation"
+    "Ensure cartesion spatial frequencies correctly derived from direction of drift"
 
     orientation = ArcLength(ori, 'deg')
 
