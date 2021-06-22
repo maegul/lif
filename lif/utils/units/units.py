@@ -30,15 +30,24 @@ val_gen = TypeVar('val_gen', int, float, np.ndarray, covariant=True)
 # more work per unit, but direct and easy to type
 # And generates tab completion for the properties (as coded explicitly)
 
+@dataclass(frozen=True)
+class _UnitBC(Generic[val_gen]):
 
-class UnitBC(Generic[val_gen]):
+    value: val_gen
+    unit: str
 
+    # For easier programmatic access of properties: self['UNIT']
     def __getitem__(self, unit: str) -> val_gen:
         return getattr(self, unit)
 
+    def _convert(self, new_unit: str) -> val_gen:
+        "Generic conversion method, converts to new_unit from instantiated unit"
+        return (self.value * self[f'_{self.unit}']) / self[f'_{new_unit}']
+
 
 @dataclass(frozen=True)
-class Time(UnitBC[val_gen]):
+class Time(_UnitBC[val_gen]):
+    "Time in s, ms or us (micro)"
 
     value: val_gen
     unit: str = 's'
@@ -54,19 +63,19 @@ class Time(UnitBC[val_gen]):
 
     @property
     def s(self) -> val_gen:
-        return (self.value * getattr(self, f'_{self.unit}')) / self._s
+        return self._convert('s')
 
     @property
     def ms(self) -> val_gen:
-        return (self.value * getattr(self, f'_{self.unit}')) / self._ms
+        return self._convert('ms')
 
     @property
     def us(self) -> val_gen:
-        return (self.value * getattr(self, f'_{self.unit}')) / self._us
+        return self._convert('us')
 
 
 @dataclass(frozen=True)
-class ArcLength(UnitBC[val_gen]):
+class ArcLength(_UnitBC[val_gen]):
     """Length as an angle from an origin
 
     value: length
@@ -83,27 +92,28 @@ class ArcLength(UnitBC[val_gen]):
     _rad: float = field(default=180/PI, init=False, repr=False)  # 1 radian -> 180/pi degs
 
     @property
-    def base(self) -> val_gen:  # use when in doubt (de facto conventional unit)
+    # use when in doubt (de facto conventional unit)
+    def base(self) -> val_gen:
         "Base unit: degrees (deg)"
         return self.deg
 
     @property
     def deg(self) -> val_gen:
-        return (self.value * getattr(self, f"_{self.unit}")) / self._deg
+        return self._convert('deg')
 
     @property
     # def min(self) -> Union[float, np.ndarray]:
     def mnt(self) -> val_gen:
-        return (self.value * getattr(self, f"_{self.unit}")) / self._mnt
+        return self._convert('mnt')
 
     @property
     def sec(self) -> val_gen:
-        return (self.value * getattr(self, f"_{self.unit}")) / self._sec
+        return self._convert('sec')
 
     @property
     def rad(self) -> val_gen:
         "Angle or arclength in radians"
-        return (self.value * getattr(self, f"_{self.unit}")) / self._rad
+        return self._convert('rad')
 
     @classmethod
     # def mk_multiple(cls, multi_vals: Iterable[float], unit: str) -> Tuple[ArcLength, ...]:
@@ -117,7 +127,7 @@ class ArcLength(UnitBC[val_gen]):
 
 # not sure this is a good idea or makes sense ... ?
 @dataclass(frozen=True)
-class TempFrequency(UnitBC[val_gen]):
+class TempFrequency(_UnitBC[val_gen]):
     """Temporal frequencies in units of hz (Hertz) and w (angular freq)
 
     w: angular frequency, represents radians per second, where 1 cycle is 2pi radians
@@ -138,16 +148,16 @@ class TempFrequency(UnitBC[val_gen]):
     @property
     def hz(self) -> val_gen:
         "Hertz: Cycles per second"
-        return (self.value * getattr(self, f'_{self.unit}')) / self._hz
+        return self._convert('hz')
 
     @property
     def w(self) -> val_gen:
         "Angular Frequency: radians per second (1Hz = 1cyc/s = 2pi/s)"
-        return (self.value * getattr(self, f'_{self.unit}')) / self._w
+        return self._convert('w')
 
 
 @dataclass(frozen=True)
-class SpatFrequency(UnitBC[val_gen]):
+class SpatFrequency(_UnitBC[val_gen]):
     """Spat frequencies in units of cpd, cpm (cyc per minute) and cpd_w (angular freq)
 
     cpd_w: angular frequency, represents radians per degree (of arclength),
@@ -169,13 +179,13 @@ class SpatFrequency(UnitBC[val_gen]):
 
     @property
     def cpd(self) -> val_gen:
-        return (self.value * getattr(self, f'_{self.unit}')) / self._cpd
+        return self._convert('cpd')
 
     @property
     def cpm(self) -> val_gen:
-        return (self.value * getattr(self, f'_{self.unit}')) / self._cpm
+        return self._convert('cpm')
 
     @property
     def cpd_w(self) -> val_gen:
         "Spatial Angular Frequency: radians per degree (1cpd = 1cyc/deg = 2pi rad/deg"
-        return (self.value * getattr(self, f'_{self.unit}')) / self._cpd_w
+        return self._convert('cpd_w')
