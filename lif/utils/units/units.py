@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Union, Iterable, Tuple, TypeVar, Generic
+from typing import Callable, Union, Iterable, Tuple, TypeVar, Generic
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -7,8 +7,15 @@ import math
 PI = math.pi
 
 # generic values ... share arithmetic operators
-# covariant so that int and float are compatible
-val_gen = TypeVar('val_gen', int, float, np.ndarray, covariant=True)
+# covariant so that int and float are compatible ... possibly because of other bug?
+val_gen = TypeVar('val_gen', float, np.ndarray)
+# val_gen = TypeVar('val_gen', int, float, np.ndarray)
+
+def type_test(a: float, b: int) -> float:
+
+    return a * b
+
+tt = type_test(1, 3)
 
 # from .core import add_conversions
 
