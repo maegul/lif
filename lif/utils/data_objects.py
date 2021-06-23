@@ -442,11 +442,16 @@ class GratingStimulusParams(ConversionABC):
 
         return direction
 
+# this is me typing now, with hopefully a quieter keyboard sound that is not so loud
+# this is now me typing while I speak at the same time and hopefully you can discern my voice appropriately
+#
     @property
     def spat_freq_x(self) -> SpatFrequency[float]:
         "Frequency in cartesion direction derived from grating direction (ori-90)"
+        x_mag: float
+        x_mag = np.cos(self.direction.rad)  # type: ignore
         freq = SpatFrequency(
-            self.spat_freq.cpd * np.cos(self.direction.rad), 'cpd'  # type: ignore
+            self.spat_freq.cpd * x_mag, 'cpd'  # type: ignore
             )
 
         return freq
@@ -454,8 +459,10 @@ class GratingStimulusParams(ConversionABC):
     @property
     def spat_freq_y(self) -> SpatFrequency[float]:
         "Frequency in cartesion direction derived from grating direction (ori-90)"
+        y_mag: float
+        y_mag = np.sin(self.direction.rad)  # type: ignore
         freq = SpatFrequency(
-            self.spat_freq.cpd * np.sin(self.direction.rad), 'cpd'  # type: ignore
+            self.spat_freq.cpd * y_mag, 'cpd'  # type: ignore
             )
 
         return freq

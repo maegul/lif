@@ -4,7 +4,6 @@
 from typing import Optional, Union, cast, Tuple, overload
 
 import numpy as np
-from numpy.lib.function_base import gradient  # type: ignore
 
 # import matplotlib.pyplot as plt
 
@@ -14,7 +13,8 @@ from numpy.lib.function_base import gradient  # type: ignore
 # import scipy.stats as st
 
 from ...utils import data_objects as do
-from ...utils.units.units import SpatFrequency, TempFrequency, ArcLength, Time, val_gen
+from ...utils.units.units import (
+    SpatFrequency, TempFrequency, ArcLength, Time, val_gen)
 from . import estimate_real_amp_from_f1 as est_amp
 
 PI: float = np.pi
@@ -437,19 +437,20 @@ def mk_sf_ft_polar_freqs(
 
 @overload
 def mk_sf_ft_polar_freqs(
-            theta: ArcLength[val_gen],
+            theta: ArcLength[np.ndarray],
             freq: SpatFrequency[float]
-            ) -> Tuple[SpatFrequency[val_gen], SpatFrequency[val_gen]]: ...
+            ) -> Tuple[SpatFrequency[np.ndarray], SpatFrequency[np.ndarray]]: ...
 
 @overload
 def mk_sf_ft_polar_freqs(
             theta: ArcLength[float],
-            freq: SpatFrequency[val_gen]
-            ) -> Tuple[SpatFrequency[val_gen], SpatFrequency[val_gen]]: ...
+            freq: SpatFrequency[np.ndarray]
+            ) -> Tuple[SpatFrequency[np.ndarray], SpatFrequency[np.ndarray]]: ...
 
 def mk_sf_ft_polar_freqs(
-            theta: ArcLength[val_gen],
-            freq: SpatFrequency[val_gen]) -> Tuple[SpatFrequency, SpatFrequency]:
+            theta: Union[ArcLength[float], ArcLength[np.ndarray]],
+            freq: Union[SpatFrequency[float], SpatFrequency[np.ndarray]]
+            ) -> Tuple[SpatFrequency, SpatFrequency]:
     """Return 2D x and y freq values equivalent to polar args provided
 
     To aid in use of ft functions like mk_dog_sf_ft which require both
@@ -477,10 +478,10 @@ def mk_sf_ft_polar_freqs(
     ----
     freq_x, freq_y: cartesian freqs for 2D FFT
     """
-    freq_x: SpatFrequency[val_gen]
-    freq_y: SpatFrequency[val_gen]
-    freq_x = SpatFrequency(np.cos(theta.rad) * freq.cpd, 'cpd')  # type: ignore
-    freq_y = SpatFrequency(np.sin(theta.rad) * freq.cpd, 'cpd')  # type: ignore
+    # freq_x: SpatFrequency[val_gen]
+    # freq_y: SpatFrequency[val_gen]
+    freq_x = SpatFrequency(np.cos(theta.rad) * freq.cpd, 'cpd')
+    freq_y = SpatFrequency(np.sin(theta.rad) * freq.cpd, 'cpd')
 
     return freq_x, freq_y
 
@@ -522,8 +523,8 @@ def mk_dog_sf_conv_amp(
     # use mnt as convention at the moment, and square as spatial
     return dog_sf_amp / (spat_res.mnt**2)
 
-
 # > Temporal
+
 
 def mk_temp_coords(
         temp_res: Time[float], temp_ext: Time[float],
@@ -857,9 +858,17 @@ def joint_dc(tf: do.TQTempFilter, sf: do.DOGSpatialFilter) -> float:
     sf_dc = sf.source_data.resp_params.dc
 
     if abs(tf_dc - sf_dc) > 0.3*min([tf_dc, sf_dc]):
+        tf_desc = (
+            tf.source_data.meta_data.make_key()
+            if tf.source_data.meta_data is not None
+            else tf.parameters)
+        sf_desc = (
+            sf.source_data.meta_data.make_key()
+            if sf.source_data.meta_data is not None
+            else sf.parameters)
         raise ValueError(
             f'DC amplitudes of Temp Filt and Spat Filt are too differente\n'
-            f'filters: {tf.source_data.meta_data.make_key()}, {sf.source_data.meta_data.make_key()}'
+            f'filters: {tf_desc}, {sf_desc}'
             f'DC amps: TF: {tf_dc}, SF: {sf_dc}'
             )
     # Just take the average
