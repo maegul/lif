@@ -67,4 +67,3 @@ def mk_von_mises_k_circ_var_interp_funcs(
 
 kvals, cvvals = generate_von_mises_k_to_circ_var_vals(n_angles=8)
 k_cv, cv_k = mk_von_mises_k_circ_var_interp_funcs(kvals, cvvals)
-
