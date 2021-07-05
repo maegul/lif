@@ -1,10 +1,11 @@
 """Making temporal and spatial filters"""
 
 from __future__ import annotations
+from functools import partial
 from typing import Optional, Tuple
 
 import numpy as np
-from scipy.optimize import least_squares, OptimizeResult
+from scipy.optimize import least_squares, OptimizeResult, minimize, minimize_scalar
 
 # from . import data_objects as do, filter_functions as ff
 from . import filter_functions as ff
@@ -189,6 +190,99 @@ def _fit_dog_ft(
     return opt_res
 
 
+def _find_sd_ratio(circ_var_opt_func, circ_var_target):
+
+    def obj_func(ratio: float):
+        cv = circ_var_opt_func(ratio=ratio)
+        if cv is None:
+            return 1
+        return abs(cv - circ_var_target)
+
+    res = minimize_scalar(obj_func, method='Bounded', bounds=[1, 40])
+    # res = minimize_scalar(obj_func, bracket=[0.9, 100])
+    # res = minimize_scalar(obj_func)
+    # res = basinhopping(obj_func, [1])
+
+    return res
+
+def _find_max_sd_ratio(circ_var_opt_func, max_circ_var_target=0.999):
+
+    def obj_func(ratio: float):
+        cv = circ_var_opt_func(ratio=ratio)
+        if cv is None:
+            return 1
+        return abs(cv - max_circ_var_target)
+
+    res = minimize(obj_func, [2], tol=max_circ_var_target/10, method='Nelder-Mead')
+    # res = minimize_scalar(obj_func, bracket=[0.9, 100])
+    # res = minimize_scalar(obj_func)
+    # res = basinhopping(obj_func, [1])
+
+    return res
+
+
+def _make_ori_biased_lookup_vals(
+        sf_params: do.DOGSpatFiltArgs,
+        method: str = 'naito',
+        ) -> do.CircularVarianceSDRatioVals:
+    """Make ori bias lookup values
+
+    method:
+        one of 'naito' (default), 'leventhal', 'both'
+    """
+
+    cv_sd_ratio_method = ff.circ_var_sd_ratio_methods.get_method(method)
+    if cv_sd_ratio_method is None:
+        raise ValueError(
+            f'provided method {method} not available from {ff.circ_var_sd_ratio_methods}'
+            )
+
+    angles = ff.mk_even_semi_circle_angles()
+    spat_freqs = ff.mk_high_density_spat_freqs(sf_params)
+
+    circ_var_opt_func = partial(
+        cv_sd_ratio_method,
+        sf_params=sf_params, angles=angles, spat_freqs=spat_freqs)
+
+
+    max_sd_ratio_res = _find_max_sd_ratio(circ_var_opt_func)
+    assert max_sd_ratio_res.success is True, 'Optimisation not successful'
+
+    ratio_vals = np.linspace(1, max_sd_ratio_res.x[0], 1000)
+    cv_vals = [circ_var_opt_func(ratio) for ratio in ratio_vals]
+    cv_vals_clean = np.array([
+        np.nan if val is None else val
+        for val in cv_vals
+    ])
+
+    cv_ratio_obj = do.CircularVarianceSDRatioVals(
+            sd_ratio_vals=ratio_vals,
+            circular_variance_vals=cv_vals_clean
+        )
+
+    return cv_ratio_obj
+    # cv_vals = np.linspace(0, 1, 100)
+
+    # ratio_opt_results = [
+    #     _find_sd_ratio(circ_var_opt_func, circ_var_target=cv_val)
+    #     for cv_val in cv_vals
+    # ]
+
+    # ratio_vals = np.array([
+    #     opt_res.x
+    #     if opt_res.success
+    #     else np.nan
+    #     for opt_res in ratio_opt_results
+    # ])
+
+    # cv_ratio_obj = do.CircularVarianceSDRatioVals(
+    #         sd_ratio_vals=ratio_vals,
+    #         circular_variance_vals=cv_vals
+    #     )
+
+    # return cv_ratio_obj
+
+
 def make_dog_spat_filt(parameters: do.SpatFiltParams) -> do.DOGSpatialFilter:
     """Make a DOG filter from data"""
 
@@ -215,10 +309,15 @@ def make_dog_spat_filt(parameters: do.SpatFiltParams) -> do.DOGSpatialFilter:
             )
         )
 
+    ori_bias_params = _make_ori_biased_lookup_vals(params)
+
     spat_filt = do.DOGSpatialFilter(
         source_data=parameters,
         parameters=params,
-        optimisation_result=opt_res
+        optimisation_result=opt_res,
+        ori_bias_params=ori_bias_params
         )
 
     return spat_filt
+
+

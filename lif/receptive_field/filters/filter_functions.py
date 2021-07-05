@@ -1,7 +1,8 @@
 """Functions and classes for the generation of spatial and temporal filters
 """
 
-from typing import Optional, Union, cast, Tuple, overload
+from dataclasses import dataclass
+from typing import Optional, Union, Tuple, overload, Callable
 
 import numpy as np
 
@@ -15,7 +16,7 @@ import numpy as np
 from ...utils import data_objects as do
 from ...utils.units.units import (
     SpatFrequency, TempFrequency, ArcLength, Time, val_gen)
-from . import estimate_real_amp_from_f1 as est_amp
+from . import (estimate_real_amp_from_f1 as est_amp, cv_von_mises as cvvm)
 
 PI: float = np.pi
 # cast(float, PI)
@@ -522,6 +523,123 @@ def mk_dog_sf_conv_amp(
 
     # use mnt as convention at the moment, and square as spatial
     return dog_sf_amp / (spat_res.mnt**2)
+
+
+# > Orientation Biases
+
+def mk_ori_biased_sd_factors(ratio: float) -> Tuple[float, float]:
+    """Presuming base SD is average, ratio will maintain average of v & h as base
+
+    presumption: a + b = 2, a/b = ratio (ie, a is bigger and bias is vertically long)
+    """
+
+    a = (2*ratio)/(ratio+1)
+    b = 2 - a
+
+    return a, b
+
+
+def mk_even_semi_circle_angles(n_angles: int = 8) -> ArcLength[np.ndarray]:
+
+    angles = ArcLength(np.linspace(0, 180, n_angles, False), 'deg')
+
+    return angles
+
+
+def mk_high_density_spat_freqs(
+        sf_params: do.DOGSpatFiltArgs, limit_factor: float = 5) -> SpatFrequency[np.ndarray]:
+    """Uses sf parameters to estimate a good upper limit on spat_freqs
+
+    For use with orientation bias sd ratio estimation.
+    Key is to find an upper limit that is higher than the highest sf an orientation biased
+    DOG is going to respond to.
+    Currently, the approach is to find the spat_freq to which the sf response is zero
+    and multiply this by 5.
+
+    The returned array is from 0 to this upper limit with 1000 steps.
+    """
+
+    n = 0
+    sf_min = False
+    while not sf_min and (n < 1000):  # 1000 cpd is too much!
+        n += 1
+        r = mk_dog_sf_ft(SpatFrequency(0), SpatFrequency(n), sf_params)
+        sf_min = np.isclose(r, 0)  # type: ignore
+
+    if n == 1000 and (not sf_min):  # no spat freq limit was found
+        raise ValueError('Could not find spat-freq that elicits a zero resp for sf_params')
+
+    spat_freq_limit = n * limit_factor
+
+    return SpatFrequency(np.linspace(0, spat_freq_limit, 1000))
+
+
+def circ_var_sd_ratio_naito(
+        ratio: float, sf_params: do.DOGSpatFiltArgs,
+        angles: ArcLength[np.ndarray], spat_freqs: SpatFrequency[np.ndarray]
+        ) -> Optional[float]:
+    """Calculate circ_var of spat filt if v and h sds have ratio.
+
+    Uses definition of ori bias from Naito (2013)
+
+    Uses mk_ori_biased_sd_factors to convert ratio to sd factors
+
+    """
+
+    # make new sf parameters with prescribed ratio
+    new_sf_params = sf_params.mk_ori_biased_duplicate(
+            *mk_ori_biased_sd_factors(ratio)
+        )
+
+    # get spatial freq resp curve for vertical grating (drifiting along 0 deg vector)
+    # vertical as mk_ori_biased_sd_factors makes vertically elongated sd factors
+    spat_freq_resp_v = mk_dog_sf_ft(
+            *mk_sf_ft_polar_freqs(ArcLength(0), spat_freqs),
+            new_sf_params
+        )
+
+    # find spat_freq for naito definition of how to measure ori biases
+    # IE spat-freq at which the cell's response to the preferred ori is 50% of peak resp
+    peak_resp = spat_freq_resp_v.max()
+    peak_resp_idx = spat_freq_resp_v.argmax()
+    # all idxs where response is 50% of peak or lower
+    threshold_resp_idxs = (spat_freq_resp_v[peak_resp_idx:] < (0.5 * peak_resp))
+
+    # if no such responses, can't define ori biases with naito definition at this ratio
+    # with the provided spat_freqs, maybe increase spat-freq limit factor
+    if threshold_resp_idxs.sum() == 0:
+        return None
+
+    # first/lowest spat_freq at or below the naito definition
+    first_threshold_resp_idx = threshold_resp_idxs.nonzero()[0][0]
+
+    threshold_spat_freq = SpatFrequency(spat_freqs.base[peak_resp_idx+first_threshold_resp_idx])
+
+    sf_x, sf_y = mk_sf_ft_polar_freqs(angles, threshold_spat_freq)
+    resp = mk_dog_sf_ft(sf_x, sf_y, new_sf_params)
+
+    circ_var = cvvm.circ_var(resp, angles)
+
+    return circ_var
+
+
+# circ var sd functions should match this type
+_circ_var_sd_ratio_method_type = Callable[
+        [float, do.DOGSpatFiltArgs, ArcLength[np.ndarray], SpatFrequency[np.ndarray]],
+        Optional[float]
+    ]
+
+
+@dataclass(frozen=True)
+class _CircVarSDRatioMethods:
+    "Lookup of available circ_var DOG sd ratio estimation functions"
+    naito: _circ_var_sd_ratio_method_type = circ_var_sd_ratio_naito
+
+    def get_method(self, method: str) -> _circ_var_sd_ratio_method_type:
+        return self.__getattribute__(method)
+
+
+circ_var_sd_ratio_methods = _CircVarSDRatioMethods()
 
 # > Temporal
 

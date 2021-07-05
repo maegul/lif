@@ -1,19 +1,22 @@
 """Classes for handling and grouping basic data objects"""
 
 from __future__ import annotations
+from functools import partial
 from sys import meta_path
 from typing import Union, Optional, Iterable, Dict, Any, Tuple, List
 from dataclasses import dataclass, astuple, asdict, field
 import datetime as dt
 from pathlib import Path
 import pickle as pkl
+import copy
 
 import numpy as np
 from scipy.optimize import OptimizeResult
+from scipy.interpolate import interp1d
 
 from . import settings
 from .units.units import (
-    ArcLength, TempFrequency, SpatFrequency, Time
+    ArcLength, TempFrequency, SpatFrequency, Time, val_gen
     )
 
 
@@ -356,6 +359,68 @@ class DOGSpatFiltArgs(ConversionABC):
         cent_a, cent_h_sd, _, surr_a, surr_h_sd, _ = self.array()
         return DOGSpatFiltArgs1D.from_iter([cent_a, cent_h_sd, surr_a, surr_h_sd])
 
+    def mk_ori_biased_duplicate(
+            self, v_sd_factor: float, h_sd_factor: float
+            ) -> DOGSpatFiltArgs:
+        "Create duplicate but with factors applies to sd values"
+
+        spat_filt_args = copy.deepcopy(self)
+
+        spat_filt_args.cent.arguments.v_sd = ArcLength(
+            spat_filt_args.cent.arguments.v_sd.mnt * v_sd_factor, 'mnt'
+            )
+        spat_filt_args.cent.arguments.h_sd = ArcLength(
+            spat_filt_args.cent.arguments.h_sd.mnt * h_sd_factor, 'mnt'
+            )
+
+        return spat_filt_args
+
+
+@dataclass
+class CircularVarianceSDRatioVals(ConversionABC):
+    "Circular Variance to SD ration values"
+
+    sd_ratio_vals: np.ndarray
+    circular_variance_vals: np.ndarray
+
+    def ratio2circ_var(self, ratio: val_gen) -> val_gen:
+        """Return circular variance for given sd ratio
+
+        """
+
+        if not hasattr(self, '_circ_var'):
+            self._mk_interpolated()
+
+        # bounds check ratio (not below 1)
+        if np.any(ratio < 1):  # type: ignore
+            raise ValueError(f'Ratio must be >= 1, is {ratio}')
+
+        return self._circ_var(ratio)
+
+    def circ_var2ratio(self, circ_var: val_gen) -> val_gen:
+        """Return sd ratio for given circular variance
+
+        """
+
+        if not hasattr(self, '_sd_ratio'):
+            self._mk_interpolated()
+
+        # bounds circ_var ratio ( between 0 and 1 )
+        if not np.all(circ_var >= 0) and np.all(circ_var <= 1):  # type: ignore
+            raise ValueError(f'Circ var must be between 0 and 1, is {circ_var}')
+
+        return self._sd_ratio(circ_var)
+
+    def _mk_interpolated(self):
+        "Add methods for interpolation in both directions (using interp1d)"
+
+        interp_func = partial(interp1d, fill_value='extrapolate')
+
+        self._sd_ratio = interp_func(
+            self.circular_variance_vals, self.sd_ratio_vals)
+        self._circ_var = interp_func(
+            self.sd_ratio_vals, self.circular_variance_vals)
+
 
 @dataclass
 class DOGSpatialFilter(ConversionABC):
@@ -365,13 +430,14 @@ class DOGSpatialFilter(ConversionABC):
     source_data: SpatFiltParams
     parameters: DOGSpatFiltArgs
     optimisation_result: OptimizeResult
+    ori_bias_params: CircularVarianceSDRatioVals
 
-    def save(self, overwrite: bool = False):
+    def save(self, overwrite: bool = False, custom_key: str = 'Unknown'):
 
         key: str = (
             self.source_data.meta_data.make_key()
             if self.source_data.meta_data is not None
-            else 'Unknown'
+            else custom_key
             )
         file_name = Path(f'{key}-{self.__class__.__name__}.pkl')
 
