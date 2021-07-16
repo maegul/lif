@@ -2,6 +2,9 @@
 from lif import *
 # -----------
 # ===========
+from lif.plot import plot
+# -----------
+# ===========
 import plotly.express as px
 from scipy.ndimage import gaussian_filter1d
 # -----------
@@ -35,41 +38,19 @@ stim_params = do.GratingStimulusParams(
 resp = conv.mk_single_sf_tf_response(sf, tf, st_params, stim_params)
 # -----------
 # ===========
-s, pop_s = conv.mk_sf_tf_poisson(st_params, resp)
+n_trials = 20
+s, pop_s = conv.mk_sf_tf_poisson(st_params, resp, n_trials=n_trials)
 # -----------
 # ===========
 all_spikes = conv.aggregate_poisson_trials(s)
 # -----------
 # ===========
-(px
-    .scatter(x=all_spikes[1], y=all_spikes[0],
-             template='none')
-    .update_traces(marker=dict(
-        symbol='line-ns', line_width=1, color='black'))
-    .show()
-)
+plot.poisson_trials_rug(s).show()
 # -----------
 # ===========
-n_trials = 20
-bin_width = Time(0.01)
-bins = ff.mk_temp_coords(bin_width, Time(st_params.temp_ext.s + bin_width.s))
-
-cnts, cnt_bins = np.histogram(all_spikes[1], bins=bins.base)
-cnts = cnts / bin_width.s / n_trials
-cnts_smooth = gaussian_filter1d(cnts, sigma=1)
-
-(
-    px
-    .bar(x=cnt_bins[:-1], y=cnts, template='none')
-    .update_traces(marker_color='#bbb')
-    .add_trace(
-        px.line(x=cnt_bins[:-1], y=cnts_smooth)
-        .update_traces(line_color='red')
-        .data[0]
-        )
-    .show()
-    )
+plot.psth(st_params, s, 20).show()
 # -----------
+
 
 # > ori bias
 # ===========

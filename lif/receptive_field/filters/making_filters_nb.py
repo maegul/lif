@@ -1,17 +1,15 @@
 # > Imports
 # ===========
-from typing import cast
+# from typing import cast
 # -----------
 
 # ===========
+from scipy.interpolate.interpolate import interp1d
 from lif.utils.units.units import ArcLength, SpatFrequency, TempFrequency, Time
 from lif.utils import data_objects as do
 from lif.receptive_field.filters import (
     filter_functions as ff, filters)
 # -----------
-
-
-# > Temp Filter
 # >> clean up temp data from tracey (Kaplan 1987)
 # ===========
 import pandas as pd
@@ -26,6 +24,9 @@ import plotly.subplots as psp
 import lif.utils.settings as settings
 data_dir = settings.get_data_dir()
 # -----------
+
+
+# > Temp Filter
 
 # >> Processing raw temp_filt data from tracey
 # ===========
@@ -168,7 +169,27 @@ sf.parameters
 # -----------
 
 
+
+
 # >> Testing and Graphing
+
+# >> Ori Biases Testing
+# ===========
+sf.ori_bias_params.circ_var2ratio(0.4)
+# -----------
+# ===========
+circ_vars = np.linspace(0, 1, 1000)
+ratio_vals = sf.ori_bias_params.circ_var2ratio(circ_vars)
+# -----------
+# ===========
+px.line(
+    x=circ_vars, y=ratio_vals,
+    labels={'x': 'circ_var', 'y': 'ratio_vals'}
+    ).show()
+# -----------
+# ===========
+
+# -----------
 
 # >>> Fourier
 # ===========
