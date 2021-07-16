@@ -461,9 +461,10 @@ def mk_sf_ft_polar_freqs(
     If a DOG rf is longer in the vertical than horizontal, and so
     "prefers" the "vertical" or "90deg" orientation, then it will have
     a higher preferred SF along the x-axis of frequencies (not the y!).
-    This is a frequency is concerned with the direction the modulation in
-    a 2D sinusoidal.  A vertically aligned 2D sinusoidal grating actually
-    modulates horizontally.
+    This is because a frequency is concerned with the DIRECTION in which
+    a 2D sinusoidal is modulating.
+    Thus, a vertically aligned 2D sinusoidal grating actually modulates
+    horizontally.
 
     Parameters
     ----
@@ -546,6 +547,22 @@ def mk_even_semi_circle_angles(n_angles: int = 8) -> ArcLength[np.ndarray]:
     return angles
 
 
+def find_null_high_sf(sf_params: do.DOGSpatFiltArgs) -> SpatFrequency[float]:
+    """Find spatial frequency at which DOG filter reponse is zero"""
+
+    n = 0
+    sf_min = False
+    while not sf_min and (n < 1000):  # 1000 cpd is too much!
+        n += 1
+        r = mk_dog_sf_ft(SpatFrequency(0), SpatFrequency(n), sf_params)
+        sf_min = np.isclose(r, 0)  # type: ignore
+
+    if n == 1000 and (not sf_min):  # no spat freq limit was found
+        raise ValueError('Could not find spat-freq that elicits a zero resp for sf_params')
+
+    return SpatFrequency(n, 'cpd')
+
+
 def mk_high_density_spat_freqs(
         sf_params: do.DOGSpatFiltArgs, limit_factor: float = 5) -> SpatFrequency[np.ndarray]:
     """Uses sf parameters to estimate a good upper limit on spat_freqs
@@ -559,17 +576,9 @@ def mk_high_density_spat_freqs(
     The returned array is from 0 to this upper limit with 1000 steps.
     """
 
-    n = 0
-    sf_min = False
-    while not sf_min and (n < 1000):  # 1000 cpd is too much!
-        n += 1
-        r = mk_dog_sf_ft(SpatFrequency(0), SpatFrequency(n), sf_params)
-        sf_min = np.isclose(r, 0)  # type: ignore
+    n = find_null_high_sf(sf_params)
 
-    if n == 1000 and (not sf_min):  # no spat freq limit was found
-        raise ValueError('Could not find spat-freq that elicits a zero resp for sf_params')
-
-    spat_freq_limit = n * limit_factor
+    spat_freq_limit = n.base * limit_factor
 
     return SpatFrequency(np.linspace(0, spat_freq_limit, 1000))
 

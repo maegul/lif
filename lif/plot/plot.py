@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Tuple
 
 import brian2
 from scipy.ndimage.filters import gaussian_filter1d
@@ -92,11 +92,10 @@ def joint_sf_tf_amp(
     Joint response from joint_spat_temp_conv_amp()
     '''
 
-    # # ===========
+    # ===========
     # tf = TQTempFilter.load(TQTempFilter.get_saved_filters()[0])
     # sf = DOGSpatialFilter.load(DOGSpatialFilter.get_saved_filters()[0])
-    # # -----------
-    # ===========
+    # -----------
     temp_freqs = tf.source_data.data.frequencies
     spat_freqs_x = sf.source_data.data.frequencies
 
@@ -114,8 +113,7 @@ def joint_sf_tf_amp(
         temp_freqs=tf_freq_mg, spat_freqs_x=sf_freq_mg_x, spat_freqs_y=sf_freq_mg_y,
         sf=sf, tf=tf
         )
-    # -----------
-    # ===========
+
     fig = make_subplots(
         2, 2,
         shared_xaxes=True, shared_yaxes=True, column_widths=[0.7, 0.3], row_heights=[0.3, 0.7])
@@ -201,3 +199,150 @@ def psth(
         )
 
     return plot
+
+
+def mk_sf_orientation_resp(
+        spat_freq: SpatFrequency[float], sf_params: do.DOGSpatFiltArgs,
+        n_angles: int = 8
+        ) -> Tuple[ArcLength[np.ndarray], np.ndarray]:
+    """Generates orientation response using spat filt ft methods
+
+    returns orientations used and response array
+
+    orientations are adjusted to represent orientation of stimulus, not direction
+    of modulation.  Also wrapped to be within [0, 180].
+    """
+
+    angles = ff.mk_even_semi_circle_angles(n_angles)
+    # angles represent direction of modulation
+    ori_resp = ff.mk_dog_sf_ft(
+        *ff.mk_sf_ft_polar_freqs(angles, spat_freq),
+        sf_params)
+
+    # adjust angles to represent orientation of stimulus (not modulation direction)
+    # and sort so angles and response start at 0 deg
+    angles_nda = (angles.deg + 90) % 180
+    angles_ord_idx = angles_nda.argsort()
+
+    angles = ArcLength(angles_nda[angles_ord_idx], 'deg')
+    ori_resp = ori_resp[angles_ord_idx]
+
+    return angles, ori_resp
+
+
+def orientation_plot(
+        sf_params: do.DOGSpatFiltArgs, spat_freq: SpatFrequency[float],
+        n_angles: int = 8):
+    """Polar plot of orientation selectivity at spat_freq at n_angles
+    evenly spaced orientations
+
+    """
+
+    angles, ori_resp = mk_sf_orientation_resp(spat_freq, sf_params, n_angles)
+
+    # wrap
+    resp = np.r_[ori_resp, ori_resp, ori_resp[0]]  # type: ignore
+    theta = np.r_[angles.deg, angles.deg + 180, angles.deg[0]]  # type: ignore
+
+    fig = (
+            px
+            .line_polar(
+                r=resp, theta=theta,
+                start_angle=0, direction='counterclockwise')
+            .update_traces(mode='lines+markers', fill='toself')
+        )
+
+    return fig
+
+
+def ori_spat_freq_heatmap(
+        sf_params: do.DOGSpatFiltArgs,
+        n_orientations: int = 8,
+        n_spat_freqs: int = 50,
+        width: int = 500, height: int = 500):
+    """Heatmap of with ori on x and spat_freq on y, color ~ response
+
+    """
+
+    angles = ff.mk_even_semi_circle_angles(n_orientations)
+    max_spat_freq = ff.find_null_high_sf(sf_params)
+    spat_freqs = do.SpatFrequency(np.linspace(0, max_spat_freq.base, n_spat_freqs))
+
+    resps = np.empty((spat_freqs.base.size, angles.base.size))
+    for i, ori in enumerate(angles.deg):
+        spat_freqs_x, spat_freqs_y = ff.mk_sf_ft_polar_freqs(ArcLength(ori, 'deg'), spat_freqs)
+        resps[:, i] = ff.mk_dog_sf_ft(spat_freqs_x, spat_freqs_y, sf_params)
+
+    fig = px.imshow(
+            resps, x=angles.deg, y=spat_freqs.cpd,
+            labels={'x': 'Orientation (Deg)', 'y': 'Spat Freq (CPD)'},
+            origin='lower', width=width, height=height, aspect='auto')
+    fig.update_xaxes(tickvals=angles.deg, ticks='outside')  # type: ignore
+
+    return fig
+
+
+def orientation_circ_var_subplots(
+        sf: do.DOGSpatialFilter,
+        spat_freq_factors: np.ndarray = np.array([1, 2, 4, 8]),
+        circ_vars: np.ndarray = np.arange(0.1, 0.6, 0.1)
+        ):
+    """Grid of polar subplots of orientation,
+    spat_freq along x, circ_var along y, each defining dimensions of spatial filter
+    and at what frequency the response has been elicited.
+
+    Spat freq factors determine what spat_freqs used by first estimating the preferred
+    spat_freq and multiplying this value by the factors
+
+    Must take Spat Filter and not parameters as need circ variance attributes on filter.
+    """
+
+    # Find preferred spatial frequency
+    spat_freqs = SpatFrequency(
+        np.linspace(
+            0,
+            ff.find_null_high_sf(sf.parameters).base,
+            100)
+        )
+    sf_resp = ff.mk_dog_sf_ft(
+        *ff.mk_sf_ft_polar_freqs(ArcLength(90), spat_freqs),
+        sf.parameters)
+
+    max_resp_idx = sf_resp.argmax()
+    max_spat_freq = spat_freqs.base[max_resp_idx]
+    spat_freqs = SpatFrequency(
+        max_spat_freq * spat_freq_factors  # type: ignore
+        )
+
+    # Make subplots
+    n_cols = spat_freqs.base.size
+    n_rows = circ_vars.size
+
+    # prepare figure with appropriate titles
+    fig = make_subplots(
+        rows=n_rows, cols=n_cols,
+        start_cell='bottom-left',
+        specs=[[{'type': 'polar'}]*n_cols]*n_rows,
+        column_titles=[
+            (
+                f'{round(s, 2)}cpd ({fact}X)'
+                if s != max_spat_freq
+                else f'<b>{round(s,2)}cpd (pref)</b>'
+            )
+            for s, fact in zip(spat_freqs.cpd, spat_freq_factors)
+            ],
+        x_title="Spat Freq", y_title="Circ Var",
+        row_titles=[f'{round(cv, 2)}' for cv in circ_vars],
+        )
+    fig = fig.update_polars(radialaxis_nticks=2, angularaxis_showticklabels=False)  # type: ignore
+
+    # add subplots
+    for sfi, spat_f in enumerate(spat_freqs.base):
+        for cvi, cv in enumerate(circ_vars):
+            ori_fig = orientation_plot(
+                sf.mk_ori_biased_parameters(cv),
+                do.SpatFrequency(spat_f)
+                )
+            fig.add_trace(ori_fig.data[0], col=sfi+1, row=cvi+1)
+
+    return fig

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 from functools import partial
-from sys import meta_path
 from typing import Union, Optional, Iterable, Dict, Any, Tuple, List
 from dataclasses import dataclass, astuple, asdict, field
 import datetime as dt
@@ -18,6 +17,7 @@ from . import settings
 from .units.units import (
     ArcLength, TempFrequency, SpatFrequency, Time, val_gen
     )
+from ..receptive_field.filters import filter_functions as ff
 
 
 # numerical_iter = Union[np.ndarray, Iterable[float]]
@@ -477,6 +477,19 @@ class DOGSpatialFilter(ConversionABC):
 
         return spat_filt
 
+    def mk_ori_biased_parameters(
+            self, circ_var: float) -> DOGSpatFiltArgs:
+        """Copied parameters with sds adjusted to produce circular variance"""
+
+        sd_ratio = self.ori_bias_params.circ_var2ratio(circ_var)
+        v_sd_fact, h_sd_fact = ff.mk_ori_biased_sd_factors(sd_ratio)
+
+        new_sf_params = self.parameters.mk_ori_biased_duplicate(
+            v_sd_fact, h_sd_fact
+            )
+
+        return new_sf_params
+
 
 # > Stimuli and Coords
 
@@ -508,9 +521,6 @@ class GratingStimulusParams(ConversionABC):
 
         return direction
 
-# this is me typing now, with hopefully a quieter keyboard sound that is not so loud
-# this is now me typing while I speak at the same time and hopefully you can discern my voice appropriately
-#
     @property
     def spat_freq_x(self) -> SpatFrequency[float]:
         "Frequency in cartesion direction derived from grating direction (ori-90)"
