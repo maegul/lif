@@ -182,7 +182,7 @@ def psth(
     bins = ff.mk_temp_coords(bin_width, Time(st_params.temp_ext.base + bin_width.base))
     all_spikes = convolve.aggregate_poisson_trials(spike_monitor)
 
-    cnts, cnt_bins = np.histogram(all_spikes[1], bins=bins.base)
+    cnts, cnt_bins = np.histogram(all_spikes[1], bins=bins.base)  # type: ignore
 
     cnts_hz = cnts / bin_width.s / n_trials
     cnts_smooth = gaussian_filter1d(cnts_hz, sigma=sigma)
