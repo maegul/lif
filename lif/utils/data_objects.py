@@ -491,6 +491,34 @@ class DOGSpatialFilter(ConversionABC):
         return new_sf_params
 
 
+# > Full LGN Model
+
+@dataclass
+class LGNCell(ConversionABC):
+    "Single LGN Cell that provides input to a V1 Cell"
+
+    spat_filt: DOGSpatialFilter
+    temp_filt: TQTempFilter
+    orientation: ArcLength[float]
+    circ_var: float
+    location: Tuple[float, float]  # tentative, maybe requires own data object
+
+    # need to rotate to orientation and get spatial_filter at specified circ_var
+    # best (?):
+        # rotation is a filter_function (as acts on actual array)
+        # creating final array for RF is a filter function
+            # takes LGNCell
+            # adjusts sds for circular variance
+            # makes RF array
+            # rotates according to orientation
+
+    # Need to get response to stimulus
+        # use location and extent to take slice out of actual stimulus
+        # convolve with this slice
+        # ensure stimulus generated with appropriate extent
+            # maybe just make huge so no need to worry!
+
+
 # > Stimuli and Coords
 
 @dataclass
