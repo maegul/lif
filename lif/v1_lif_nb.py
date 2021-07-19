@@ -245,11 +245,31 @@ bn.run(1*bnun.second)
 M.count
 # -----------
 # ===========
+spikes = (M.t - bn.defaultclock.dt)/ms
+np.tile(spikes, (2,1))
+# -----------
+spikes.astype(int)
+# ===========
+np.vstack((SM[0].v[np.array(spikes, dtype=int)], np.zeros(len(spikes))))
+# -----------
+# ===========
+# >>> Adding Spikes to Graph
+
+# determine indices of spikes from time step and spike times
+spike_steps = (M.t / bn.defaultclock.dt).astype(int)
+# set spike times to value of zero
+val = SM[0].v.copy()
+val[spike_steps] = 0
+
+# plot
+px.line(x=SM.t/ms, y=val).add_hline(y=theta/bnun.volt).show()
+# -----------
+# ===========
 # px.line(x=SM.t/ms, y=SM[0].v).show()
 fig = plot_vt(SM)
-for t in M.t:
-    fig.add_vline(x=t/ms)
-fig.update_shapes(line=dict(dash='dot', color='red', width=3))
+# for t in M.t:
+#     fig.add_vline(x=t/ms)
+# fig.update_shapes(line=dict(dash='dot', color='red', width=3))
 fig.add_hline(y=theta/bnun.volt)
 fig.show()
 # -----------
