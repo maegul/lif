@@ -14,13 +14,16 @@ import numpy as np
 # import scipy.stats as st
 
 from ...utils import data_objects as do
+from ...utils import settings
 from ...utils.units.units import (
     SpatFrequency, TempFrequency, ArcLength, Time, val_gen)
 from . import (estimate_real_amp_from_f1 as est_amp, cv_von_mises as cvvm)
 
-PI: float = np.pi
-# cast(float, PI)
 
+# > Globals and Settings
+
+PI: float = np.pi
+SPAT_FILT_SD_LIMIT = settings.simulation_params.spat_filt_sd_factor
 
 # > Spatial
 
@@ -30,10 +33,17 @@ def mk_spat_coords_1d(
     """1D spatial coords symmetrical about 0 with 0 being the central discrete point
 
     Center point (value: 0) will be at index spat_ext // 2 if spat_res is 1
-    Or ... size // 2
+    Or, otherwise ... coords.size // 2
+
+    Guranteed by dividing spat_ext by 2 and np.ceiling (to provide even int for total extent)
+    And, adding to extent 1 in additional unit of spatial resolution
+
+    Use ceil (instead of floor) to ensure that sd_limit is not arbitrarily cut down to far
+
+    All done in units of `mnt` from ArcLength
     """
 
-    spat_radius = np.floor(spat_ext.mnt / 2)
+    spat_radius = np.ceil(spat_ext.mnt / 2)
     coords = ArcLength(
             np.arange(-spat_radius, spat_radius + spat_res.mnt, spat_res.mnt),
             'mnt'
@@ -42,20 +52,40 @@ def mk_spat_coords_1d(
     return coords
 
 
-def mk_sd_limited_spat_coords(
+def mk_spat_ext_from_sd_limit(
         sd: ArcLength[float],
+        sd_limit: float = SPAT_FILT_SD_LIMIT
+        ) -> ArcLength[float]:
+    """Calculate spatial extent to adequately present full DOG spatial filter with Std Dev sd
+
+    As sd is a radius distance, and spat_ext is diametrical, calculation is
+    2 * sd_limit * sd.
+    No rounding is done as presumed to be done in coords generation (mk_spat_coords etc)
+
+    Returns Arclenth in base units.
+    """
+
+    max_sd = sd_limit * sd.base
+    spat_ext = ArcLength(2 * max_sd)
+
+    return spat_ext
+
+
+def mk_sd_limited_spat_coords(
         spat_res: ArcLength = ArcLength(1, 'mnt'),
-        sd_limit: int = 5) -> ArcLength[np.ndarray]:
+        spat_ext: ArcLength[float] = ArcLength(300, 'mnt'),
+        sd: Optional[ArcLength[float]] = None,
+        sd_limit: float = SPAT_FILT_SD_LIMIT) -> ArcLength[np.ndarray]:
     """Wrap mk_spat_coords_1d to limit extent by number of SD
+
+    sd is optional, if not provided, spat_ext is used
 
     SD is rounded to ceiling integer before multiplication
     """
 
-    # integer rounded max sd times rf_sd_limit -> img limit for RF
-    max_sd = sd_limit * np.ceil(sd.mnt)
-    # spatial extent (for mk_coords)
-    # add 1 to ensure number is odd so size of mk_coords output is as specified
-    spat_ext = ArcLength((2 * max_sd) + 1, spat_res.unit)
+    # use sd if provided
+    if sd:
+        spat_ext = mk_spat_ext_from_sd_limit(sd, sd_limit)
 
     coords = mk_spat_coords_1d(spat_res=spat_res, spat_ext=spat_ext)
 
@@ -113,6 +143,8 @@ def mk_blank_coords(
 def mk_spat_coords(
         spat_res: ArcLength = ArcLength(1, 'mnt'),
         spat_ext: ArcLength = ArcLength(300, 'mnt'),
+        sd: Optional[ArcLength[float]] = None,
+        sd_limit: float = SPAT_FILT_SD_LIMIT
         ) -> Tuple[ArcLength[np.ndarray], ArcLength[np.ndarray]]:
 
     '''
@@ -132,6 +164,9 @@ def mk_spat_coords(
         floor(spat_ext/2), and always centred on zero.
         So actual extent will be 1*spat_res greater for even and as specified
         for odd extents
+    sd, sd_limit:
+        if sd present, passed to mk_sd_limited_spat_coords to limit extent automatically.
+        spat_ext will be ignored.
 
     Returns
     ----
@@ -143,7 +178,11 @@ def mk_spat_coords(
     # spat_radius = np.floor(spat_ext / 2)
     # x_coords = np.arange(-spat_radius, spat_radius + spat_res, spat_res)
 
-    x_coords = mk_spat_coords_1d(spat_res, spat_ext)
+    # mk_sd_limited_spat_coords responds to arguments appropriately
+    x_coords = mk_sd_limited_spat_coords(
+        spat_ext=spat_ext, spat_res=spat_res,
+        sd=sd, sd_limit=sd_limit)
+
     # treat as image (with origin at top left or upper)
     # y_cords positive at top and negative at bottom
     y_coords = ArcLength(x_coords.mnt[::-1], 'mnt')
@@ -162,6 +201,8 @@ def mk_spat_temp_coords(
         temp_res: Time[float] = Time(1, 'ms'),
         spat_ext: ArcLength[float] = ArcLength(300, 'mnt'),
         temp_ext: Time[float] = Time(1000, 'ms'),
+        sd: Optional[ArcLength[float]] = None,
+        sd_limit: float = SPAT_FILT_SD_LIMIT
         ) -> Tuple[ArcLength[np.ndarray], ArcLength[np.ndarray], Time[np.ndarray]]:
     '''
     Produces spatial and temporal coordinates (ie meshgrid) for
@@ -184,6 +225,9 @@ def mk_spat_temp_coords(
         for odd extents
     temp_ext : int
         duration, in milliseconds, of temporal dimension
+    sd, sd_limit:
+        if sd present, passed to mk_sd_limited_spat_coords to limit extent automatically.
+        spat_ext will be ignored.
 
     Returns
     ----
@@ -195,7 +239,11 @@ def mk_spat_temp_coords(
     # spat_radius = np.floor(spat_ext / 2)
     # x_coords = np.arange(-spat_radius, spat_radius + spat_res, spat_res)
 
-    x_coords = mk_spat_coords_1d(spat_res, spat_ext)
+    # mk_sd_limited_spat_coords responds to arguments appropriately
+    x_coords = mk_sd_limited_spat_coords(
+        spat_ext=spat_ext, spat_res=spat_res,
+        sd=sd, sd_limit=sd_limit)
+
     # treat as image (with origin at top left or upper)
     # y_cords positive at top and negative at bottom
     y_coords = ArcLength(x_coords.mnt[::-1], 'mnt')
