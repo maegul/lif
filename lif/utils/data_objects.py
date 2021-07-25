@@ -362,7 +362,7 @@ class DOGSpatFiltArgs(ConversionABC):
     def mk_ori_biased_duplicate(
             self, v_sd_factor: float, h_sd_factor: float
             ) -> DOGSpatFiltArgs:
-        "Create duplicate but with factors applies to sd values"
+        "Create duplicate but with factors applied to sd values (with horizontal 0deg ori)"
 
         spat_filt_args = copy.deepcopy(self)
 
@@ -482,10 +482,12 @@ class DOGSpatialFilter(ConversionABC):
         """Copied parameters with sds adjusted to produce circular variance"""
 
         sd_ratio = self.ori_bias_params.circ_var2ratio(circ_var)
-        v_sd_fact, h_sd_fact = ff.mk_ori_biased_sd_factors(sd_ratio)
+        # as first return val is biggest, this makes horizontally  elongated
+        # orientation 0 degs
+        h_sd_fact, v_sd_fact = ff.mk_ori_biased_sd_factors(sd_ratio)
 
         new_sf_params = self.parameters.mk_ori_biased_duplicate(
-            v_sd_fact, h_sd_fact
+            h_sd_factor=h_sd_fact, v_sd_factor=v_sd_fact
             )
 
         return new_sf_params
