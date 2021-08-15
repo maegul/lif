@@ -13,8 +13,7 @@ import numpy as np
 
 # import scipy.stats as st
 
-from ...utils import data_objects as do
-from ...utils import settings
+from ...utils import data_objects as do, settings, exceptions as exc
 from ...utils.units.units import (
     SpatFrequency, TempFrequency, ArcLength, Time, val_gen)
 from . import (estimate_real_amp_from_f1 as est_amp, cv_von_mises as cvvm)
@@ -27,26 +26,70 @@ SPAT_FILT_SD_LIMIT = settings.simulation_params.spat_filt_sd_factor
 
 # > Spatial
 
+
+def mk_spat_radius(spat_ext: ArcLength[float]) -> ArcLength[float]:
+    """Calculate a radius that is appropriate for generating spatial coords
+
+    Divides extent by 2 and raises to ceiling.
+    Use ceil (instead of floor) to ensure that sd_limit is
+    not arbitrarily cut down too far.
+
+    All done in same units as spat_ext and returns arclength in same units
+    """
+    spat_radius = ArcLength(np.ceil(spat_ext.value / 2), spat_ext.unit)
+
+    return spat_radius
+
+
+def check_spat_ext_res(ext: ArcLength[float], res: ArcLength[float]):
+    """Check that spatial ext and res are capable of producing appropriate coords
+
+    That is:
+        Extent is a whole number multiple of resolution
+    """
+
+    ext = ext.in_same_units_as(res)
+    check = ext.value % res.value == 0
+
+    if not check:
+        raise exc.CoordsValueError(
+            f'extent {ext} not whole multiple of res {res}: ext % res = {ext.value % res.value}')
+
+
 def mk_spat_coords_1d(
         spat_res: ArcLength[float] = ArcLength(1, 'mnt'),  # should be ArcLength[int] ??
         spat_ext: ArcLength[float] = ArcLength(300, 'mnt')) -> ArcLength[np.ndarray]:
     """1D spatial coords symmetrical about 0 with 0 being the central discrete point
 
     Center point (value: 0) will be at index spat_ext // 2 if spat_res is 1
-    Or, otherwise ... coords.size // 2
+    Or, otherwise ... coords.size // 2,
+    Or, as always square for 2d (?) ... coords.shape[0] // 2
 
-    Guranteed by dividing spat_ext by 2 and np.ceiling (to provide even int for total extent)
-    And, adding to extent 1 in additional unit of spatial resolution
+    Guranteed by dividing spat_ext by 2 and np.ceiling
+    (to provide even int for total extent)
+    And, adding to extent 1 additional unit of spatial resolution (as 0, in the middle)
 
     Use ceil (instead of floor) to ensure that sd_limit is not arbitrarily cut down to far
 
-    All done in units of `mnt` from ArcLength
+    All done in units of spat_res
     """
 
-    spat_radius = np.ceil(spat_ext.mnt / 2)
+    spat_ext = spat_ext.in_same_units_as(spat_res)
+    spat_radius = mk_spat_radius(spat_ext)
+
+    check_spat_ext_res(ext=spat_ext, res=spat_radius)
+
+    # to keep everything in same unit as resolution
+    res_unit = spat_res.unit
+
+    # get radius using same units as spat_res
     coords = ArcLength(
-            np.arange(-spat_radius, spat_radius + spat_res.mnt, spat_res.mnt),
-            'mnt'
+            np.arange(
+                -spat_radius[res_unit],
+                spat_radius[res_unit] + spat_res[res_unit],
+                spat_res[res_unit]
+                ),
+            res_unit
         )
 
     return coords

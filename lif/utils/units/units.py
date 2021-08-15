@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Callable, Union, Iterable, Tuple, TypeVar, Generic
+from typing import Callable, Union, Iterable, Tuple, TypeVar, Type, Generic
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -11,11 +11,6 @@ PI = math.pi
 val_gen = TypeVar('val_gen', float, np.ndarray)
 # val_gen = TypeVar('val_gen', int, float, np.ndarray)
 
-def type_test(a: float, b: int) -> float:
-
-    return a * b
-
-tt = type_test(1, 3)
 
 # from .core import add_conversions
 
@@ -37,6 +32,8 @@ tt = type_test(1, 3)
 # more work per unit, but direct and easy to type
 # And generates tab completion for the properties (as coded explicitly)
 
+unit_bc = TypeVar('unit_bc', bound='_UnitBC')
+
 @dataclass(frozen=True)
 class _UnitBC(Generic[val_gen]):
 
@@ -50,6 +47,14 @@ class _UnitBC(Generic[val_gen]):
     def _convert(self, new_unit: str) -> val_gen:
         "Generic conversion method, converts to new_unit from instantiated unit"
         return (self.value * self[f'_{self.unit}']) / self[f'_{new_unit}']
+
+    def in_same_units_as(self: unit_bc, other: unit_bc) -> unit_bc:
+        "Re instantiate in same base units as other"
+
+        unit_type = type(self)
+        new = unit_type(self._convert(other.unit), other.unit)
+
+        return new
 
 
 @dataclass(frozen=True)

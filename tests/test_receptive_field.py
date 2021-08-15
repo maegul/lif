@@ -100,6 +100,67 @@ def test_fit_tq_temp_filt():
 
 # > test tq_temp_filt provides decent fit
 
+basic_float_strat = st.floats(min_value=1, max_value=10, allow_infinity=False, allow_nan=False)
+
+
+# > Spatial Filters
+
+@given(
+    spat_ext=st.floats(
+        min_value=1, max_value=1000, allow_infinity=False, allow_nan=False))
+def test_coords_center_zero(spat_ext: float):
+    """Test that at coords.size//2 is always the coordinate value 0
+
+    Uses default value of spat_res: 1 mnt
+    """
+
+    spat_extent = ArcLength(spat_ext, 'mnt')
+    coords = ff.mk_spat_coords_1d(spat_ext=spat_extent)
+
+    assert np.isclose(coords.mnt[coords.base.size//2], 0.0)  # type: ignore
+
+
+def test_basic_coord_res_exception():
+
+    ext = ArcLength(10)
+    res = ArcLength(3)
+
+    with raises(exc.CoordsValueError):
+        ff.check_spat_ext_res(ext, res)
+
+
+@st.composite
+def not_whole_number_multiple_arclengths(
+        draw, min_value, max_value):
+
+    main_val = draw(st.integers(
+        min_value=min_value, max_value=max_value
+        ))
+    lower_val = draw(st.integers(
+        min_value=min_value, max_value=max_value
+        ))
+
+    main_unit = draw(st.one_of(st.just('mnt'), st.just('sec'), st.just('deg')))
+    lower_unit = draw(st.one_of(st.just('mnt'), st.just('sec'), st.just('deg')))
+
+    main = ArcLength(main_val, main_unit)
+    lower = ArcLength(lower_val, lower_unit)
+
+    assume(not (main.in_same_units_as(lower).value % lower.value == 0))
+
+    return lower, main
+
+
+@mark.proto
+@given(
+    coord_args=not_whole_number_multiple_arclengths(min_value=1, max_value=10000)
+    )
+def test_coord_res_exception(coord_args):
+
+    spat_res, spat_ext = coord_args
+
+    with raises(exc.CoordsValueError):
+        ff.check_spat_ext_res(spat_ext, spat_res)
 
 
 
