@@ -27,7 +27,7 @@ SPAT_FILT_SD_LIMIT = settings.simulation_params.spat_filt_sd_factor
 # > Spatial
 
 
-def mk_spat_radius(spat_ext: ArcLength[float]) -> ArcLength[float]:
+def mk_spat_radius(spat_ext: ArcLength[int]) -> ArcLength[int]:
     """Calculate a radius that is appropriate for generating spatial coords
 
     Divides extent by 2 and raises to ceiling.
@@ -36,19 +36,25 @@ def mk_spat_radius(spat_ext: ArcLength[float]) -> ArcLength[float]:
 
     All done in same units as spat_ext and returns arclength in same units
     """
-    spat_radius = ArcLength(np.ceil(spat_ext.value / 2), spat_ext.unit)
+    val = int(np.ceil(spat_ext.value / 2))
+    spat_radius = ArcLength(val, spat_ext.unit)
 
     return spat_radius
 
 
-def check_spat_ext_res(ext: ArcLength[float], res: ArcLength[float]):
+def check_spat_ext_res(ext: ArcLength[int], res: ArcLength[int]):
     """Check that spatial ext and res are capable of producing appropriate coords
 
     That is:
         Extent is a whole number multiple of resolution
+
+    THE UNITS OF THE TWO should be the same to prevent errors in the generation of the coords
     """
 
-    ext = ext.in_same_units_as(res)
+    if (ext.unit != res.unit):
+        raise exc.CoordsValueError(
+            f'Extent unit {ext.unit} and res unit {res.unit} should be same')
+
     check = ext.value % res.value == 0
 
     if not check:
@@ -57,8 +63,8 @@ def check_spat_ext_res(ext: ArcLength[float], res: ArcLength[float]):
 
 
 def mk_spat_coords_1d(
-        spat_res: ArcLength[float] = ArcLength(1, 'mnt'),  # should be ArcLength[int] ??
-        spat_ext: ArcLength[float] = ArcLength(300, 'mnt')) -> ArcLength[np.ndarray]:
+        spat_res: ArcLength[int] = ArcLength(1, 'mnt'),  # should be ArcLength[int] ??
+        spat_ext: ArcLength[int] = ArcLength(300, 'mnt')) -> ArcLength[np.ndarray]:
     """1D spatial coords symmetrical about 0 with 0 being the central discrete point
 
     Center point (value: 0) will be at index spat_ext // 2 if spat_res is 1
@@ -74,22 +80,22 @@ def mk_spat_coords_1d(
     All done in units of spat_res
     """
 
+    # convert extent to same units as resolution first
+    # so that converted to integers afterward, and no more
+    # conversions that introduce floating point issues are done
     spat_ext = spat_ext.in_same_units_as(spat_res)
     spat_radius = mk_spat_radius(spat_ext)
 
-    check_spat_ext_res(ext=spat_ext, res=spat_radius)
-
-    # to keep everything in same unit as resolution
-    res_unit = spat_res.unit
+    check_spat_ext_res(ext=spat_radius, res=spat_res)
 
     # get radius using same units as spat_res
     coords = ArcLength(
             np.arange(
-                -spat_radius[res_unit],
-                spat_radius[res_unit] + spat_res[res_unit],
-                spat_res[res_unit]
+                -spat_radius.value,
+                spat_radius.value + spat_res.value,
+                spat_res.value
                 ),
-            res_unit
+            spat_res.unit
         )
 
     return coords
@@ -98,25 +104,25 @@ def mk_spat_coords_1d(
 def mk_spat_ext_from_sd_limit(
         sd: ArcLength[float],
         sd_limit: float = SPAT_FILT_SD_LIMIT
-        ) -> ArcLength[float]:
+        ) -> ArcLength[int]:
     """Calculate spatial extent to adequately present full DOG spatial filter with Std Dev sd
 
     As sd is a radius distance, and spat_ext is diametrical, calculation is
     2 * sd_limit * sd.
     No rounding is done as presumed to be done in coords generation (mk_spat_coords etc)
 
-    Returns Arclenth in base units.
+    Returns Arclenth in same units as sd.
     """
 
-    max_sd = sd_limit * sd.base
-    spat_ext = ArcLength(2 * max_sd)
+    max_sd = int(np.ceil(sd_limit * sd.value))
+    spat_ext = ArcLength(2 * max_sd, sd.unit)
 
     return spat_ext
 
 
 def mk_sd_limited_spat_coords(
-        spat_res: ArcLength = ArcLength(1, 'mnt'),
-        spat_ext: ArcLength[float] = ArcLength(300, 'mnt'),
+        spat_res: ArcLength[int] = ArcLength(1, 'mnt'),
+        spat_ext: ArcLength[int] = ArcLength(300, 'mnt'),
         sd: Optional[ArcLength[float]] = None,
         sd_limit: float = SPAT_FILT_SD_LIMIT) -> ArcLength[np.ndarray]:
     """Wrap mk_spat_coords_1d to limit extent by number of SD
@@ -240,9 +246,9 @@ def mk_spat_coords(
 
 
 def mk_spat_temp_coords(
-        spat_res: ArcLength[float] = ArcLength(1, 'mnt'),
+        spat_res: ArcLength[int] = ArcLength(1, 'mnt'),
         temp_res: Time[float] = Time(1, 'ms'),
-        spat_ext: ArcLength[float] = ArcLength(300, 'mnt'),
+        spat_ext: ArcLength[int] = ArcLength(300, 'mnt'),
         temp_ext: Time[float] = Time(1000, 'ms'),
         sd: Optional[ArcLength[float]] = None,
         sd_limit: float = SPAT_FILT_SD_LIMIT

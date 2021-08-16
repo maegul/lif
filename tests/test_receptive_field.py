@@ -1,14 +1,14 @@
 from pathlib import Path
 import re
-from typing import cast
+from typing import cast, Tuple
 from dataclasses import astuple, asdict
 
-from pytest import mark
-from hypothesis import given, strategies as st
+from pytest import mark, raises
+from hypothesis import given, strategies as st, assume
 
 from lif import convolve as conv
 from lif.utils.units.units import ArcLength, SpatFrequency, TempFrequency, Time
-from lif.utils import data_objects as do
+from lif.utils import data_objects as do, exceptions as exc
 
 from lif.receptive_field.filters import (
     filters,
@@ -120,10 +120,19 @@ def test_coords_center_zero(spat_ext: float):
     assert np.isclose(coords.mnt[coords.base.size//2], 0.0)  # type: ignore
 
 
+@mark.proto
 def test_basic_coord_res_exception():
 
+    # check whole multiple exception
     ext = ArcLength(10)
     res = ArcLength(3)
+
+    with raises(exc.CoordsValueError):
+        ff.check_spat_ext_res(ext, res)
+
+    # check unit exception
+    ext = ArcLength(1, 'sec')
+    res = ArcLength(1, 'mnt')
 
     with raises(exc.CoordsValueError):
         ff.check_spat_ext_res(ext, res)
@@ -132,6 +141,10 @@ def test_basic_coord_res_exception():
 @st.composite
 def not_whole_number_multiple_arclengths(
         draw, min_value, max_value):
+    """Strategy for arclengths where one is not whole number multiple of other
+
+    Returns lower, main ... main is not whole multiple of lower
+    """
 
     main_val = draw(st.integers(
         min_value=min_value, max_value=max_value
@@ -151,6 +164,58 @@ def not_whole_number_multiple_arclengths(
     return lower, main
 
 
+@st.composite
+def whole_number_multiple_arclengths(draw, min_value, max_value):
+    """Arclength resolution and extent where extent is whole multiple of res
+
+    ... If done in the same units as resolution.  Actual units of the two will vary
+
+    min and max_value apply to the resolution value, of which the extent value is
+    a multiple
+    """
+
+    res_val = draw(st.integers(
+        min_value=min_value, max_value=max_value))
+    # ext_factor must be an even factor as it is the radius (ceil(ext/2))
+    # that must be a whole multiple of the resolution
+    ext_factor = 2 * draw(st.integers(min_value=1, max_value=1000))
+
+    res_unit, ext_unit = draw(
+        st.tuples(
+            st.one_of(st.just('mnt'), st.just('sec'), st.just('deg')),
+            st.one_of(st.just('mnt'), st.just('sec'), st.just('deg'))
+            )
+        )
+
+    res_arclength = ArcLength(res_val, res_unit)
+    # set ext to value of res*ext_factor,
+    # must be in same unit as res_unit, then convert to unit of ext_unit and create
+    # second arclength object in these units
+    # underlying value should be the same, but with a distinct original unit
+    # all to test if differing units are handled appropriately
+    ext_arclength = ArcLength(
+        int(ArcLength(res_val * ext_factor, res_unit)[ext_unit]), ext_unit)
+
+    # as the rounding of int and unit conversion can break the requirement
+    # of whole multiples here ...
+    # ... use a further assume
+    # just to ensure that differing units do work with the code base
+
+    assume_check = (
+        np.ceil(ext_arclength.in_same_units_as(res_arclength).value / 2 )
+        %
+        res_arclength.value
+        ==
+        0
+        )
+
+    print(res_val, ext_factor, res_arclength, ext_arclength, assume_check)
+
+    assume(assume_check)
+
+    return res_arclength, ext_arclength
+
+
 @mark.proto
 @given(
     coord_args=not_whole_number_multiple_arclengths(min_value=1, max_value=10000)
@@ -159,15 +224,31 @@ def test_coord_res_exception(coord_args):
 
     spat_res, spat_ext = coord_args
 
+    # conversion like this SHOULD be done in spatial coords code
+    spat_ext = spat_ext.in_same_units_as(spat_res)
+
     with raises(exc.CoordsValueError):
         ff.check_spat_ext_res(spat_ext, spat_res)
 
 
+@mark.proto
+@given(coord_args=whole_number_multiple_arclengths(min_value=1, max_value=100))
+def test_coords_center_zero_multi_res(coord_args):
+    """Test that coords at center like above but with variable resolution
+    """
 
-basic_float_strat = st.floats(min_value=1, max_value=10, allow_infinity=False, allow_nan=False)
+    res_arclength, ext_arclength = coord_args
 
+    coords = ff.mk_spat_coords_1d(res_arclength, ext_arclength)
 
-# > Spatial Filters
+    ends = coords.base[0], coords.base[-1]
+
+    # test that symmetrical
+    assert np.isclose(ends[0], -1 * ends[1])
+
+    # test that center is zero
+    assert np.isclose(coords.base[coords.base.size//2], 0)
+
 
 def test_gauss_params_round_trip():
 
@@ -673,7 +754,6 @@ def test_anisotropic_dog_rf_ft():
 
 # test joint amp with manual params produces output
 
-
 def test_joint_amp():
 
     # creating mock parameters from known parameters that work
@@ -705,7 +785,8 @@ def test_joint_amp():
                                           mean_lum=100, contrast=0.5),
             meta_data=None),
         parameters=test_sf_params,
-        optimisation_result=None)  # type: ignore
+        optimisation_result=None,  # type: ignore
+        ori_bias_params=None)  # type: ignore
 
     test_tf = do.TQTempFilter(
         source_data=do.TempFiltParams(
