@@ -353,6 +353,21 @@ class DOGSpatFiltArgs(ConversionABC):
         "2D array of [[cent args], [surr args]]"
         return np.vstack((self.cent.array(), self.surr.array()))
 
+    def max_sd(self) -> ArcLength[float]:
+        "Max sd val in definition of parameters as ArcLength, unit preserved"
+
+        sds = (
+            self.cent.arguments.h_sd,
+            self.cent.arguments.v_sd,
+            self.surr.arguments.h_sd,
+            self.surr.arguments.v_sd
+            )
+
+        max_sd = max(sds, key=lambda sd: sd.base)
+
+        return ArcLength(max_sd.value, max_sd.unit)
+
+
     def to_dog_1d(self) -> DOGSpatFiltArgs1D:
         "Take h_sd values, presume radial symmetry, return 1D DoG spat fil"
 
