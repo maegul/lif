@@ -194,7 +194,7 @@ El = -65 * bnun.mV
 vmean = -65 * bnun.mV
 taum = 5 * ms
 taue = 3 * ms
-taui = 10 *ms
+taui = 10 * ms
 
 eqs = '''
 dv/dt = (ge+gi-(v-El))/taum : volt
