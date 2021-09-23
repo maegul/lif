@@ -737,8 +737,15 @@ def test_sf_conv_amp_1d(sd):
 
 
 # > test sf conv amp 2d
+@mark.proto
 @given(
-    t_freq=st.floats(min_value=0, max_value=100, allow_infinity=False, allow_nan=False)
+    t_freq=st.one_of([
+        # 0 or 0.5+, so that actual value of convolved signal easily isolated
+        # temp_ext is 1s, so any freq >=0.5 for a sin wave should the peak nicely in the
+        # middle
+        st.just(0),
+        st.floats(min_value=0.5, max_value=50, allow_infinity=False, allow_nan=False)
+        ])
     )
 def test_tq_tf_conv_amp_est(t_freq: float):
     "Test that estimate of tq tf accurate"
@@ -749,7 +756,10 @@ def test_tq_tf_conv_amp_est(t_freq: float):
     temp_ext = Time(1.0, 's')
 
     temp_coords = ff.mk_temp_coords(temp_res, temp_ext)
-    signal = np.cos(temp_freq.w * temp_coords.s)
+    # use cos for 0hz and sin for else, to help isolate magnitude
+    # for 0hz, cos is more accurate with amplitude of 1 (same as stimulus)
+    sinusoid = np.cos if t_freq == 0 else np.sin
+    signal = sinusoid(temp_freq.w * temp_coords.s)
 
     # ordinary tq temp filter
     tq_tf = do.TQTempFiltParams(
@@ -762,19 +772,23 @@ def test_tq_tf_conv_amp_est(t_freq: float):
     # convolve and take only first part corresponding to filter size
     conv_signal = convolve(signal, temp_filter, mode='full')[:temp_coords.base.shape[0]]
 
-    inner_idx = int(temp_coords.base.shape[0] * 0.15)
-    inner_conv_signal = conv_signal[inner_idx:-inner_idx]
-
-    # conv_amp = (inner_conv_signal.max() - inner_conv_signal.min()) / 2
+    # 260 ms is approximately when this temp filter goes to zero
+    inner_idx = int(temp_coords.base.shape[0] * 0.26)
+    # inner_conv_signal = conv_signal[inner_idx:-inner_idx]
+    inner_conv_signal = conv_signal[inner_idx:]
 
     # if DC stays zero (as DC of original signal is zero), then amplitude is simply max
     # as this is the magnitude from zero to positive peak
-    conv_amp = inner_conv_signal.max()
+    # can therefore use either min or max
+    # as trying to be most accurate, taking min from sinusoid is more likely to be accurate
+    # as it will be later in the convoluved signal, and free of transient effects
+    conv_amp = np.max(np.abs([inner_conv_signal.max(), inner_conv_signal.min()]))  # type: ignore
+    # conv_amp = inner_conv_signal.max()
     est_conv_amp = ff.mk_tq_tf_conv_amp(temp_freq, tq_tf, temp_res)
 
     # print(temp_freq, conv_amp, est_conv_amp)
 
-    assert np.isclose(conv_amp, est_conv_amp, rtol=1e-2)  # type: ignore
+    assert np.isclose(conv_amp, est_conv_amp, rtol=1e-4)  # type: ignore
 
 
 # make sf
