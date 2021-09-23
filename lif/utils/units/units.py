@@ -9,7 +9,7 @@ PI = math.pi
 # generic values ... share arithmetic operators
 # covariant so that int and float are compatible ... possibly because of other bug?
 val_gen = TypeVar('val_gen', int, float, np.ndarray, covariant=False)
-# val_gen = TypeVar('val_gen', int, float, np.ndarray)
+val_gen_union = Union[int, float, np.ndarray]
 
 
 

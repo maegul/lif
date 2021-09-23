@@ -3,6 +3,7 @@
 
 from dataclasses import dataclass
 from typing import Optional, Union, Tuple, overload, Callable
+from brian2.core.variables import Variable
 
 import numpy as np
 
@@ -27,17 +28,74 @@ SPAT_FILT_SD_LIMIT = settings.simulation_params.spat_filt_sd_factor
 # > Spatial
 
 
-def mk_spat_radius(spat_ext: ArcLength[int]) -> ArcLength[int]:
+def round_coord_to_res(
+        coord: ArcLength[float], res: ArcLength[int],
+        high: bool = False, low: bool = False) -> ArcLength[int]:
+    """Rounds a Spatial coord to a whole number multiple of the resolution
+
+    coords returned in units of resolution and with value as int (provided res is int)
+    """
+
+    if high and low:
+        raise ValueError('high and low cannot both be True')
+
+    res_unit = res.unit
+    coord_val = coord[res_unit]
+    res_val = res.value
+
+    low_val = int(coord_val // res_val) * res_val
+    high_val = low_val + res_val
+
+    if high:
+        rounded_val = high_val
+    elif low:
+        rounded_val = low_val
+    else:
+        low_diff = abs(low_val - coord_val)
+        high_diff = abs(high_val - coord_val)
+
+        rounded_val = (
+            high_val if low_diff > high_diff
+            else low_val
+            )
+
+    return ArcLength(rounded_val, res_unit)
+
+
+def mk_spat_radius(spat_ext: Union[ArcLength[int], ArcLength[float]]) -> ArcLength[int]:
     """Calculate a radius that is appropriate for generating spatial coords
 
     Divides extent by 2 and raises to ceiling.
     Use ceil (instead of floor) to ensure that sd_limit is
     not arbitrarily cut down too far.
 
+    Value is converted to int (through ceil) and return is always ArcLength[int]
+
     All done in same units as spat_ext and returns arclength in same units
     """
-    val = int(np.ceil(spat_ext.value / 2))
+    # val = int(np.ceil(spat_ext.value / 2))
+    # why not just round to next highest res multiple??
+
+    ## Redundant now??
+
+    val = round(spat_ext.value / 2)
     spat_radius = ArcLength(val, spat_ext.unit)
+
+    return spat_radius
+
+
+def mk_rounded_spat_radius(
+        spat_res: ArcLength[int], spat_ext: Union[ArcLength[int], ArcLength[float]]
+        ) -> ArcLength[int]:
+    """Round spat_ext to whole multiple of spat_res, return value int and unit same as res
+
+    Uses round_coord_to_res after dividing by 2
+    """
+
+    spat_radius = round_coord_to_res(
+        ArcLength(spat_ext[spat_res.unit] / 2, spat_res.unit),
+        spat_res, high=True
+    )
 
     return spat_radius
 
@@ -64,7 +122,8 @@ def check_spat_ext_res(ext: ArcLength[int], res: ArcLength[int]):
 
 def mk_spat_coords_1d(
         spat_res: ArcLength[int] = ArcLength(1, 'mnt'),  # should be ArcLength[int] ??
-        spat_ext: ArcLength[int] = ArcLength(300, 'mnt')) -> ArcLength[np.ndarray]:
+        spat_ext: Union[ArcLength[int], ArcLength[float]] = ArcLength(300, 'mnt')
+        ) -> ArcLength[np.ndarray]:
     """1D spatial coords symmetrical about 0 with 0 being the central discrete point
 
     Center point (value: 0) will be at index spat_ext // 2 if spat_res is 1
@@ -83,9 +142,22 @@ def mk_spat_coords_1d(
     # convert extent to same units as resolution first
     # so that converted to integers afterward, and no more
     # conversions that introduce floating point issues are done
-    spat_ext = spat_ext.in_same_units_as(spat_res)
-    spat_radius = mk_spat_radius(spat_ext)
+    # spat_ext = spat_ext.in_same_units_as(spat_res)
 
+    # typing problems
+    # spat_ext_in_res_units = ArcLength(float(spat_ext[spat_res.unit]), spat_res.unit)
+    # spat_radius = mk_spat_radius(spat_ext_in_res_units)
+
+    # divide spat_ext by 2, in units of res, then round to res
+    # spat_radius = round_coord_to_res(
+    #         ArcLength(spat_ext[spat_res.unit] / 2, spat_res.unit),
+    #         spat_res, high=True
+    #     )
+
+    spat_radius = mk_rounded_spat_radius(spat_res, spat_ext)
+
+    # to have a coord value that is zero, it is just a requirement that the
+    # the spat_radius is a whole multiple of the spat_res
     check_spat_ext_res(ext=spat_radius, res=spat_res)
 
     # get radius using same units as spat_res
@@ -122,7 +194,7 @@ def mk_spat_ext_from_sd_limit(
 
 def mk_sd_limited_spat_coords(
         spat_res: ArcLength[int] = ArcLength(1, 'mnt'),
-        spat_ext: ArcLength[int] = ArcLength(300, 'mnt'),
+        spat_ext: Union[ArcLength[int], ArcLength[float]] = ArcLength(300, 'mnt'),
         sd: Optional[ArcLength[float]] = None,
         sd_limit: float = SPAT_FILT_SD_LIMIT) -> ArcLength[np.ndarray]:
     """Wrap mk_spat_coords_1d to limit extent by number of SD
@@ -142,8 +214,8 @@ def mk_sd_limited_spat_coords(
 
 
 def mk_blank_coords(
-        spat_res: ArcLength = ArcLength(1, 'mnt'), temp_res: Time = Time(1, 'ms'),
-        spat_ext: ArcLength = ArcLength(300, 'mnt'), temp_ext: Time = Time(1000, 'ms'),
+        spat_res: ArcLength[int] = ArcLength(1, 'mnt'), temp_res: Time = Time(1, 'ms'),
+        spat_ext: Union[ArcLength[int], ArcLength[float]] = ArcLength(300, 'mnt'), temp_ext: Time = Time(1000, 'ms'),
         ) -> np.ndarray:
     '''
     Produces blank coords for each spatial and temporal value
@@ -190,8 +262,8 @@ def mk_blank_coords(
 
 
 def mk_spat_coords(
-        spat_res: ArcLength = ArcLength(1, 'mnt'),
-        spat_ext: ArcLength = ArcLength(300, 'mnt'),
+        spat_res: ArcLength[int] = ArcLength(1, 'mnt'),
+        spat_ext: Union[ArcLength[int], ArcLength[float]] = ArcLength(300, 'mnt'),
         sd: Optional[ArcLength[float]] = None,
         sd_limit: float = SPAT_FILT_SD_LIMIT
         ) -> Tuple[ArcLength[np.ndarray], ArcLength[np.ndarray]]:
@@ -248,7 +320,7 @@ def mk_spat_coords(
 def mk_spat_temp_coords(
         spat_res: ArcLength[int] = ArcLength(1, 'mnt'),
         temp_res: Time[float] = Time(1, 'ms'),
-        spat_ext: ArcLength[int] = ArcLength(300, 'mnt'),
+        spat_ext: Union[ArcLength[int], ArcLength[float]] = ArcLength(300, 'mnt'),
         temp_ext: Time[float] = Time(1000, 'ms'),
         sd: Optional[ArcLength[float]] = None,
         sd_limit: float = SPAT_FILT_SD_LIMIT

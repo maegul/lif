@@ -542,8 +542,8 @@ class LGNCell(ConversionABC):
 class SpaceTimeParams(ConversionABC):
     "Spatial and Temporal Canvas"
 
-    spat_ext: ArcLength[float]
-    spat_res: ArcLength[float]
+    spat_ext: Union[ArcLength[int], ArcLength[float]]
+    spat_res: ArcLength[int]
     temp_ext: Time[float]
     temp_res: Time[float]
 
@@ -587,7 +587,6 @@ class GratingStimulusParams(ConversionABC):
             )
 
         return freq
-
 
 
 @dataclass

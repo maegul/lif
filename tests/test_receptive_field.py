@@ -4,7 +4,7 @@ from typing import cast, Tuple
 from dataclasses import astuple, asdict
 
 from pytest import mark, raises
-from hypothesis import given, strategies as st, assume
+from hypothesis import given, strategies as st, assume, event
 
 from lif import convolve as conv
 from lif.utils.units.units import ArcLength, SpatFrequency, TempFrequency, Time
@@ -65,7 +65,7 @@ def test_tq_filt_args_array_round_trip():
 
 
 t = filters.do.TQTempFiltParams(
-    amplitude=44, 
+    amplitude=44,
     arguments=filters.do.TQTempFiltArgs(
         tau=Time(15), w=3, phi=0.3))
 
@@ -94,7 +94,7 @@ def test_fit_tq_temp_filt():
 
     data = filters.do.TempFiltData(frequencies=fs, amplitudes=amps)
     opt_res = filters._fit_tq_temp_filt(data)
-    
+
     assert opt_res.success == True  # noqa: E712
 
 
@@ -138,6 +138,56 @@ def test_basic_coord_res_exception():
         ff.check_spat_ext_res(ext, res)
 
 
+# arclength_units_strat = st.one_of(st.just('mnt'), st.just('sec'), st.just('deg'))
+arclength_units_strat = st.sampled_from(['mnt', 'sec', 'deg'])
+
+
+@st.composite
+def unrounded_coord_and_res(draw, min_value, max_value):
+    """integer res and larger coord where res is int and coord arbitrary float
+
+    in arbitrary units (not necessarily the same)
+    """
+    res_value: int = draw(st.integers(min_value=min_value, max_value=max_value))
+    coord_fact: float = draw(st.floats(min_value=2, max_value=max_value))
+
+    res_unit = draw(arclength_units_strat)
+    coord_unit = draw(arclength_units_strat)
+
+    res = ArcLength(res_value, res_unit)
+    coord = ArcLength(ArcLength(res_value * coord_fact, res_unit)[coord_unit], coord_unit)
+
+    return res, coord
+
+
+@mark.proto
+@given(coord_res=unrounded_coord_and_res(1, 1000))
+def test_round_coord_to_res_multiple(
+        coord_res: Tuple[ArcLength[int], ArcLength[float]]):
+
+    res, coord = coord_res
+    event(f'coord_unit: {coord.unit}, res_unit: {res.unit}')
+
+    # print(coord, res)
+
+    new_coords = [
+        ff.round_coord_to_res(coord, res, low=True),
+        ff.round_coord_to_res(coord, res),
+        ff.round_coord_to_res(coord, res, high=True)
+    ]
+
+    # low and high flags produce correctly higher or lower values
+    assert sorted(new_coords, key=lambda c: c.value) == new_coords
+
+    new_coord_modulos = [
+        nc.value % res.value == 0
+        for nc in new_coords
+    ]
+
+    # all are multiples of res
+    assert all(new_coord_modulos)
+
+
 @st.composite
 def not_whole_number_multiple_arclengths(
         draw, min_value, max_value):
@@ -164,58 +214,6 @@ def not_whole_number_multiple_arclengths(
     return lower, main
 
 
-@st.composite
-def whole_number_multiple_arclengths(draw, min_value, max_value):
-    """Arclength resolution and extent where extent is whole multiple of res
-
-    ... If done in the same units as resolution.  Actual units of the two will vary
-
-    min and max_value apply to the resolution value, of which the extent value is
-    a multiple
-    """
-
-    res_val = draw(st.integers(
-        min_value=min_value, max_value=max_value))
-    # ext_factor must be an even factor as it is the radius (ceil(ext/2))
-    # that must be a whole multiple of the resolution
-    ext_factor = 2 * draw(st.integers(min_value=1, max_value=1000))
-
-    res_unit, ext_unit = draw(
-        st.tuples(
-            st.one_of(st.just('mnt'), st.just('sec'), st.just('deg')),
-            st.one_of(st.just('mnt'), st.just('sec'), st.just('deg'))
-            )
-        )
-
-    res_arclength = ArcLength(res_val, res_unit)
-    # set ext to value of res*ext_factor,
-    # must be in same unit as res_unit, then convert to unit of ext_unit and create
-    # second arclength object in these units
-    # underlying value should be the same, but with a distinct original unit
-    # all to test if differing units are handled appropriately
-    ext_arclength = ArcLength(
-        int(ArcLength(res_val * ext_factor, res_unit)[ext_unit]), ext_unit)
-
-    # as the rounding of int and unit conversion can break the requirement
-    # of whole multiples here ...
-    # ... use a further assume
-    # just to ensure that differing units do work with the code base
-
-    assume_check = (
-        np.ceil(ext_arclength.in_same_units_as(res_arclength).value / 2 )
-        %
-        res_arclength.value
-        ==
-        0
-        )
-
-    print(res_val, ext_factor, res_arclength, ext_arclength, assume_check)
-
-    assume(assume_check)
-
-    return res_arclength, ext_arclength
-
-
 @mark.proto
 @given(
     coord_args=not_whole_number_multiple_arclengths(min_value=1, max_value=10000)
@@ -232,12 +230,15 @@ def test_coord_res_exception(coord_args):
 
 
 @mark.proto
-@given(coord_args=whole_number_multiple_arclengths(min_value=1, max_value=100))
+@given(coord_args=unrounded_coord_and_res(min_value=1, max_value=1000))
 def test_coords_center_zero_multi_res(coord_args):
     """Test that coords at center like above but with variable resolution
     """
 
     res_arclength, ext_arclength = coord_args
+
+    # what combinations of units are used by the strategy?
+    event(f'res_unit: {res_arclength.unit}, ext_unit: {ext_arclength.unit}')
 
     coords = ff.mk_spat_coords_1d(res_arclength, ext_arclength)
 
@@ -247,7 +248,7 @@ def test_coords_center_zero_multi_res(coord_args):
     assert np.isclose(ends[0], -1 * ends[1])
 
     # test that center is zero
-    assert np.isclose(coords.base[coords.base.size//2], 0)
+    assert np.isclose(coords.base[coords.base.size//2], 0)  # type: ignore
 
 
 def test_gauss_params_round_trip():
@@ -284,14 +285,37 @@ def test_gauss_2d_sum(x_sd: float, y_sd: float, mag: float):
     (sum * resolution) is the same as the magnitude (ie, integral==1)
     """
 
+    # factor by which to make RF bigger than x_sd/y_sd args
+    # to ensure integer spat res but sufficient RF and extent size
+    rf_factor = 10
+
     gauss_params = do.Gauss2DSpatFiltParams(
         amplitude=mag,
-        arguments=do.Gauss2DSpatFiltArgs(ArcLength(x_sd, 'mnt'), ArcLength(y_sd, 'mnt')))
+        arguments=do.Gauss2DSpatFiltArgs(
+                # to ensure spatial resolution is high enough
+                # multiple sd by rf_factor, as has min 1, and res must be an integer
+                ArcLength(x_sd * rf_factor, 'mnt'),
+                ArcLength(y_sd * rf_factor, 'mnt')
+            )
+        )
 
     # ensure resolution high enough for sd
-    spat_res = ArcLength((np.floor(np.min(np.array([x_sd, y_sd])))) / 10, 'mnt')
+    spat_res = ArcLength(
+        (int(min(x_sd, y_sd))),
+        'mnt'
+        )
     # ensure extent high enough for capture full gaussian
-    spat_ext = ArcLength((2 * 5*np.ceil(np.max(np.array([x_sd, y_sd]))) + 1), 'mnt')
+    spat_ext = ArcLength(
+        int(
+            2 *
+            5*np.ceil(
+                    # multiply rf_factor to ensure extent is sufficient
+                    max(x_sd, y_sd) * rf_factor
+                )
+            + 1
+            ),
+        'mnt'
+        )
 
     xc, yc = ff.mk_spat_coords(spat_res=spat_res, spat_ext=spat_ext)
 
@@ -320,21 +344,31 @@ def test_dog_rf(
     ####
     # all sd vals are presumed in minutes
 
+    # factor by which to make RF bigger than x_sd/y_sd args
+    # to ensure integer spat res but sufficient RF and extent size
+    rf_factor = 10
+
     # preparing params and coords
     dog_rf_params = do.DOGSpatFiltArgs(
         cent=do.Gauss2DSpatFiltParams.from_iter(
-            [mag_cent, cent_h_sd, cent_v_sd],
+            [mag_cent, cent_h_sd * rf_factor, cent_v_sd * rf_factor],
             arclength_unit='mnt'),
         surr=do.Gauss2DSpatFiltParams.from_iter(
-            [mag_surr, surr_h_sd, surr_v_sd],
+            [mag_surr, surr_h_sd * rf_factor, surr_v_sd * rf_factor],
             arclength_unit='mnt')
         )
 
     # ensure resolution high enough for sd
-    spat_res = (np.floor(np.min(np.array([cent_h_sd, cent_v_sd, surr_h_sd, surr_v_sd])))) / 10
+    spat_res = (int(min(
+        [cent_h_sd, cent_v_sd, surr_h_sd, surr_v_sd]
+        )))
     # ensure extent high enough for capture full gaussian
-    spat_ext = (
-        2 * 5*np.ceil(np.max(np.array([cent_h_sd, cent_v_sd, surr_h_sd, surr_v_sd]))) + 1)
+    spat_ext = int(
+        2 *
+        5*np.ceil(
+            max([cent_h_sd, cent_v_sd, surr_h_sd, surr_v_sd]) * rf_factor
+            )
+        + 1)
 
     xc: ArcLength
     yc: ArcLength
@@ -346,6 +380,13 @@ def test_dog_rf(
 
     ###############
     # making rf with direct code
+
+    # scale gauss parameters as used above
+    (cent_h_sd, cent_v_sd, surr_h_sd, surr_v_sd) = (
+        cent_h_sd * rf_factor,
+        cent_v_sd * rf_factor,
+        surr_h_sd * rf_factor,
+        surr_v_sd * rf_factor)
 
     rf_cent = (
         # mag divide by normalising factor with both sds (equivalent to sq if they were identical)
@@ -538,6 +579,8 @@ def test_dog_rf_gauss2d_fft(
     # assert (is_close.mean() > 0.95)  # type: ignore
 
 
+## Careful!!  Can easily take up lots of memory with large arrays
+
 @given(
     mag_cent=basic_float_strat,
     mag_surr=basic_float_strat,
@@ -559,7 +602,12 @@ def test_dog_ft_2d_to_1d(
     Works because if all y frequencies (fy) are zero (because of the slice) then this term
     in the equation has no impact
     """
-    cent_h_sd_al, surr_h_sd_al = (ArcLength(sd) for sd in (cent_h_sd, surr_h_sd))
+    # breakpoint()
+    # expand size of rf so that spat_res can be integer but 10 times smaller
+    rf_factor = 10
+    # these have values 10X the args
+    cent_h_sd_al, surr_h_sd_al = (
+        ArcLength(sd * rf_factor, 'mnt') for sd in (cent_h_sd, surr_h_sd))
 
     dog_sf_args = do.DOGSpatFiltArgs(
         cent=do.Gauss2DSpatFiltParams(
@@ -573,11 +621,18 @@ def test_dog_ft_2d_to_1d(
         )
 
     # ensure resolution high enough for sd
+    # value uses original args (not 10X)
     spat_res = ArcLength(
-        (np.floor(np.min(np.array([cent_h_sd_al.mnt, surr_h_sd_al.mnt])))) / 10, 'mnt')
+        int(min([cent_h_sd, surr_h_sd])),
+        'mnt')
     # ensure extent high enough for capture full gaussian
-    spat_ext: ArcLength[float] = ArcLength((
-        2 * 5*np.ceil(np.max(np.array([cent_h_sd_al.mnt, surr_h_sd_al.mnt]))) + 1), 'mnt')
+    # values use the arclengths with 10X value of original args
+    spat_ext: ArcLength[float] = ArcLength(
+        int(
+            2 *
+            5*np.ceil(max([cent_h_sd_al.mnt, surr_h_sd_al.mnt])) + 1
+            ),
+        'mnt')
 
     # spat_res, spat_ext = 1, 300
     coords = ff.mk_spat_coords_1d(spat_res=spat_res, spat_ext=spat_ext)
