@@ -1,0 +1,47 @@
+/*module headings*/
+.doc-heading code {
+/*	font-size: 1.2em;*/
+}
+
+div.doc-contents:not(.first) {
+	padding-left: 25px;
+	border-left: .05rem solid var(--md-default-fg-color--lightest);
+	margin-bottom: 20px;
+}
+
+.doc-module > .doc-heading code {
+	font-size: 1.2em;
+	font-weight: bold;
+	text-decoration: underline;
+	color: #d54ab4;
+}
+
+.doc-function > .doc-heading code span:first-child {
+	font-size: 1.2em;
+	color: #008edf;
+}
+
+.doc-function > .doc-heading {
+	font-size: 1.2em;
+	color: #008edf;
+	border-bottom: 1px solid #008edf ;
+}
+
+.doc-class > .doc-heading code {
+	font-size: 1.2em;
+	color: #0abd9b;
+	border-bottom: 1px solid #0abd9b ;
+}
+
+/*.doc-attribute > .doc-contents {
+	margin-bottom: 12px;
+}
+*/
+/*
+h2.doc-heading > code {
+	color: red;
+}
+
+h3.doc-heading > code {
+}
+*/

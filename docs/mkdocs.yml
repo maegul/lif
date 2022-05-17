@@ -1,0 +1,54 @@
+# mkdocs.yml
+site_name: LIF Docs
+site_url: https://lif_docs.com/
+nav:
+  - 'Overview':
+    - 'Architecture': "ARCHITECTURE.md"
+  - 'Utilities':
+    - 'Units': 'utilities/units.md'
+    - 'Data objects': 'utilities/data_objects.md'
+    - 'Settings Management': 'utilities/settings.md'
+  - 'Receptive Fields':
+    - 'Filter Functions': 'receptive_fields/filter_functions.md'
+    - 'Filters (making)': 'receptive_fields/filters.md'
+  - 'Stimulus': 'stimulus.md'
+  - 'Spiking & Convolution':
+    - 'convolution_and_spiking/convolution_and_spiking.md'
+    - 'Example': 'convolution_and_spiking/Example.md'
+theme:
+  name: "material"
+  palette:
+    scheme: slate
+    primary: indigo
+    accent: red
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+extra_css:
+  - css/custom.css
+
+plugins:
+- search
+- mkdocstrings:
+    watch:
+      - ../lif
+    handlers:
+      python:
+        selection:
+          docstring_style: google
+        rendering:
+          show_root_heading: True
+          show_root_toc_entry: False
+          show_if_no_docstring: True
+          show_signature_annotations: True
+          separate_signature: True
+          members_order: 'source'
+markdown_extensions:
+  - markdown_katex:
+      no_inline_svg: True
+      insert_fonts_css: True
+      # macro-file: macros.tex
+  - pymdownx.highlight:
+  - pymdownx.superfences:
+
