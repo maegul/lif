@@ -1,5 +1,5 @@
 {
-	"venv": "comp_neuro",
-	"pythonVersion": "3.7"
-
+	"venvPath": "/Users/errollloyd/miniconda3/envs",
+	"venv": "hws_lif"
+	// "venv": "comp_neuro"
 }

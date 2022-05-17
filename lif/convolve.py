@@ -1,4 +1,5 @@
-"""Using receptive fields and stimuli to create firing rates through convolution
+"""
+Using receptive fields and stimuli to create firing rates through convolution
 """
 from typing import Tuple
 

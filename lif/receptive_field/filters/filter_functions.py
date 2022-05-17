@@ -2,7 +2,7 @@
 """
 
 from dataclasses import dataclass
-from typing import Optional, Union, Tuple, overload, Callable
+from typing import Optional, Union, Tuple, overload, Callable, cast
 from brian2.core.variables import Variable
 
 import numpy as np
@@ -15,8 +15,9 @@ import numpy as np
 # import scipy.stats as st
 
 from ...utils import data_objects as do, settings, exceptions as exc
+from ...utils.data_objects import ConvRespAdjParams, SpaceTimeParams
 from ...utils.units.units import (
-    SpatFrequency, TempFrequency, ArcLength, Time, val_gen)
+    SpatFrequency, TempFrequency, ArcLength, Time, val_gen, val_gen_flt)
 from . import (estimate_real_amp_from_f1 as est_amp, cv_von_mises as cvvm)
 
 
@@ -54,12 +55,14 @@ def round_coord_to_res(
         low_diff = abs(low_val - coord_val)
         high_diff = abs(high_val - coord_val)
 
-        rounded_val = (
+        rounded_val: int = (
             high_val if low_diff > high_diff
             else low_val
             )
+    new_coord: ArcLength[int] = ArcLength(rounded_val, res_unit)  # type: ignore
+    return new_coord
 
-    return ArcLength(rounded_val, res_unit)
+    # return ArcLength(rounded_val, res_unit)
 
 
 def mk_spat_radius(spat_ext: Union[ArcLength[int], ArcLength[float]]) -> ArcLength[int]:
@@ -105,6 +108,7 @@ def check_spat_ext_res(ext: ArcLength[int], res: ArcLength[int]):
 
     That is:
         Extent is a whole number multiple of resolution
+        AND that the two are in the same units
 
     THE UNITS OF THE TWO should be the same to prevent errors in the generation of the coords
     """
@@ -181,7 +185,8 @@ def mk_spat_ext_from_sd_limit(
 
     As sd is a radius distance, and spat_ext is diametrical, calculation is
     2 * sd_limit * sd.
-    No rounding is done as presumed to be done in coords generation (mk_spat_coords etc)
+    Raising to the ceiling integer of the result of (sd_limit and sd) is done before doubling
+    up to an extent
 
     Returns Arclenth in same units as sd.
     """
@@ -224,7 +229,7 @@ def mk_blank_coords(
 
     Parameters
     ----
-    spat_res : float
+    spat_res
         resolution, in minutes of arc, of meshgrid
     temp_res : float
         resolution, in milliseconds, of temporal dimension of meshgrid
@@ -480,6 +485,7 @@ def mk_gauss_2d_ft(
         freqs_x: SpatFrequency[val_gen], freqs_y: SpatFrequency[val_gen],
         gauss_params: do.Gauss2DSpatFiltParams,
         collapse_symmetry: bool = False) -> val_gen:
+        # collapse_symmetry: bool = False) -> Union[float, np.ndarray]:
     """Analytical fourier transform of 2d gaussian defined by gauss_params
 
 
@@ -507,6 +513,9 @@ def mk_gauss_2d_ft(
         gauss_2d_ft = gauss_2d_ft * freq_sym_fact
 
     # Note: FT = T * FFT ~ amplitude of convolution
+
+    # Could use cast to pretend int still possible
+    # gauss_2d_ft = cast(val_gen, gauss_2d_ft)
     return gauss_2d_ft
 
 
@@ -758,7 +767,9 @@ def circ_var_sd_ratio_naito(
         ) -> Optional[float]:
     """Calculate circ_var of spat filt if v and h sds have ratio.
 
-    Uses definition of ori bias from Naito (2013)
+    Uses definition of ori bias from Naito (2013).
+    IE: Measure circ var at a high spatial frequency (higher than preferred)
+    where the response is 50% of that to the preferred frequency.
 
     Uses mk_ori_biased_sd_factors to convert ratio to sd factors
 
@@ -888,20 +899,24 @@ def _mk_tqtempfilt(
     On time constant and decay/growth dynamics for this filter, looking only at the
     gamma function or exponential component, the integral is:
 
-    $$F(t) = \int \frac{t \cdot exp(\frac{-t}{\tau})}{\tau^2} dt =
-    -\frac{exp(\frac{-t}{\tau})(\tau + t)}{\tau}$$
+    ```math
+    F(t) = \int \frac{t \cdot exp(\frac{-t}{\tau})}{\tau^2} dt =
+    -\frac{exp(\frac{-t}{\tau})(\tau + t)}{\tau}
+    ```
 
     The definite integral from zero to a number of time constants \(n\tau\) is:
 
-    $$ \begin{aligned}
+    ```math
+    \begin{aligned}
         F(t)|^{n\tau}_{0} &= -\frac{\tau+n\tau}{\tau}exp(\frac{-n\tau}{\tau})
         - (-)\frac{\tau}{\tau}\exp(\frac{0}{\tau}) \\
                                             &= -(1+n)exp(-n) + 1 \\
                                             &= 1 - \frac{1+n}{e^n} \\
                                             &= 1 - \frac{1}{e^n} - \frac{n}{e^n}
-    \end{aligned} $$
+    \end{aligned}
+    ```
 
-    Here, \(1 - \frac{1}{e^n}\) is ordinary exponential growth/decay.
+    Here, $` (1 - \frac{1}{e^n}) `$ is ordinary exponential growth/decay.
     The additional term of \(- \frac{n}{e^n}\) slows the growth/decay, but converges
     to zero by approx. 10 time constants (0.05%)
     """
@@ -1234,11 +1249,11 @@ def mk_estimate_sf_tf_conv_params(
 
 
 def mk_conv_resp_adjustment_params(
-        spacetime_params: do.SpaceTimeParams,
+        spacetime_params: SpaceTimeParams,
         grating_stim_params: do.GratingStimulusParams,
         sf: do.DOGSpatialFilter,
         tf: do.TQTempFilter
-        ) -> do.ConvRespAdjParams:
+        ) -> ConvRespAdjParams:
     """Factor to adjust amplitude of convolution to what filters dictate
 
     joint_spat_temp_conv_amp used to unify sf and tf
@@ -1247,26 +1262,27 @@ def mk_conv_resp_adjustment_params(
 
     Returned amplitude also adjusted for rectification effects.
 
-    Parameters
-    ----
+    Args:
+        spacetime_params: Parameters about space and time resolution and extent
 
 
-    Returns
-    ----
+    Returns:
+        params: Adjustment parameters
 
-    Notes
-    ----
+
+    **Notes**
 
     Steps:
-    1. Derive the amplitude of response of convolving TF.SF with stimulus
-        This is based on the parameters of the TF and SF and the amp of the stim
+
+    1. Derive the amplitude of response of convolving TF.SF with stimulus.
+        This is based on the parameters of the TF and SF and the amp of the stim.
     2. Derive the theoretical amplitude of a cell with the TF and SF at the freqs of the stimulus
     3. Derive the amplitude of an unrectified sin wave that would produce the above theoretical
         amplitude when rectified
     4. Produce factor that will normalise convolved amplitude to 1 and multiply by
         real unrectified amplitude necessary to produce theoretical.
 
-    Thus, the factor returned is the theoretical amplitude / convolutional amplitude
+    Thus, the factor returned is the theoretical amplitude / convolutional amplitude.
 
     """
 

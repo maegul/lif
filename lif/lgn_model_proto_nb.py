@@ -108,6 +108,11 @@ xc.base[center_idx, center_idx]
 test_coords = ff.mk_spat_coords_1d(st_params.spat_res, st_params.spat_ext)
 test_coords.mnt.shape
 test_coords.mnt.max()
+test_coords.deg[-1]
+# -----------
+# ===========
+# now ... just use mk_rounded_spat_radius
+ff.mk_rounded_spat_radius(st_params.spat_res, st_params.spat_ext).mnt == test_coords.mnt[-1]
 # -----------
 st_params.spat_ext.mnt
 # ===========
@@ -143,6 +148,7 @@ sf_pos = (0, 0)  # x, y coords in mnts
 # -----------
 # >>> Rounding Spat to Res
 # ===========
+# ... now part of filter functions ...
 def round_coord_to_res(
         coord: ArcLength[float], res: ArcLength[int]) -> ArcLength[int]:
     """Rounds a Spatial coord to a whole number multiple of the resolution
@@ -166,7 +172,8 @@ def round_coord_to_res(
 
     return ArcLength(rounded_val, res_unit)
 
-
+# -----------
+# ===========
 def round_spat_coords_to_resolution(
         x: ArcLength[float], y: ArcLength[float],
         res: ArcLength[int]
@@ -183,7 +190,7 @@ def round_spat_coords_to_resolution(
     return new_x, new_y
 # -----------
 # ===========
-round_test = round_coord_to_res(ArcLength(3.5, 'mnt'), ArcLength(1, 'sec'))
+round_test = round_coord_to_res(ArcLength(3.34, 'mnt'), ArcLength(1, 'sec'))
 round_test.value, round_test.unit
 # -----------
 # ===========
@@ -234,6 +241,8 @@ test_coords.value
 # -----------
 # ===========
 # testing ... should add to tests
+# ... some of this may now be redundant with shift to
+# using rounding to res approach in filter functions
 spat_coord_cent_idx = test_coords.value.shape[0] // 2
 spat_coord_max = ff.mk_spat_radius(test_ext)
 spat_coord_stride = np.max(np.diff(test_coords.value))
@@ -286,6 +295,7 @@ test_coord_patch = test_coords.value[
 test_coord_patch.shape, test_rf_coords.value.shape
 # -----------
 # ===========
+# >>> Final function: mk_rf_stim_index
 def mk_rf_stim_index(
         st_params: SpaceTimeParams,
         spat_filt_params: DOGSpatFiltArgs,
@@ -302,6 +312,8 @@ def mk_rf_stim_index(
     #             )
     #         ))
 
+    # derive radius of spatial filter from resolution of st_params and params of spat filt
+    # as extents and radii are rounded using mk_rounded_spat_radius, this is accurate
     spat_filt_radius = ff.mk_rounded_spat_radius(
             st_params.spat_res,
             ff.mk_spat_ext_from_sd_limit(
@@ -310,21 +322,28 @@ def mk_rf_stim_index(
                     )
                 )
         )
+    # diameter is double plus 1 (for zero in the middle)
     spat_filt_diam = (2 * spat_filt_radius.value) + 1
 
+    # rounding to resolution
     pos_x, pos_y = round_spat_coords_to_resolution(
             pos_cent_x, pos_cent_y, st_params.spat_res
         )
+
+    ###
+    # translating continuous values to discrete indices (of the coords arrays)
+    ###
+    # negative for y axis too!!!
 
     # presuming that these are in the same units!!
     assert spat_filt_radius.unit == st_params.spat_res.unit, (
         f'spat_filt_radius unit ({spat_filt_radius.unit}) '
         f'not same as spat_res unit ({st_params.spat_res.unit})'
         )
-    spat_filt_start_idx = -1 * int(
+    spat_filt_start_idx = -1 * int(  # negative as start slice below zero, then to above zero
             spat_filt_radius.value
             /
-            st_params.spat_res.value
+            st_params.spat_res.value  # how many pixels does radius span
         )
 
     # adjust by pos

@@ -21,6 +21,7 @@ from numpy import fft  # type: ignore
 from scipy.signal import convolve, argrelmin
 
 
+
 def test_metadata_make_key_dt():
     meta_data = filters.do.CitationMetaData(**{
         'author': None, 'year': 1988, 'title': None, 'doi': 'address', 'reference': None})

@@ -1,4 +1,6 @@
-"""Classes for handling and grouping basic data objects"""
+"""
+Classes for handling and grouping basic data objects
+"""
 
 from __future__ import annotations
 from functools import partial
@@ -26,7 +28,7 @@ PI: float = np.pi  # type: ignore
 
 
 class ConversionABC:
-    "ABC for adding datclasses.asdict and .astuple as methods"
+    """ABC for adding as dict and tuple methods from dataclasses module"""
 
     def asdict_(self) -> Dict[str, Any]:
         return asdict(self)
@@ -37,15 +39,15 @@ class ConversionABC:
 
 @dataclass
 class CitationMetaData(ConversionABC):
-    "Author etc for source of data for a temp_filt fit"
     author: str
+    # """Author etc for source of data for a temp_filt fit"""
     year: int
     title: str
     reference: str
     doi: Optional[str] = None
 
     def _set_dt_uid(self, reset: bool = False) -> None:
-        "Set a datetime based unique ID"
+        """Set a datetime based unique ID"""
 
         if hasattr(self, '_dt_uid') and not reset:
             pass
@@ -73,7 +75,7 @@ class CitationMetaData(ConversionABC):
 
 @dataclass
 class TFRespMetaData(ConversionABC):
-    "Metadata or additional data on context of temp filter data"
+    """Metadata or additional data on context of temp filter data"""
     dc: float
     sf: SpatFrequency[float]
     mean_lum: float
@@ -93,7 +95,9 @@ class TempFiltData(ConversionABC):
 
 @dataclass
 class TempFiltParams(ConversionABC):
-    "All data and information on temporal frequency response from literature"
+    """
+    All data and information on temporal frequency response from literature
+    """
     data: TempFiltData
     resp_params: TFRespMetaData
     meta_data: Optional[CitationMetaData] = None
@@ -112,7 +116,8 @@ class TQTempFiltArgs(ConversionABC):
     phi: float
 
     def array(self) -> np.ndarray:
-        """[tau.value, w, phi]
+        """
+        tau.value, w, phi
         tau.value will be in original units
         """
         return np.array([self.tau.value, self.w, self.phi])
@@ -136,7 +141,9 @@ class TQTempFiltParams(ConversionABC):
 
     @classmethod
     def from_iter(cls, data: Iterable[float], tau_time_unit: str = 's') -> TQTempFiltParams:
-        """Create object from iterable: (a, tau, w, phi)
+        """Create object from iterable
+
+        iterable extects args: a, tau, w, phi
 
         tau_time_unit: unit for tau Time object
         """
@@ -162,9 +169,10 @@ class TQTempFiltParams(ConversionABC):
 
 @dataclass
 class TQTempFilter(ConversionABC):
-    "Full tq temp filter that has been fit to data from the literature"
+    """Full tq temp filter that has been fit to data from the literature"""
 
     source_data: TempFiltParams
+    """Data from which derived"""
     parameters: TQTempFiltParams
     optimisation_result: OptimizeResult
 
@@ -191,7 +199,7 @@ class TQTempFilter(ConversionABC):
 
     @classmethod
     def get_saved_filters(cls) -> List[Path]:
-        "Return list of temporal filters saved in data directory"
+        """Return list of temporal filters saved in data directory"""
 
         data_dir = settings.get_data_dir()
         pattern = f'*-{cls.__name__}.pkl'
@@ -225,7 +233,7 @@ class SpatFiltData(ConversionABC):
 
 @dataclass
 class SFRespMetaData(ConversionABC):
-    "Metadata or additional data on context of spat filter data"
+    """Metadata or additional data on context of spat filter data"""
     dc: float
     tf: TempFrequency[float]  # temp frequency
     mean_lum: float
@@ -234,7 +242,7 @@ class SFRespMetaData(ConversionABC):
 
 @dataclass
 class SpatFiltParams(ConversionABC):
-    "All data and information on spatial frequency response from the literature"
+    """All data and information on spatial frequency response from the literature"""
     data: SpatFiltData
     resp_params: SFRespMetaData
     meta_data: Optional[CitationMetaData] = None
@@ -267,12 +275,12 @@ class Gauss2DSpatFiltParams(ConversionABC):
     amplitude: float
     arguments: Gauss2DSpatFiltArgs
 
-    def array(self) -> np.ndarray[np.float64]:
-        return np.r_[self.amplitude, self.arguments.array()]  # type: ignore
+    def array(self) -> np.ndarray:
+        return np.r_[self.amplitude, self.arguments.array()]
 
     @classmethod
     def from_iter(cls, data: Iterable[float], arclength_unit: str = 'deg') -> Gauss2DSpatFiltParams:
-        """Create object from iterable: (a, h_sd, v_sd)
+        """Create object from iterable (a, h_sd, v_sd)
         """
         # IMPORTANT ... unpacking must match order above and in
         # definition of dataclasses!
@@ -308,7 +316,7 @@ class Gauss1DSpatFiltParams(ConversionABC):
 
     @classmethod
     def from_iter(cls, data: Iterable[float], arclength_unit: str = 'deg') -> Gauss1DSpatFiltParams:
-        """Create object from iterable: (a, h_sd, v_sd)
+        """Create object from iterable... (a, h_sd, v_sd)
         """
         # IMPORTANT ... unpacking must match order above and in
         # definition of dataclasses!
@@ -324,12 +332,12 @@ class DOGSpatFiltArgs1D(ConversionABC):
     surr: Gauss1DSpatFiltParams
 
     def array(self) -> np.ndarray:
-        "cent args, surr args"
+        """cent args, surr args"""
         return np.hstack((self.cent.array(), self.surr.array()))
 
     @classmethod
     def from_iter(cls, data: Iterable[float], arclength_unit: str = 'deg') -> DOGSpatFiltArgs1D:
-        "cent_a, cent_sd, surr_a, surr_sd"
+        """cent_a, cent_sd, surr_a, surr_sd"""
         cent_a, cent_sd, surr_a, surr_sd = data
 
         cent = Gauss1DSpatFiltParams(cent_a, ArcLength(cent_sd, arclength_unit))
@@ -340,21 +348,21 @@ class DOGSpatFiltArgs1D(ConversionABC):
 
 @dataclass
 class DOGSpatFiltArgs(ConversionABC):
-    """Args for a DoG spatial filter: 2 2dGauss, one subtracted from the other
+    """Args for a DoG spatial filter... 2 2dGauss, one subtracted from the other
     """
     cent: Gauss2DSpatFiltParams
     surr: Gauss2DSpatFiltParams
 
     def array(self) -> np.ndarray:
-        "1D array of [cent args, surr args]"
+        """1D array of [cent args, surr args]"""
         return np.hstack((self.cent.array(), self.surr.array()))
 
     def array2(self) -> np.ndarray:
-        "2D array of [[cent args], [surr args]]"
+        """2D array of [[cent args], [surr args]]"""
         return np.vstack((self.cent.array(), self.surr.array()))
 
     def max_sd(self) -> ArcLength[float]:
-        "Max sd val in definition of parameters as ArcLength, unit preserved"
+        """Max sd val in definition of parameters as ArcLength, unit preserved"""
 
         sds = (
             self.cent.arguments.h_sd,
@@ -369,7 +377,7 @@ class DOGSpatFiltArgs(ConversionABC):
 
 
     def to_dog_1d(self) -> DOGSpatFiltArgs1D:
-        "Take h_sd values, presume radial symmetry, return 1D DoG spat fil"
+        """Take h_sd values, presume radial symmetry, return 1D DoG spat fil"""
 
         cent_a, cent_h_sd, _, surr_a, surr_h_sd, _ = self.array()
         return DOGSpatFiltArgs1D.from_iter([cent_a, cent_h_sd, surr_a, surr_h_sd])
@@ -377,7 +385,7 @@ class DOGSpatFiltArgs(ConversionABC):
     def mk_ori_biased_duplicate(
             self, v_sd_factor: float, h_sd_factor: float
             ) -> DOGSpatFiltArgs:
-        "Create duplicate but with factors applied to sd values (with horizontal 0deg ori)"
+        """Create duplicate but with factors applied to sd values (with horizontal 0deg ori)"""
 
         spat_filt_args = copy.deepcopy(self)
 
@@ -393,7 +401,7 @@ class DOGSpatFiltArgs(ConversionABC):
 
 @dataclass
 class CircularVarianceSDRatioVals(ConversionABC):
-    "Circular Variance to SD ration values"
+    """Circular Variance to SD ration values"""
 
     sd_ratio_vals: np.ndarray
     circular_variance_vals: np.ndarray
@@ -427,7 +435,7 @@ class CircularVarianceSDRatioVals(ConversionABC):
         return self._sd_ratio(circ_var)
 
     def _mk_interpolated(self):
-        "Add methods for interpolation in both directions (using interp1d)"
+        """Add methods for interpolation in both directions (using interp1d)"""
 
         interp_func = partial(interp1d, fill_value='extrapolate')
 
@@ -439,8 +447,7 @@ class CircularVarianceSDRatioVals(ConversionABC):
 
 @dataclass
 class DOGSpatialFilter(ConversionABC):
-
-    "Full DoG Spatial filter that has been fit to data from the literature"
+    """Full DoG Spatial filter that has been fit to data from the literature"""
 
     source_data: SpatFiltParams
     parameters: DOGSpatFiltArgs
@@ -470,7 +477,7 @@ class DOGSpatialFilter(ConversionABC):
 
     @classmethod
     def get_saved_filters(cls) -> List[Path]:
-        "Return list of spatial filters saved in data directory"
+        """Return list of spatial filters saved in data directory"""
 
         data_dir = settings.get_data_dir()
         pattern = f'*-{cls.__name__}.pkl'
@@ -512,7 +519,7 @@ class DOGSpatialFilter(ConversionABC):
 
 @dataclass
 class LGNCell(ConversionABC):
-    "Single LGN Cell that provides input to a V1 Cell"
+    """Single LGN Cell that provides input to a V1 Cell"""
 
     spat_filt: DOGSpatialFilter
     temp_filt: TQTempFilter
@@ -540,7 +547,7 @@ class LGNCell(ConversionABC):
 
 @dataclass
 class SpaceTimeParams(ConversionABC):
-    "Spatial and Temporal Canvas"
+    """Spatial and Temporal Canvas"""
 
     spat_ext: Union[ArcLength[int], ArcLength[float]]
     spat_res: ArcLength[int]
@@ -550,7 +557,7 @@ class SpaceTimeParams(ConversionABC):
 
 @dataclass
 class GratingStimulusParams(ConversionABC):
-    "Definition of grating stimulus"
+    """Definition of grating stimulus"""
 
     spat_freq: SpatFrequency[float]
     temp_freq: TempFrequency[float]
@@ -560,7 +567,7 @@ class GratingStimulusParams(ConversionABC):
 
     @property
     def direction(self) -> ArcLength[float]:
-        "Direction of grating modulation (orientation-90 degs)"
+        """Direction of grating modulation (orientation-90 degs)"""
 
         direction = ArcLength(self.orientation.deg - 90, 'deg')
 
@@ -568,7 +575,7 @@ class GratingStimulusParams(ConversionABC):
 
     @property
     def spat_freq_x(self) -> SpatFrequency[float]:
-        "Frequency in cartesion direction derived from grating direction (ori-90)"
+        """Frequency in Cartesian direction derived from grating direction (ori-90)"""
         x_mag: float
         x_mag = np.cos(self.direction.rad)  # type: ignore
         freq = SpatFrequency(
@@ -579,7 +586,7 @@ class GratingStimulusParams(ConversionABC):
 
     @property
     def spat_freq_y(self) -> SpatFrequency[float]:
-        "Frequency in cartesion direction derived from grating direction (ori-90)"
+        """Frequency in Cartesian direction derived from grating direction (ori-90)"""
         y_mag: float
         y_mag = np.sin(self.direction.rad)  # type: ignore
         freq = SpatFrequency(
@@ -591,7 +598,7 @@ class GratingStimulusParams(ConversionABC):
 
 @dataclass
 class EstSpatTempConvResp(ConversionABC):
-    "Response amp and dc estimated from fourier transfroms of filters"
+    """Response amp and DC estimated from Fourier transforms of filters"""
 
     amplitude: float
     DC: float
@@ -599,7 +606,7 @@ class EstSpatTempConvResp(ConversionABC):
 
 @dataclass
 class JointSpatTempResp(ConversionABC):
-    "Response of combining a Spat and a Temp Filt"
+    """Response of combining a Spat and a Temp Filter"""
 
     ampitude: float
     DC: float
@@ -607,7 +614,7 @@ class JointSpatTempResp(ConversionABC):
 
 @dataclass
 class ConvRespAdjParams(ConversionABC):
-    "Parameters for adjusting the response of convolution"
+    """Parameters for adjusting the response of convolution"""
 
     amplitude: float
     DC: float

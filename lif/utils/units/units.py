@@ -1,3 +1,15 @@
+"""
+Objects for managing quantities as units in particular dimensions (eg, time)
+
+## General interface for all units
+
+* Instances represent a particular value in either the base or a specified unit
+* Properties provide instance's values after having converted to the unit that the property represents
+
+Is this an image:
+
+"""
+
 from __future__ import annotations
 from typing import Callable, Union, Iterable, Tuple, TypeVar, Type, Generic
 from dataclasses import dataclass, field
@@ -8,10 +20,23 @@ PI = math.pi
 
 # generic values ... share arithmetic operators
 # covariant so that int and float are compatible ... possibly because of other bug?
-val_gen = TypeVar('val_gen', int, float, np.ndarray, covariant=False)
+# val_gen = TypeVar('val_gen', float, np.ndarray)
+# val_gen = TypeVar('val_gen', float, np.ndarray, covariant=False)
+# val_gen = TypeVar('val_gen', Union[int, float], np.ndarray, covariant=True)
+# val_gen = TypeVar('val_gen', Union[int, float], np.ndarray)
+val_gen = TypeVar('val_gen', int, Union[int, float], np.ndarray)
+# val_gen = TypeVar('val_gen', bound=Union[int, float, np.ndarray])
+# val_gen = TypeVar('val_gen', bound=Union[int, float, np.ndarray])
+# val_gen = TypeVar('val_gen', int, float, np.ndarray, covariant=True)
+# val_gen = TypeVar('val_gen', int, float, np.ndarray)
+# val_gen = TypeVar('val_gen', int, float, np.ndarray, covariant=False)
+
+val_gen_flt = TypeVar('val_gen_flt', float, np.ndarray)
+
 val_gen_union = Union[int, float, np.ndarray]
 
 
+# val_gen = TypeVar('val_gen', int, float, np.ndarray, covariant=True)
 
 # @add_conversions
 # class Time:

@@ -1,4 +1,10 @@
-"""Making temporal and spatial filters"""
+"""Making temporal and spatial filters from empirical data
+
+* Load data
+* Use specific filter functions from [filter functions module][receptive_field.filters.filter_functions]
+# * Create filter objects as defined in [data objects][utils.data_objects]
+
+"""
 
 from __future__ import annotations
 from functools import partial
@@ -19,6 +25,8 @@ TIME_UNIT: str = 'ms'
 
 # > Temp Filters
 
+class Test():
+    a = "dfjd"
 
 def _tq_ft_wrapper(
         x: np.ndarray, 

@@ -42,7 +42,8 @@ def generate_von_mises_k_to_circ_var_vals(
         circ_var(
             von_mises(
                 angles,
-                k=k_val  # type: ignore ... np.float64 == float
+                # ... np.float64 == float
+                k=k_val  # type: ignore
                 ),
             angles
             )
