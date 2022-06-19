@@ -6,14 +6,16 @@ from dataclasses import astuple, asdict
 from pytest import mark, raises
 from hypothesis import given, strategies as st, assume, event
 
-from lif import convolve as conv
+from lif.convolution import (
+    convolve as conv,
+    estimate_real_amp_from_f1 as est_amp
+    )
 from lif.utils.units.units import ArcLength, SpatFrequency, TempFrequency, Time
 from lif.utils import data_objects as do, exceptions as exc
 
 from lif.receptive_field.filters import (
     filters,
-    filter_functions as ff,
-    estimate_real_amp_from_f1 as est_amp
+    filter_functions as ff
     )
 
 import numpy as np
@@ -54,7 +56,65 @@ def test_metadata_make_key(metadata: dict, expected: str):
     assert key == expected
 
 
-# > Temp Filters
+# > Temporal
+
+# >> Temp coords
+
+# basic coords work
+    # X wrong combo of args produce exception
+    # X unit is same as res
+    # X start is 0 and max
+    # check that units haven't been confused?
+
+def test_temp_coord_raises_exceptions():
+
+    res = Time(1, 'ms')
+    with raises(exc.CoordsValueError):
+        ff.mk_temp_coords(res, Time(10), Time(10))
+    with raises(exc.CoordsValueError):
+        ff.mk_temp_coords(res, None, None)
+
+def test_temp_coord_has_same_unit_as_res():
+    units = ['s', 'us', 'ms']
+    # res unit and extent unit are different, paired with the reverse of the other
+    for ru, eu in zip(units, reversed(units)):
+        coords = ff.mk_temp_coords(
+            temp_res=Time(1., ru),
+            temp_ext=Time(10., eu)
+            )
+        assert coords.unit == ru
+
+@given(
+    res=st.floats(0.1, 1, allow_nan=False, allow_infinity=False),
+    ext_factor=st.floats(2, 1000, allow_nan=False, allow_infinity=False),
+    res_unit=st.sampled_from(['us', 'ms', 's']),
+    ext_unit=st.sampled_from(['us', 'ms', 's']))
+def test_temp_coord_has_range_zero_to_ext(
+        res, ext_factor, res_unit, ext_unit):
+
+    temp_res = Time(res, res_unit)
+    # ext made first in res units, then converted to ext_unit
+    temp_ext_value = res * ext_factor
+    temp_ext = Time(temp_ext_value, res_unit).in_same_units_as(Time(1,ext_unit))
+
+    coords = ff.mk_temp_coords(temp_res, temp_ext)
+
+    # min is zero
+    assert np.isclose(coords.base[0], 0)
+
+    # temp_ext <= max <= temp_ext +/ temp_res
+    # use combo of isclose and a chained greater/equal to capture being either in range
+    # or at the edges of the range (temp_ext - temp_ext+temp_res)
+    assert (
+        np.isclose(coords.base[-1], temp_ext.base, atol=1e-6)
+        or
+        np.isclose(coords.base[-1], temp_ext.base + temp_res.base, atol=1e-6)
+        or
+        (temp_ext.base <= coords.base[-1] <= (temp_ext.base + temp_res.base))
+        )
+
+
+# >> Temp Filters
 
 def test_tq_filt_args_array_round_trip():
     test_args = filters.do.TQTempFiltArgs(

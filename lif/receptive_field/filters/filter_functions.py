@@ -2,9 +2,10 @@
 """
 
 from dataclasses import dataclass
-from typing import Optional, Union, Tuple, overload, Callable, cast
-from brian2.core.variables import Variable
+from typing import Optional, Union, Tuple, overload, Callable, cast, NoReturn
+from textwrap import dedent
 
+from brian2.core.variables import Variable
 import numpy as np
 
 # import matplotlib.pyplot as plt
@@ -14,11 +15,13 @@ import numpy as np
 
 # import scipy.stats as st
 
+from . import cv_von_mises as cvvm
 from ...utils import data_objects as do, settings, exceptions as exc
 from ...utils.data_objects import ConvRespAdjParams, SpaceTimeParams
 from ...utils.units.units import (
-    SpatFrequency, TempFrequency, ArcLength, Time, val_gen, val_gen_flt)
-from . import (estimate_real_amp_from_f1 as est_amp, cv_von_mises as cvvm)
+    SpatFrequency, TempFrequency, ArcLength, Time,
+    val_gen, scalar)
+from ...convolution import estimate_real_amp_from_f1 as est_amp
 
 
 # > Globals and Settings
@@ -322,6 +325,89 @@ def mk_spat_coords(
     return xc, yc
 
 
+# >> Temp Coords
+
+@overload  # both none ... exception raised
+def mk_temp_coords(
+        temp_res: Time[scalar],
+        temp_ext: None,
+        tau: None,
+        temp_ext_n_tau: float = 10) -> NoReturn: ...
+@overload  # both provided ... exception raised
+def mk_temp_coords(
+        temp_res: Time[scalar],
+        temp_ext: Time[scalar],
+        tau: Time[scalar],
+        temp_ext_n_tau: float = 10) -> NoReturn: ...
+@overload  # ext provided
+def mk_temp_coords(
+        temp_res: Time[scalar],
+        temp_ext: Time[scalar],
+        tau = None,
+        temp_ext_n_tau: float = 10) -> Time[np.ndarray]: ...
+@overload  # tau provided
+def mk_temp_coords(
+        temp_res: Time[scalar],
+        temp_ext: None,
+        tau: Time[scalar],
+        temp_ext_n_tau: float = 10) -> Time[np.ndarray]: ...
+def mk_temp_coords(
+        temp_res: Time[scalar],
+        temp_ext: Optional[Time[scalar]] = None,
+        tau: Optional[Time[scalar]] = None,
+        temp_ext_n_tau: float = 10) -> Time[np.ndarray]:
+    """Generate array of times with resolution temp_res and extent temp_ext
+
+    Returned coords are in the same unit as `temp_res`.
+
+    Args:
+        temp_res: Resolution
+        temp_ext: Extent of time span (from zero to this value).
+            Required if not providing a `tau`.
+        temp_ext_n_tau: Optional parameters (along with `tau`) for
+            programmatically controlling the extent.
+            If both provided, `temp_ext = tau * temp_ext_n_tau`
+        tau: must be provided if p
+    """
+
+    res_unit = temp_res.unit
+
+    # exception for both ext and tau or neither
+    #   V--> neither                         -|-  V--> both
+    if ((temp_ext is None) and (tau is None)) or (temp_ext and tau):
+        raise exc.CoordsValueError(dedent(f'''
+            Only one of temp_ext or tau must be provided, not both or neither.
+            Instead they are: {temp_ext, tau}'''))
+
+    # verboxe XOR ... when only one argument provided
+    # if (temp_ext_n_tau or tau) and not (temp_ext_n_tau and tau):
+    #     raise exc.CoordsValueError(dedent(f'''
+    #         Must provide both temp_ext_n_tau and tau args
+    #         (instead provided {temp_ext_n_tau, tau})'''))
+
+    # set temp_ext according to tau and temp_ext_n_tau
+    if tau:
+        if temp_ext_n_tau < 10:  # hardcode prohibition against n_tau less than 10!
+            raise exc.CoordsValueError(dedent(f'''
+                temp_ext_n_tau ({temp_ext_n_tau}) should be 10 or more
+                Any lower and the sum of the filter will be diminished
+                by approx 0.1% or more for tq filt'''))
+
+        temp_ext = Time(tau[res_unit] * temp_ext_n_tau, res_unit)
+
+    # by here, either temp_ext provided or created in if-statement above
+    # type checker might not get that though :)
+    temp_ext = cast(Time[float], temp_ext)
+    #
+    t = Time(
+        np.arange(
+            0,
+            temp_ext[res_unit] + temp_res[res_unit], # add res to stop, so max never less than ext
+            temp_res[res_unit]),
+        res_unit
+        )
+
+    return t
 def mk_spat_temp_coords(
         spat_res: ArcLength[int] = ArcLength(1, 'mnt'),
         temp_res: Time[float] = Time(1, 'ms'),
