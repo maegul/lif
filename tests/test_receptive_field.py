@@ -113,6 +113,33 @@ def test_temp_coord_has_range_zero_to_ext(
         (temp_ext.base <= coords.base[-1] <= (temp_ext.base + temp_res.base))
         )
 
+@given(
+    res=st.floats(0.1, 1, allow_nan=False, allow_infinity=False),
+    tau=st.floats(10, 100, allow_nan=False, allow_infinity=False),
+    res_unit=st.sampled_from(['us', 'ms', 's']),
+    tau_unit=st.sampled_from(['us', 'ms', 's']),
+    n_tau=st.integers(10, 30)
+    )
+def test_temp_coord_tau_ext(
+        res: float, tau: float, res_unit: str, tau_unit: str, n_tau: int):
+
+    temp_res = Time(res, res_unit)
+    # temp_tau = Time(Time(tau, res_unit)[tau_unit], tau_unit)
+    temp_tau = Time(tau, res_unit).in_same_units_as(Time(1, tau_unit))
+    coords = ff.mk_temp_coords(
+                temp_res, temp_ext=None,
+                tau=temp_tau, temp_ext_n_tau=n_tau)
+
+    total_tau = temp_tau.base * n_tau
+
+    assert (
+        np.isclose(coords.base[-1], total_tau, atol=1e-6)
+        or
+        np.isclose(coords.base[-1], total_tau + temp_res.base, atol=1e-6)
+        or
+        (total_tau <= coords.base[-1] <= (total_tau + temp_res.base))
+        )
+
 
 # >> Temp Filters
 
