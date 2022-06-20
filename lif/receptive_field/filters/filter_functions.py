@@ -351,12 +351,24 @@ def mk_temp_coords(
         temp_ext: None,
         tau: Time[scalar],
         temp_ext_n_tau: float = 10) -> Time[np.ndarray]: ...
+@overload  # both none ... exception raised
+def mk_temp_coords(
+        temp_res: Time[scalar],
+        temp_ext: None,
+        tau: None,
+        temp_ext_n_tau: float = 10) -> NoReturn: ...
+@overload  # both provided ... exception raised
+def mk_temp_coords(
+        temp_res: Time[scalar],
+        temp_ext: Time[scalar],
+        tau: Time[scalar],
+        temp_ext_n_tau: float = 10) -> NoReturn: ...
 def mk_temp_coords(
         temp_res: Time[scalar],
         temp_ext: Optional[Time[scalar]] = None,
         tau: Optional[Time[scalar]] = None,
         temp_ext_n_tau: float = 10) -> Time[np.ndarray]:
-    """Generate array of times with resolution temp_res and extent temp_ext
+    """Array of times with resolution temp_res and extent temp_ext or tau * temp_text_n_tau
 
     Returned coords are in the same unit as `temp_res`.
 
@@ -364,10 +376,10 @@ def mk_temp_coords(
         temp_res: Resolution
         temp_ext: Extent of time span (from zero to this value).
             Required if not providing a `tau`.
+        tau: must be provided if not provided `temp_ext`
         temp_ext_n_tau: Optional parameters (along with `tau`) for
             programmatically controlling the extent.
             If both provided, `temp_ext = tau * temp_ext_n_tau`
-        tau: must be provided if p
     """
 
     res_unit = temp_res.unit
