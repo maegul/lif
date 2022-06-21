@@ -4,6 +4,7 @@ from typing import cast, Tuple
 from dataclasses import astuple, asdict
 
 from pytest import mark, raises
+import hypothesis
 from hypothesis import given, strategies as st, assume, event
 
 from lif.convolution import (
@@ -59,12 +60,6 @@ def test_metadata_make_key(metadata: dict, expected: str):
 # > Temporal
 
 # >> Temp coords
-
-# basic coords work
-    # X wrong combo of args produce exception
-    # X unit is same as res
-    # X start is 0 and max
-    # check that units haven't been confused?
 
 def test_temp_coord_raises_exceptions():
 
@@ -186,30 +181,21 @@ def test_fit_tq_temp_filt():
     assert opt_res.success == True  # noqa: E712
 
 
-# > test tq_temp_filt provides decent fit
+# >> @ test tq_temp_filt provides decent fit
 
 basic_float_strat = st.floats(min_value=1, max_value=10, allow_infinity=False, allow_nan=False)
 
 
 # > Spatial Filters
 
-@given(
-    spat_ext=st.floats(
-        min_value=1, max_value=1000, allow_infinity=False, allow_nan=False))
-def test_coords_center_zero(spat_ext: float):
-    """Test that at coords.size//2 is always the coordinate value 0
+# >> Spatial Coords Management
 
-    Uses default value of spat_res: 1 mnt
-    """
-
-    spat_extent = ArcLength(spat_ext, 'mnt')
-    coords = ff.mk_spat_coords_1d(spat_ext=spat_extent)
-
-    assert np.isclose(coords.mnt[coords.base.size//2], 0.0)  # type: ignore
-
-
-@mark.proto
 def test_basic_coord_res_exception():
+    """Basic test of check_spat_ext_res function
+
+    IE, does it pick up different units and extents that aren't multiples of res
+    and raise the appropriate exception.
+    """
 
     # check whole multiple exception
     ext = ArcLength(10)
@@ -231,33 +217,54 @@ arclength_units_strat = st.sampled_from(['mnt', 'sec', 'deg'])
 
 
 @st.composite
-def unrounded_coord_and_res(draw, min_value, max_value):
-    """integer res and larger coord where res is int and coord arbitrary float
+def unrounded_coord_and_res(draw, min_value, max_value, max_coord_factor):
+    """Generate integer res and larger float coord each in random units
 
-    in arbitrary units (not necessarily the same)
+    res and coord are resolution and coordinate
+
+    values are drawn from int or float strategies
+
+    Args:
+        min_value: min of res value
+        max_value: max of res value
+        max_coord_factor: max factor by which coord will be greater than res (min=2)
+
+    Returns:
+        res (ArcLength): resolution
+        coord (ArcLength): coordinate
     """
     res_value: int = draw(st.integers(min_value=min_value, max_value=max_value))
-    coord_fact: float = draw(st.floats(min_value=2, max_value=max_value))
+    coord_factor: float = draw(  # factor for ... coord = res_value * coord_factor
+        st.floats(min_value=2, max_value=max_coord_factor))
+    coord_value = res_value * coord_factor
 
+    # allow to have different base units
     res_unit = draw(arclength_units_strat)
     coord_unit = draw(arclength_units_strat)
 
     res = ArcLength(res_value, res_unit)
-    coord = ArcLength(ArcLength(res_value * coord_fact, res_unit)[coord_unit], coord_unit)
+    # coord_value is in same unit as res_unit
+    # Instantiate, then convert value to coord_unit, then
+    # re-instantiate with coord_unit
+    coord = ArcLength(
+        ArcLength(coord_value, res_unit)[coord_unit],
+        coord_unit)
 
     return res, coord
 
 
 @mark.proto
-@given(coord_res=unrounded_coord_and_res(1, 1000))
+@given(coord_res=unrounded_coord_and_res(1, 1000, 100))
 def test_round_coord_to_res_multiple(
         coord_res: Tuple[ArcLength[int], ArcLength[float]]):
+    """Are coords accurately snapped to whole integer multiple of resolution
+    """
 
     res, coord = coord_res
     event(f'coord_unit: {coord.unit}, res_unit: {res.unit}')
+    # event(f'coord_val: {coord.value}, res_val: {res.value}, units: {coord.unit}, {res.unit}')
 
-    # print(coord, res)
-
+    # test low and high work as expected ... simple
     new_coords = [
         ff.round_coord_to_res(coord, res, low=True),
         ff.round_coord_to_res(coord, res),
@@ -267,13 +274,11 @@ def test_round_coord_to_res_multiple(
     # low and high flags produce correctly higher or lower values
     assert sorted(new_coords, key=lambda c: c.value) == new_coords
 
-    new_coord_modulos = [
-        nc.value % res.value == 0
+    # test that coords are snapped to res
+    assert all([
+        (nc.value % res.value) == 0
         for nc in new_coords
-    ]
-
-    # all are multiples of res
-    assert all(new_coord_modulos)
+    ])
 
 
 @st.composite
@@ -291,8 +296,8 @@ def not_whole_number_multiple_arclengths(
         min_value=min_value, max_value=max_value
         ))
 
-    main_unit = draw(st.one_of(st.just('mnt'), st.just('sec'), st.just('deg')))
-    lower_unit = draw(st.one_of(st.just('mnt'), st.just('sec'), st.just('deg')))
+    main_unit = draw(arclength_units_strat)
+    lower_unit = draw(arclength_units_strat)
 
     main = ArcLength(main_val, main_unit)
     lower = ArcLength(lower_val, lower_unit)
@@ -304,21 +309,39 @@ def not_whole_number_multiple_arclengths(
 
 @mark.proto
 @given(
-    coord_args=not_whole_number_multiple_arclengths(min_value=1, max_value=10000)
-    )
+    coord_args=not_whole_number_multiple_arclengths(min_value=1, max_value=10000))
 def test_coord_res_exception(coord_args):
+    """Exception should be raised when spatial extent not a whole multiple of resolution
+    """
 
     spat_res, spat_ext = coord_args
 
-    # conversion like this SHOULD be done in spatial coords code
     spat_ext = spat_ext.in_same_units_as(spat_res)
+
+    event(f'res: {spat_res}, ext')
 
     with raises(exc.CoordsValueError):
         ff.check_spat_ext_res(spat_ext, spat_res)
 
 
+@given(
+    spat_ext=st.floats(
+        min_value=1, max_value=1000, allow_infinity=False, allow_nan=False))
+def test_coords_center_zero(spat_ext: float):
+    """Test that at coords.size//2 is always the coordinate value 0
+
+    Uses default value of spat_res: 1 mnt ... simple version of the test
+    """
+
+    spat_extent = ArcLength(spat_ext, 'mnt')
+    coords = ff.mk_spat_coords_1d(spat_ext=spat_extent)
+
+    assert np.isclose(coords.mnt[coords.base.size//2], 0.0)  # type: ignore
+
+
 @mark.proto
-@given(coord_args=unrounded_coord_and_res(min_value=1, max_value=1000))
+@given(coord_args=unrounded_coord_and_res(
+    min_value=1, max_value=1000, max_coord_factor=100))
 def test_coords_center_zero_multi_res(coord_args):
     """Test that coords at center like above but with variable resolution
     """
@@ -326,18 +349,112 @@ def test_coords_center_zero_multi_res(coord_args):
     res_arclength, ext_arclength = coord_args
 
     # what combinations of units are used by the strategy?
-    event(f'res_unit: {res_arclength.unit}, ext_unit: {ext_arclength.unit}')
+    # event(f'res_unit: {res_arclength}, ext_unit: {ext_arclength}')
+    # event(f'res_unit: {res_arclength.unit}, ext_unit: {ext_arclength.unit}')
 
     coords = ff.mk_spat_coords_1d(res_arclength, ext_arclength)
 
-    ends = coords.base[0], coords.base[-1]
+    ends = coords.value[0], coords.value[-1]
 
     # test that symmetrical
     assert np.isclose(ends[0], -1 * ends[1])
 
+    # test shape is odd
+    assert (coords.value.size % 2) == 1
     # test that center is zero
-    assert np.isclose(coords.base[coords.base.size//2], 0)  # type: ignore
+    assert np.isclose(
+        coords.value[coords.value.size//2],
+        0)  # type: ignore
 
+
+@mark.proto
+@given(
+    spat_res=st.integers(1, 10),
+    spat_ext_factor=st.floats(10, 100, allow_nan=False, allow_infinity=False),
+    )
+def test_spat_coords_match_1d_coords(
+        spat_res, spat_ext_factor):
+
+    spat_ext = spat_res * spat_ext_factor
+
+    x, y = ff.mk_spat_coords(
+            spat_res=ArcLength(spat_res, 'mnt'),
+            spat_ext=ArcLength(spat_ext, 'mnt'),
+        )
+
+    assert x.base.shape == y.base.shape  # basic test, mostly trivial
+
+    # spatial slice
+    coord_1d = ff.mk_spat_coords_1d(ArcLength(spat_res, 'mnt'), ArcLength(spat_ext, 'mnt'))
+
+    assert np.allclose(coord_1d.base, x.base[0,:])  # first dimension is Y axis, second x axis.
+    assert coord_1d.base.shape[0] == x.base.shape[1]  # lengths should match
+
+@mark.proto
+@given(spat_res_unit=st.sampled_from(['sec','mnt', 'deg']))
+def test_spat_coords_units_correct(spat_res_unit):
+
+    spat_res = ArcLength(1, spat_res_unit)
+    spat_ext = ArcLength(spat_res.deg * 10, 'deg')  # ensure always bigger
+
+    x,y = ff.mk_spat_coords(spat_res, spat_ext)
+
+    assert x.unit == y.unit == spat_res_unit
+
+
+# >> Spatio-Temp Coords
+
+@given(
+    spat_res=st.integers(1, 10),
+    temp_res=st.floats(0.01, 0.1, allow_nan=False, allow_infinity=False),
+    spat_ext_factor=st.floats(10, 100, allow_nan=False, allow_infinity=False),
+    temp_ext_factor=st.floats(10, 100, allow_nan=False, allow_infinity=False),
+    )
+def test_spat_temp_coords_match_1d_coords(
+        spat_res, temp_res, spat_ext_factor, temp_ext_factor):
+
+    spat_ext = spat_res * spat_ext_factor
+    temp_ext = temp_res * temp_ext_factor
+
+    x, y, t = ff.mk_spat_temp_coords(
+            spat_res=ArcLength(spat_res, 'mnt'),
+            temp_res=Time(temp_res, 'ms'),
+            spat_ext=ArcLength(spat_ext, 'mnt'),
+            temp_ext=Time(temp_ext, 'ms')
+        )
+
+    assert x.base.shape == y.base.shape == t.base.shape  # basic test, mostly trivial
+
+    # spatial slice
+    coord_1d = ff.mk_spat_coords_1d(ArcLength(spat_res, 'mnt'), ArcLength(spat_ext, 'mnt'))
+
+    assert np.allclose(coord_1d.base, x.base[0,:,0])  # first dimension is Y axis, second x axis.
+    assert coord_1d.base.shape[0] == x.base.shape[1]  # lengths should match
+
+    # temporal slice
+    coord_1d = ff.mk_temp_coords(Time(temp_res, 'ms'), Time(temp_ext, 'ms'))
+
+    assert np.allclose(coord_1d.base, t.base[0,0,:])  # third dimension is third axis
+    assert coord_1d.base.shape[0] == x.base.shape[2]
+
+
+@given(
+    spat_res_unit=st.sampled_from(['sec','mnt', 'deg']),
+    temp_res_unit=st.sampled_from(['us', 'ms', 's']))
+def test_spat_temp_coords_units_correct(spat_res_unit, temp_res_unit):
+
+    spat_res = ArcLength(1, spat_res_unit)
+    temp_res = Time(1, temp_res_unit)
+    spat_ext = ArcLength(spat_res.deg * 10, 'deg')  # ensure always bigger
+    temp_ext = Time(temp_res.s * 10, 's')
+
+    x,y,t = ff.mk_spat_temp_coords(spat_res, temp_res, spat_ext, temp_ext )
+
+    assert x.unit == y.unit == spat_res_unit
+    assert t.unit == temp_res_unit
+
+
+# >> Data object creation veracity
 
 def test_gauss_params_round_trip():
 
@@ -360,6 +477,8 @@ def test_dog_spat_filt_1d_round_trip():
 
     assert params == do.DOGSpatFiltArgs1D.from_iter(params.array())
 
+
+# >> DoG and Gaussian Filters
 
 @given(
     x_sd=basic_float_strat,
@@ -501,6 +620,8 @@ def test_dog_rf(
     assert np.allclose(rf, dog_rf)  # type: ignore
 
 
+# >> Fourier
+
 @mark.parametrize(
     'freqs, factor',
     [
@@ -596,6 +717,7 @@ cent_sd_strat = st.floats(min_value=10, max_value=29, allow_infinity=False, allo
 surr_sd_strat = st.floats(min_value=30, max_value=50, allow_infinity=False, allow_nan=False)
 
 
+@hypothesis.settings(deadline=300)  # deadline of 300 ms from default of 200
 @given(
         cent_h_sd=cent_sd_strat, cent_v_sd=cent_sd_strat,
         surr_h_sd=surr_sd_strat, surr_v_sd=surr_sd_strat,
@@ -785,6 +907,7 @@ def test_sf_ft_positive_for_negative_freq():
             for ft_val in ft_vals
         ])
 
+# > Convolution management and adjustment
 
 # limits on sd: keep res at 1.mnt, and don't consume too much memory
 @given(
@@ -825,6 +948,7 @@ def test_sf_conv_amp_1d(sd):
 
 
 # > test sf conv amp 2d
+
 @mark.proto
 @given(
     t_freq=st.one_of([
@@ -1027,13 +1151,13 @@ def test_conv_resp_adjustment_process(spat_freq, temp_freq):
 
     stim_amp = 0.5
     stim_dc = 0.5
-    spat_res = ArcLength(1., 'mnt')
-    spat_ext = ArcLength(120., 'mnt')
-    temp_res = Time(1., 'ms')
-    temp_ext = Time(1000., 'ms')
+    spat_res = ArcLength(1, 'mnt')
+    spat_ext = ArcLength(120, 'mnt')
+    temp_res = Time(1, 'ms')
+    temp_ext = Time(1000, 'ms')
     spat_freq = SpatFrequency(spat_freq)
     temp_freq = TempFrequency(temp_freq)
-    orientation = ArcLength(0., 'deg')
+    orientation = ArcLength(0, 'deg')
 
     st_params = do.SpaceTimeParams(spat_ext, spat_res, temp_ext, temp_res)
     stim_params = do.GratingStimulusParams(
