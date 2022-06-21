@@ -1,4 +1,19 @@
-"""Manage settings: declaring default, finding custom"""
+"""Manage settings: declaring default, finding custom
+
+* Allows for configuration files to be located in the current working directory or in the parents thereof.
+* And, for these configuration files to override defaults which are defined here.
+* Settings/configuration are accessed in code by importing this module (`utils.settings`).
+* Configuration values are available as attributes directly on the module itself.
+
+```python
+import utils.settings  # adjust as necessary
+
+default_sd_factor = settings.simulation_params.spat_filt_sd_factor
+```
+
+* Default configurations are created as subclasses of [the base ParamsObj][utils.settings.ParamsObj] such as [SimulationParams][utils.settings.SimulationParams]
+* These are then assigned to variables that global to the module and named by converting camel case to lowercase `snake_case`.
+"""
 
 from __future__ import annotations
 from typing import Dict, Union, Type, TypeVar
@@ -7,10 +22,12 @@ import json
 
 from dataclasses import replace, dataclass, asdict
 
+# > config file names
 SETTINGS_FILE_NAME = Path('.lif_hws')
-SIMULATION_PARAMS_FILE_NAME = Path('.lif_stim_params')
+SIMULATION_PARAMS_FILE_NAME = Path('.lif_sim_params')
 
 
+# > Parameters objects
 class ParamsObj:
     # just in case its helpful to know where these settings objs are from
     _settings_module_path = __file__
@@ -21,7 +38,7 @@ class ParamsObj:
 Param_T = TypeVar('Param_T', bound=ParamsObj)
 
 
-# Default settings are parameters in these classes
+# > Default settings are parameters in these classes
 
 @dataclass
 class Settings(ParamsObj):
@@ -35,11 +52,21 @@ class SimulationParams(ParamsObj):
     "General parameters for simulations"
     _file_name: Path = SIMULATION_PARAMS_FILE_NAME
     spat_filt_sd_factor: float = 5
+    temp_filt_n_tau: float = 10
 
+
+# > updating default settings from config file
+
+# >> update function
 
 def find_update_parameters_file(
         params_obj: Param_T,
         cwd: Path) -> Param_T:
+    """Update provided parameters object from config file
+
+    If no config file can be found in cwd and parents, original
+    object is returned.
+    """
 
     # Look for settings/config file in cwd and all parents and then home
     # if found update default settings with a dataclass replace
@@ -59,17 +86,22 @@ def find_update_parameters_file(
     return params_obj
 
 
+# >> Doing the actual updating and setting attributes on the module
+
 cwd = Path.cwd()
 
+# these attributes are intended to be available on the module directly
+# allowing accessing settings to be possible immediately on import
+# with `settings.simulation_params.PARAMETER`
 settings = Settings()
 simulation_params = SimulationParams()
 
-settings = find_update_parameters_file(
-    settings, cwd)
+# update from file
+settings = find_update_parameters_file(settings, cwd)
+simulation_params = find_update_parameters_file(simulation_params, cwd)
 
-simulation_params = find_update_parameters_file(
-    simulation_params, cwd)
 
+# > Utilities for writing out default config files
 
 def get_data_dir() -> Path:
     return Path(settings.data_dir).expanduser()

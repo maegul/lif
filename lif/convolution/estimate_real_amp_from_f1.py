@@ -1,3 +1,7 @@
+"""Estimate the pure sinusoidal amplitude necessary to lead to an empirically
+reported F1 which is affected by the combination of rectification and DC shift
+"""
+
 from typing import Tuple, Callable, Optional
 
 from functools import partial
@@ -8,7 +12,7 @@ from numpy import fft  # type: ignore
 import scipy.optimize as opt
 from scipy.optimize import minimize
 
-from ...utils.units.units import TempFrequency, Time, val_gen
+from ..utils.units.units import TempFrequency, Time, val_gen
 
 
 def gen_sin(

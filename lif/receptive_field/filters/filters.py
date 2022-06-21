@@ -2,7 +2,7 @@
 
 * Load data
 * Use specific filter functions from [filter functions module][receptive_field.filters.filter_functions]
-# * Create filter objects as defined in [data objects][utils.data_objects]
+* Create filter objects as defined in [data objects][utils.data_objects]
 
 """
 

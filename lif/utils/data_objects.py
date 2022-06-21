@@ -17,7 +17,8 @@ from scipy.interpolate import interp1d
 
 from . import settings
 from .units.units import (
-    ArcLength, TempFrequency, SpatFrequency, Time, val_gen
+    val_gen, scalar,
+    ArcLength, TempFrequency, SpatFrequency, Time
     )
 from ..receptive_field.filters import filter_functions as ff
 

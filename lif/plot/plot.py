@@ -6,9 +6,9 @@ from scipy.ndimage.filters import gaussian_filter1d
 from ..receptive_field.filters import filter_functions as ff
 from ..receptive_field.filters.filter_functions import (
     do, ArcLength, SpatFrequency, Time, TempFrequency)
-from ..receptive_field.filters import estimate_real_amp_from_f1 as est_amp
+from ..convolution import estimate_real_amp_from_f1 as est_amp
 # from lif.receptive_field.filters.data_objects import DOGSpatialFilter, TQTempFilter
-from .. import convolve
+from ..convolution import convolve
 from ..utils.data_objects import DOGSpatialFilter, SpaceTimeParams, TQTempFilter
 
 import plotly.express as px

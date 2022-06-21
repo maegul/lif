@@ -10,10 +10,10 @@ from scipy.signal import convolve
 
 import brian2 as bn
 
-from .stimulus import stimulus as stim
-from .receptive_field.filters import filter_functions as ff
+from ..stimulus import stimulus as stim
+from ..receptive_field.filters import filter_functions as ff
 
-from .utils import data_objects as do
+from ..utils import data_objects as do
 
 
 def mk_single_sf_tf_response(
