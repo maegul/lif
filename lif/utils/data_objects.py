@@ -547,12 +547,40 @@ class LGNCell(ConversionABC):
 
 @dataclass
 class SpaceTimeParams(ConversionABC):
-    """Spatial and Temporal Canvas"""
+    """Define size and resolution of the Spatial and Temporal Canvas
 
-    spat_ext: Union[ArcLength[int], ArcLength[float]]
+    Args:
+        spat_ext:
+        spat_res: Must have an integer value, otherwise post_init raises an error
+            on instantiation
+        temp_ext:
+        temp_res:
+
+    """
+
+    spat_ext: ArcLength[scalar]
     spat_res: ArcLength[int]
+    """Must have int value.
+    If not, [`post_init`][utils.data_objects.SpaceTimeParams.__post_init__]
+    will raise TypeError on instantiation.
+    """
     temp_ext: Time[float]
     temp_res: Time[float]
+
+    # manually ensure that spat_res is an integer
+    # as the typing system behind val_gen doesn't allow specifying an int
+    # from a float.
+    def __post_init__(self):
+        """Ensures spat_res has value that is an int.  Raises TypeError if not.
+
+        This is necessary as the typing system imployed for generics doesn't
+        allow for `ArcLength[int]` to not be satisfied by a `float`.
+        Rather, `int` is used here for the user only.
+        """
+        if not isinstance(self.spat_res.value, int):
+            raise TypeError(
+                f'''spat_res value must be integer, instead {self.spat_res.value}
+                is an {type(self.spat_res.value)}''')
 
 
 @dataclass
