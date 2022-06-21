@@ -5,9 +5,6 @@ Objects for managing quantities as units in particular dimensions (eg, time)
 
 * Instances represent a particular value in either the base or a specified unit
 * Properties provide instance's values after having converted to the unit that the property represents
-
-Is this an image:
-
 """
 
 from __future__ import annotations
@@ -18,38 +15,8 @@ import numpy as np
 import math
 PI = math.pi
 
-# generic values ... share arithmetic operators
-# covariant so that int and float are compatible ... possibly because of other bug?
-# val_gen = TypeVar('val_gen', float, np.ndarray)
-# val_gen = TypeVar('val_gen', float, np.ndarray, covariant=False)
-# val_gen = TypeVar('val_gen', Union[int, float], np.ndarray, covariant=True)
-# val_gen = TypeVar('val_gen', Union[int, float], np.ndarray)
-val_gen = TypeVar('val_gen', int, Union[int, float], np.ndarray)
-# val_gen = TypeVar('val_gen', bound=Union[int, float, np.ndarray])
-# val_gen = TypeVar('val_gen', bound=Union[int, float, np.ndarray])
-# val_gen = TypeVar('val_gen', int, float, np.ndarray, covariant=True)
-# val_gen = TypeVar('val_gen', int, float, np.ndarray)
-# val_gen = TypeVar('val_gen', int, float, np.ndarray, covariant=False)
-
-val_gen_flt = TypeVar('val_gen_flt', float, np.ndarray)
-
-val_gen_union = Union[int, float, np.ndarray]
-
-
-# val_gen = TypeVar('val_gen', int, float, np.ndarray, covariant=True)
-
-# @add_conversions
-# class Time:
-#     """Time quantites in seconds with properties for units
-
-
-#     """
-
-#     factors = {
-#         's': 1,
-#         'ms': 10**-3,
-#         'us': 10**-6
-#     }
+scalar = Union[int, float]
+val_gen = TypeVar('val_gen', scalar, np.ndarray)
 
 # > Direct Class (dataclass)
 # more work per unit, but direct and easy to type
@@ -65,14 +32,41 @@ class _UnitBC(Generic[val_gen]):
 
     # For easier programmatic access of properties: self['UNIT']
     def __getitem__(self, unit: str) -> val_gen:
+        """Overload to allow unit conversion without accessing the property,
+        but instead only with the name of the desired unit as a string.
+
+        Useful for programatic manipulation, as the unit of any units object
+        is accessible as a string as an attribute.
+
+        Examples:
+            >>> age, delta = Time(10, 's'), Time(5, 'us')
+            >>> age['ms']
+            10000.0
+            >>> age.ms
+            10000.0
+            >>> # Get age in same units as delta
+            >>> age[delta.unit]
+            10000000.0
+        """
         return getattr(self, unit)
 
     def _convert(self, new_unit: str) -> val_gen:
-        "Generic conversion method, converts to new_unit from instantiated unit"
+        """Generic conversion method, converts to new_unit from instantiated unit
+
+        Engine of the units system in this module. **Each unit class must defined
+        in such a way as to ensure that this method works properly**.
+
+        IE - must contain private attributes (`"_NAME"`) representing the various
+        available units that each have as a value the size of that unit relative
+        to the base unit.
+        These attributes can then be used in properties/methods that need only call
+        this method (after inheriting) by passing the desired unit as the name of the
+        attribute without the leading underscore (`_convert('ms')` for `'_ms'`)
+        """
         return (self.value * self[f'_{self.unit}']) / self[f'_{new_unit}']
 
     def in_same_units_as(self: unit_bc, other: unit_bc) -> unit_bc:
-        "Re instantiate in same base units as other"
+        "Re-instantiate in same base units as other"
 
         unit_type = type(self)
         new = unit_type(self._convert(other.unit), other.unit)
@@ -114,12 +108,13 @@ class ArcLength(_UnitBC[val_gen]):
     """Length as an angle from an origin
 
     value: length
-    unit: deg|mnt|sec (degrees, minutes, seconds)
+    unit: deg|mnt|sec (degrees, minutes, seconds), default deg
     """
 
     value: val_gen
     # value: Union[float, np.ndarray]
     unit: str = 'deg'
+    """The unit the (initial) value attribute is in"""
     _base_unit: str = field(default='deg', init=False, repr=False)
     _deg: int = field(default=1, init=False, repr=False)
     _mnt: float = field(default=1/60, init=False, repr=False)  # 1 min -> 1/60 degs
@@ -129,7 +124,9 @@ class ArcLength(_UnitBC[val_gen]):
     @property
     # use when in doubt (de facto conventional unit)
     def base(self) -> val_gen:
-        "Base unit: degrees (deg)"
+        """Base unit: degrees (deg)
+        Use when in doubt (de facto conventional unit)
+        """
         return self.deg
 
     @property
