@@ -65,13 +65,18 @@ class _UnitBC(Generic[val_gen]):
         """
         return (self.value * self[f'_{self.unit}']) / self[f'_{new_unit}']
 
+    def as_new_unit(self: unit_bc, new_unit: str) -> unit_bc:
+        "Create new object of same type but in a different unit"
+
+        unit_type = type(self)
+        new = unit_type(self._convert(new_unit), new_unit)
+
+        return new
+
     def in_same_units_as(self: unit_bc, other: unit_bc) -> unit_bc:
         "Re-instantiate in same base units as other"
 
-        unit_type = type(self)
-        new = unit_type(self._convert(other.unit), other.unit)
-
-        return new
+        return self.as_new_unit(other.unit)
 
 
 @dataclass(frozen=True)

@@ -20,9 +20,39 @@ time_test_units = [
     ('us', 10**-6)
 ]
 
-# Essentially a replication of the code in Time
-# BUT, with separate units used above and hypothesis strategies, should provide
-# a safety net
+
+# for testing new unit factory methods
+@units.dataclass(frozen=True)
+class BasicUnit(units._UnitBC):
+
+    value: float
+    unit: str = 'base'
+    _base: float = 1
+    _other: float = (1/3)  # for good floating point fun
+
+
+def test_new_unit_methods():
+    """methods for changing unit by creating a new instance of the same object
+    """
+
+    old = BasicUnit(1, 'base')
+
+    # basic check that unit conversion works fine
+    assert old._convert('other') == (BasicUnit._base / BasicUnit._other)
+
+    # new unit works
+    new = old.as_new_unit('other')
+    assert id(new) != id(old)
+    assert new.unit == 'other'
+    assert new._convert('base') == old.value
+    assert new.value == old._convert('other')
+
+    # in same unit works
+    new2 = old.in_same_units_as(new)
+    assert id(new2) != id(old)
+    assert new2.unit == 'other'
+    assert new2._convert('base') == old.value
+    assert new2.value == old._convert('other')
 
 
 @given(
