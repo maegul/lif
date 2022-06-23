@@ -212,7 +212,6 @@ def test_basic_coord_res_exception():
         ff.check_spat_ext_res(ext, res)
 
 
-# arclength_units_strat = st.one_of(st.just('mnt'), st.just('sec'), st.just('deg'))
 arclength_units_strat = st.sampled_from(['mnt', 'sec', 'deg'])
 
 
@@ -223,6 +222,8 @@ def unrounded_coord_and_res(draw, min_value, max_value, max_coord_factor):
     res and coord are resolution and coordinate
 
     values are drawn from int or float strategies
+
+    units are drawn from another composite: arclength_units_strat
 
     Args:
         min_value: min of res value
@@ -246,9 +247,10 @@ def unrounded_coord_and_res(draw, min_value, max_value, max_coord_factor):
     # coord_value is in same unit as res_unit
     # Instantiate, then convert value to coord_unit, then
     # re-instantiate with coord_unit
-    coord = ArcLength(
-        ArcLength(coord_value, res_unit)[coord_unit],
-        coord_unit)
+    coord = ArcLength(coord_value, res_unit).as_new_unit(coord_unit)
+    # coord = ArcLength(
+    #     ArcLength(coord_value, res_unit)[coord_unit],
+    #     coord_unit)
 
     return res, coord
 
@@ -307,7 +309,6 @@ def not_whole_number_multiple_arclengths(
     return lower, main
 
 
-@mark.proto
 @given(
     coord_args=not_whole_number_multiple_arclengths(min_value=1, max_value=10000))
 def test_coord_res_exception(coord_args):
@@ -327,7 +328,7 @@ def test_coord_res_exception(coord_args):
 @given(
     spat_ext=st.floats(
         min_value=1, max_value=1000, allow_infinity=False, allow_nan=False))
-def test_coords_center_zero(spat_ext: float):
+def test_coords_center_zero_basic(spat_ext: float):
     """Test that at coords.size//2 is always the coordinate value 0
 
     Uses default value of spat_res: 1 mnt ... simple version of the test
@@ -339,11 +340,16 @@ def test_coords_center_zero(spat_ext: float):
     assert np.isclose(coords.mnt[coords.base.size//2], 0.0)  # type: ignore
 
 
-@mark.proto
 @given(coord_args=unrounded_coord_and_res(
-    min_value=1, max_value=1000, max_coord_factor=100))
-def test_coords_center_zero_multi_res(coord_args):
-    """Test that coords at center like above but with variable resolution
+        min_value=1, max_value=1000, max_coord_factor=100))
+def test_coords_center_zero_symmetry_res_snapped_multi_res(coord_args):
+    """Test that coords at center are zero like above but with variable resolution
+
+    Also, symmetrical and snapped to res ...
+    ... basically the fundamental guarantees for spatial coords
+
+    Not quite a pure unit test here ... but they all kinda depend on each other
+    in the end I guess??
     """
 
     res_arclength, ext_arclength = coord_args
@@ -358,6 +364,23 @@ def test_coords_center_zero_multi_res(coord_args):
 
     # test that symmetrical
     assert np.isclose(ends[0], -1 * ends[1])
+
+    # test snapped to res
+    # coords are already in same unit as res
+    assert (ends[0] % res_arclength.value) == 0
+    assert (ends[1] % res_arclength.value) == 0
+
+    # do unit conversion but rely only on being close
+    # calculate proportion of a res value away from res
+    # (should be floating point error difference only)
+    # mod 1 to get only decimal portion of floating point
+    # this represents how many res values the coord is from a whole integer
+    distance = (abs(coords[res_arclength.unit][0]) / res_arclength.value) % 1
+    # want smallest distance between either 0 or 1
+    corrected_distance = distance if (distance<0.5) else abs(1-distance)
+    np.isclose(corrected_distance, 0)
+
+    # assert np.isclose((abs(coords[res_arclength.unit][0]) % res_arclength.value),  0)
 
     # test shape is odd
     assert (coords.value.size % 2) == 1
@@ -390,7 +413,7 @@ def test_spat_coords_match_1d_coords(
     assert np.allclose(coord_1d.base, x.base[0,:])  # first dimension is Y axis, second x axis.
     assert coord_1d.base.shape[0] == x.base.shape[1]  # lengths should match
 
-@mark.proto
+
 @given(spat_res_unit=st.sampled_from(['sec','mnt', 'deg']))
 def test_spat_coords_units_correct(spat_res_unit):
 

@@ -21,19 +21,18 @@ time_test_units = [
 ]
 
 
-# for testing new unit factory methods
-@units.dataclass(frozen=True)
-class BasicUnit(units._UnitBC):
-
-    value: float
-    unit: str = 'base'
-    _base: float = 1
-    _other: float = (1/3)  # for good floating point fun
-
-
 def test_new_unit_methods():
     """methods for changing unit by creating a new instance of the same object
     """
+
+    # for testing new unit factory methods
+    @units.dataclass(frozen=True)
+    class BasicUnit(units._UnitBC):
+
+        value: float
+        unit: str = 'base'
+        _base: float = 1
+        _other: float = (1/3)  # for good floating point fun
 
     old = BasicUnit(1, 'base')
 
