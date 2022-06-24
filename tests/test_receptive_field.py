@@ -474,14 +474,14 @@ def test_spat_temp_coords_match_1d_coords(
     # spatial slice
     coord_1d = ff.mk_spat_coords_1d(ArcLength(spat_res, 'mnt'), ArcLength(spat_ext, 'mnt'))
 
-    assert np.allclose(coord_1d.base, x.base[0,:,0])  # first dimension is Y axis, second x axis.
     assert coord_1d.base.shape[0] == x.base.shape[1]  # lengths should match
+    assert np.allclose(coord_1d.base, x.base[0,:,0])  # first dimension is Y axis, second, is X axis
 
     # temporal slice
     coord_1d = ff.mk_temp_coords(Time(temp_res, 'ms'), Time(temp_ext, 'ms'))
 
-    assert np.allclose(coord_1d.base, t.base[0,0,:])  # third dimension is third axis
     assert coord_1d.base.shape[0] == x.base.shape[2]
+    assert np.allclose(coord_1d.base, t.base[0,0,:])  # third dimension is third axis
 
 
 @given(
