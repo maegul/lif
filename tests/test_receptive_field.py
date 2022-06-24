@@ -216,7 +216,8 @@ arclength_units_strat = st.sampled_from(['mnt', 'sec', 'deg'])
 
 
 @st.composite
-def unrounded_coord_and_res(draw, min_value, max_value, max_coord_factor):
+def unrounded_coord_and_res(
+    draw, min_value, max_value, max_coord_factor) -> Tuple[ArcLength[int], ArcLength[float]]:
     """Generate integer res and larger float coord each in random units
 
     res and coord are resolution and coordinate
@@ -255,7 +256,6 @@ def unrounded_coord_and_res(draw, min_value, max_value, max_coord_factor):
     return res, coord
 
 
-@mark.proto
 @given(coord_res=unrounded_coord_and_res(1, 1000, 100))
 def test_round_coord_to_res_multiple(
         coord_res: Tuple[ArcLength[int], ArcLength[float]]):
@@ -390,7 +390,30 @@ def test_coords_center_zero_symmetry_res_snapped_multi_res(coord_args):
         0)  # type: ignore
 
 
+@given(coord_args=unrounded_coord_and_res(
+        min_value=1, max_value=1000, max_coord_factor=100))
+def test_spat_coords_int(coord_args: Tuple[ArcLength[int], ArcLength[float]]):
+    """spat coords array is integer not float
+    which sould be the case from all the rounding and snapping to the res arg
+
+    This may not always be the case ... the code base may change.
+    """
+
+    res_arclength, ext_arclength = coord_args
+    coords = ff.mk_spat_coords_1d(res_arclength, ext_arclength)
+
+    assert np.issubdtype(coords.value.dtype, np.integer)
+
+
 @mark.proto
+def test_spat_coords_origin_bottom_left():
+    r,e = ArcLength(1, 'mnt'), ArcLength(500, 'mnt')
+    X,Y = ff.mk_spat_coords(r, e)
+
+    assert X.value[0, 0] < X.value[0, -1]  # X goes upward left to right
+    assert Y.value[0, 0] > Y.value[-1, 0]  # Y goes upward bottom to top
+
+
 @given(
     spat_res=st.integers(1, 10),
     spat_ext_factor=st.floats(10, 100, allow_nan=False, allow_infinity=False),

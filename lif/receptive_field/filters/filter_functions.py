@@ -79,8 +79,12 @@ def round_coord_to_res(
     res_unit = res.unit
     coord_val = coord[res_unit]
 
-    low_val = int(coord_val // res_val) * res_val
-    high_val = low_val + res_val
+    # type hint as int as a guard ... helps guarantee that the output is actually int
+    # as it will be from one of these values
+    # useful as can't type a unit (ie ArcLength) as int, only "scalar"
+    low_val: int = int(coord_val // res_val) * res_val
+    high_val: int = low_val + res_val
+    rounded_val: int
 
     if high:
         rounded_val = high_val
@@ -91,7 +95,8 @@ def round_coord_to_res(
         high_diff = abs(high_val - coord_val)
 
         rounded_val: int = (
-            high_val if low_diff > high_diff else
+            high_val
+                if low_diff > high_diff else
             low_val
             )
 
@@ -117,7 +122,7 @@ def mk_spat_radius(spat_ext: Union[ArcLength[int], ArcLength[float]]) -> ArcLeng
     # val = int(np.ceil(spat_ext.value / 2))
     # why not just round to next highest res multiple??
 
-    ## Redundant now with rounded_spat_radius funciton and round_coord_to_res function??
+    ## Redundant now with rounded_spat_radius function and round_coord_to_res function??
 
     val = round(spat_ext.value / 2)
     spat_radius = ArcLength(val, spat_ext.unit)
@@ -132,6 +137,12 @@ def mk_rounded_spat_radius(
     Return value is `int` and the unit is same as `spat_res`.
 
     Uses `round_coord_to_res`, after dividing by 2, and rounding to the higher value
+
+    Examples:
+        >>> (0.7893 * 60) / 2  # the "radius" defined by 0.7893 degs
+        23.679
+        >>> mk_rounded_spat_radius(ArcLength(3, 'mnt'), ArcLength(0.7839, 'deg'))
+        ArcLength(value=24, unit='mnt')
     """
 
     spat_radius = round_coord_to_res(
@@ -160,7 +171,6 @@ def check_spat_ext_res(ext: ArcLength[int], res: ArcLength[int]):
             f'Extent unit {ext.unit} and res unit {res.unit} should be same')
 
     check = ((ext.value % res.value) == 0)
-
     if not check:
         raise exc.CoordsValueError(
             f'extent {ext} not whole multiple of res {res}: ext % res = {ext.value % res.value}')
@@ -171,14 +181,20 @@ def mk_spat_coords_1d(
         spat_ext: Union[ArcLength[int], ArcLength[float]] = ArcLength(300, 'mnt')
         ) -> ArcLength[np.ndarray]:
     """1D spatial coords symmetrical about 0 with 0 being the central discrete point
+        with resolution `spat_res` and extent/width/diameter along both `x` and `y` axes
+        defined by `spat_ext`.  Returned `ArcLength` is in same units as `spat_res`.
 
     Args:
         spat_res: Resolution of the coordinates.
-        spat_ext: Extent of the coordinates from a center of zero, like a radius
+        spat_ext: Extent of the coordinates, **from a edge to edge, like a diameter**.
 
     Returns:
         coords: newly generated coordinates with a central value of 0, **in same unit
             as `spat_res`**
+
+    Examples:
+        >>> mk_spat_coords_1d(ArcLength(2, 'mnt'), ArcLength(0.1, 'deg'))
+        ArcLength(value=array([-4, -2,  0,  2,  4]), unit='mnt')
 
     Notes:
         Center point (value: 0) will be at index spat_ext // 2 if spat_res is 1
@@ -196,21 +212,6 @@ def mk_spat_coords_1d(
 
         All calculations done in units of spat_res
     """
-
-    # convert extent to same units as resolution first
-    # so that converted to integers afterward, and no more
-    # conversions that introduce floating point issues are done
-    # spat_ext = spat_ext.in_same_units_as(spat_res)
-
-    # typing problems
-    # spat_ext_in_res_units = ArcLength(float(spat_ext[spat_res.unit]), spat_res.unit)
-    # spat_radius = mk_spat_radius(spat_ext_in_res_units)
-
-    # divide spat_ext by 2, in units of res, then round to res
-    # spat_radius = round_coord_to_res(
-    #         ArcLength(spat_ext[spat_res.unit] / 2, spat_res.unit),
-    #         spat_res, high=True
-    #     )
 
     # to have a coord value that is zero, it is a requirement that
     # the spat_radius is a whole multiple of the spat_res
