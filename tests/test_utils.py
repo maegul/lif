@@ -10,6 +10,8 @@ from hypothesis import given, assume, strategies as st
 from pytest import mark
 
 import lif.utils.units.units as units
+from lif.utils.units.units import ArcLength
+import lif.utils.data_objects as do
 from lif.utils.data_objects import PI
 
 # > units
@@ -208,3 +210,116 @@ def test_temp_frequency_unit_simple(
 #         assert_value = (value * units.Time.factors[unit]) / units.Time.factors[factor]
 
 #         assert new_value == assert_value
+
+# > Data Objects
+
+# >> DOG Spat Filt
+
+# >>> Data object creation veracity
+
+def test_gauss_params_round_trip():
+
+    gauss_params = do.Gauss2DSpatFiltParams(
+        amplitude=5,
+        arguments=do.Gauss2DSpatFiltArgs(
+            h_sd=ArcLength(3), v_sd=ArcLength(11)
+            )
+        )
+
+    assert gauss_params == do.Gauss2DSpatFiltParams.from_iter(gauss_params.array())  # type: ignore
+
+
+def test_dog_spat_filt_1d_round_trip():
+
+    params = do.DOGSpatFiltArgs1D(
+        cent=do.Gauss1DSpatFiltParams(1, ArcLength(11)),
+        surr=do.Gauss1DSpatFiltParams(0.5, ArcLength(22))
+        )
+
+    assert params == do.DOGSpatFiltArgs1D.from_iter(params.array())
+
+
+# >>> Orientation Biased Creation methods
+
+@mark.proto
+@mark.parametrize('arclength_unit', ('mnt', 'deg', 'sec'))
+def test_gauss2d_spat_filt_args_ori_biased_duplicate(arclength_unit):
+    h_sd, v_sd = (ArcLength(v, arclength_unit) for v in (20, 20))
+    gauss_2d_args = do.Gauss2DSpatFiltArgs(h_sd=h_sd, v_sd=v_sd)
+
+    v_sd_factor, h_sd_factor = 2, 0.5
+    ori_biased_gauss_args = gauss_2d_args.mk_ori_biased_duplicate(
+        v_sd_factor=v_sd_factor, h_sd_factor=h_sd_factor)
+
+    # different objects (prob does test for deepcopy success)
+    assert gauss_2d_args != ori_biased_gauss_args
+
+    # values are correct
+    assert (
+        ori_biased_gauss_args.v_sd.base
+        ==
+        gauss_2d_args.v_sd.base * v_sd_factor
+        )
+    assert (
+        ori_biased_gauss_args.h_sd.base
+        ==
+        gauss_2d_args.h_sd.base * h_sd_factor
+        )
+
+    # units are the same
+    assert (
+        ori_biased_gauss_args.v_sd.unit
+        ==
+        gauss_2d_args.v_sd.unit
+        )
+    assert (
+        ori_biased_gauss_args.h_sd.unit
+        ==
+        gauss_2d_args.h_sd.unit
+        )
+
+@mark.proto
+@mark.parametrize('arclength_unit', ('mnt', 'deg', 'sec'))
+def test_spat_filt_args_ori_biased_duplicate(arclength_unit):
+    mag_cent, cent_h_sd, cent_v_sd = 1, 20, 20
+    mag_surr, surr_h_sd, surr_v_sd = 1, 100, 100
+
+    dog_rf_params = do.DOGSpatFiltArgs(
+        cent=do.Gauss2DSpatFiltParams.from_iter(
+            [mag_cent, cent_h_sd, cent_v_sd],
+            arclength_unit=arclength_unit),
+        surr=do.Gauss2DSpatFiltParams.from_iter(
+            [mag_surr, surr_h_sd, surr_v_sd],
+            arclength_unit=arclength_unit)
+        )
+
+    v_sd_factor, h_sd_factor = 2, 0.5
+    ori_biased_dog_rf = dog_rf_params.mk_ori_biased_duplicate(
+        v_sd_factor=v_sd_factor, h_sd_factor=h_sd_factor)
+
+    # different objects (prob does test for deepcopy success)
+    assert ori_biased_dog_rf != dog_rf_params
+
+    # values are correct
+    assert (
+        ori_biased_dog_rf.cent.arguments.v_sd.base
+        ==
+        dog_rf_params.cent.arguments.v_sd.base * v_sd_factor
+        )
+    assert (
+        ori_biased_dog_rf.cent.arguments.h_sd.base
+        ==
+        dog_rf_params.cent.arguments.h_sd.base * h_sd_factor
+        )
+
+    # units are the same
+    assert (
+        ori_biased_dog_rf.cent.arguments.v_sd.unit
+        ==
+        dog_rf_params.cent.arguments.v_sd.unit
+        )
+    assert (
+        ori_biased_dog_rf.cent.arguments.h_sd.unit
+        ==
+        dog_rf_params.cent.arguments.h_sd.unit
+        )

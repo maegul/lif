@@ -264,6 +264,18 @@ class Gauss2DSpatFiltArgs(ConversionABC):
         args_array = np.array([self.h_sd.base, self.v_sd.base])
         return args_array
 
+    def mk_ori_biased_duplicate(
+            self,
+            v_sd_factor: float, h_sd_factor: float
+            ) -> Gauss2DSpatFiltArgs:
+
+        new_v_sd = ArcLength(self.v_sd.value * v_sd_factor, self.v_sd.unit)
+        new_h_sd = ArcLength(self.h_sd.value * h_sd_factor, self.h_sd.unit)
+
+        return self.__class__(h_sd=new_h_sd, v_sd = new_v_sd)
+
+
+
 
 @dataclass
 class Gauss2DSpatFiltParams(ConversionABC):
@@ -390,11 +402,10 @@ class DOGSpatFiltArgs(ConversionABC):
 
         spat_filt_args = copy.deepcopy(self)
 
-        spat_filt_args.cent.arguments.v_sd = ArcLength(
-            spat_filt_args.cent.arguments.v_sd.mnt * v_sd_factor, 'mnt'
-            )
-        spat_filt_args.cent.arguments.h_sd = ArcLength(
-            spat_filt_args.cent.arguments.h_sd.mnt * h_sd_factor, 'mnt'
+        # alter only the center gaussian
+        spat_filt_args.cent.arguments = (
+            spat_filt_args.cent.arguments
+            .mk_ori_biased_duplicate(v_sd_factor=v_sd_factor, h_sd_factor=h_sd_factor)
             )
 
         return spat_filt_args
