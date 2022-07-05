@@ -1092,6 +1092,34 @@ class _CircVarSDRatioMethods:
 circ_var_sd_ratio_methods = _CircVarSDRatioMethods()
 
 
+# >> Create adjusted spatfilt parameters
+
+def mk_ori_biased_spatfilt_params_from_spat_filt(
+        spat_filt: do.DOGSpatialFilter,
+        circ_var: float
+        ) -> do.DOGSpatFiltArgs:
+    """Create new spatial filter params from a spat filter with an orientation bias
+
+    Args:
+        circ_var: the circular variance that the new parameters will have
+
+    Returns:
+        new params, with adjusted `sd` values so that the spatial filter
+            they describe will have the provided `circ_var` (circular variance)
+    """
+
+    sd_ratio = spat_filt.ori_bias_params.circ_var2ratio(circ_var)
+    # as first return val is biggest, this makes horizontally  elongated
+    # orientation 0 degs
+    h_sd_fact, v_sd_fact = mk_ori_biased_sd_factors(sd_ratio)
+
+    new_sf_params = spat_filt.parameters.mk_ori_biased_duplicate(
+        h_sd_factor=h_sd_fact, v_sd_factor=v_sd_fact
+        )
+
+    return new_sf_params
+
+
 # > Temporal
 
 # >> tq temp filt

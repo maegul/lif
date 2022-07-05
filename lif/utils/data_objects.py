@@ -511,21 +511,6 @@ class DOGSpatialFilter(ConversionABC):
 
         return spat_filt
 
-    def mk_ori_biased_parameters(
-            self, circ_var: float) -> DOGSpatFiltArgs:
-        """Copied parameters with sds adjusted to produce circular variance"""
-
-        sd_ratio = self.ori_bias_params.circ_var2ratio(circ_var)
-        # as first return val is biggest, this makes horizontally  elongated
-        # orientation 0 degs
-        h_sd_fact, v_sd_fact = ff.mk_ori_biased_sd_factors(sd_ratio)
-
-        new_sf_params = self.parameters.mk_ori_biased_duplicate(
-            h_sd_factor=h_sd_fact, v_sd_factor=v_sd_fact
-            )
-
-        return new_sf_params
-
 
 # > Full LGN Model
 
