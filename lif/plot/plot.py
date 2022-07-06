@@ -17,6 +17,45 @@ from plotly.subplots import make_subplots
 import numpy as np
 
 
+def tq_temp_filt_fit(
+        fit_filter: do.TQTempFilter,
+        temp_res: Time = Time(1, 'ms'), temp_ext: Time = Time(200, 'ms')
+        ):
+    """Plot a fitted tq temp filter against the original data
+    """
+
+    # render the filter in the time domain
+    time = ff.mk_temp_coords(temp_res=temp_res, temp_ext=temp_ext)
+    tf = ff.mk_tq_tf(t=time, tf_params=fit_filter.parameters)
+    # render the filter in frequency domain (as the original data)
+    freqs = fit_filter.source_data.data.frequencies
+    tf_ft = ff.mk_tq_tf_ft(freqs=freqs, tf_params=fit_filter.parameters)
+
+    filt = px.line(x=time.ms, y=tf)
+
+    ft = px.line(
+        x=freqs.hz,
+        y=[tf_ft, fit_filter.source_data.data.amplitudes],
+        log_x=True, markers=True)
+    ft.data[0].name = 'tq_filter'
+    ft.data[1].name = 'source'
+
+    fig = (
+        make_subplots(rows=1, cols=2,
+            subplot_titles=[
+                'Filter (time domain)',
+                'Filter and data (frequency domain)'],
+            y_title='Amplitude'
+            )
+        .add_trace(filt.data[0], 1, 1)
+        .add_traces(ft.data, 1, 2)
+        .update_xaxes(title_text='Time (ms)', row=1, col=1)
+        .update_xaxes(title_text='Frequency (Hz)', type='log', row=1, col=2)
+        )
+
+    return fig
+
+
 def dog_sf_ft_hv(
         freqs: SpatFrequency,
         dog_args: do.DOGSpatFiltArgs, spat_res: Optional[ArcLength] = None):
@@ -339,8 +378,9 @@ def orientation_circ_var_subplots(
     # add subplots
     for sfi, spat_f in enumerate(spat_freqs.base):
         for cvi, cv in enumerate(circ_vars):
+            ori_sf_params = ff.mk_ori_biased_spatfilt_params_from_spat_filt(sf, cv)
             ori_fig = orientation_plot(
-                sf.mk_ori_biased_parameters(cv),
+                ori_sf_params,
                 do.SpatFrequency(spat_f)
                 )
             fig.add_trace(ori_fig.data[0], col=sfi+1, row=cvi+1)
