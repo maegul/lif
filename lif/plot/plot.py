@@ -57,30 +57,65 @@ def tq_temp_filt_fit(
 
 
 def dog_sf_ft_hv(
-        freqs: SpatFrequency,
-        dog_args: do.DOGSpatFiltArgs, spat_res: Optional[ArcLength] = None):
-    '''Flips x and y to create orthogonal profiles'''
+        dog_args: do.DOGSpatFiltArgs,
+        n_spat_freqs: int = 50,
+        use_log_freqs: bool = True,
+        freqs: Optional[SpatFrequency] = None,
+        use_log_xaxis: bool = True
+        ):
+    '''Response of DOG spat filter to stimuli oriented vertically and horizontally
 
-    if not spat_res:
-        spat_res = ArcLength(0.1, 'mnt')
+    Uses fourier transform functions to do so analytically.
 
-    resp_h = ff.mk_dog_sf_conv_amp(freqs, SpatFrequency(0), dog_args, spat_res)
-    resp_v = ff.mk_dog_sf_conv_amp(freqs, SpatFrequency(0), dog_args, spat_res)
+    Args:
+        dog_args: Arguments/parameters of spatial filter (ideally orientation biased)
+        n_spat_freqs: For how many spatial frequencies to get the response.
+                        Will automatically range from zero (or one) to the highest that elicits
+                        a response from the RF
+        use_log_freqs: Automatically range frequencies in equal `logarithmic(10)` steps.
+                        In this case, start from `10^-1` not `0`.
+        freqs: Override the automatic calculation of frequencies and instead provide
+                them manually
+        use_log_xaxis: Plot the xaxis in logarithmic format (ie, factors of 10 equally spaced)
+
+    Returns:
+        plotly figure object
+    '''
+
+    # if no specific freqs are provided, generate automatically
+    if not freqs:
+        max_spat_freq = ff.find_null_high_sf(dog_args)
+        if use_log_freqs:
+            max_freq_exponent = np.log10(max_spat_freq.base)
+            freq_exponents = np.linspace(-1, max_freq_exponent, n_spat_freqs)
+            freqs = do.SpatFrequency(10**freq_exponents)
+        else:
+            freqs = do.SpatFrequency(np.linspace(0, max_spat_freq.base, n_spat_freqs))
+
+
+    # angle of modulation (90-->horizontal) -----------V
+    x_freq, y_freq = ff.mk_sf_ft_polar_freqs(ArcLength(90, 'deg'), freqs)
+    resp_h = ff.mk_dog_sf_ft(freqs_x=x_freq, freqs_y=y_freq, dog_args=dog_args)
+
+    # angle of modulation (0-->vertical) --------------V
+    x_freq, y_freq = ff.mk_sf_ft_polar_freqs(ArcLength(0, 'deg'), freqs)
+    resp_v = ff.mk_dog_sf_ft(freqs_x=x_freq, freqs_y=y_freq, dog_args=dog_args)
 
     fig = (
         px
-        .line(x=freqs.cpd, y=resp_h)
-        .update_traces(name='horiz', showlegend=True)
-        .add_trace(
-            px.line(x=freqs.cpd, y=resp_v)
+        .line(x=freqs.cpd, y=resp_h, labels={'x': 'Spat Freq (CPD)', 'y': 'Response'})
+        .update_traces(name='0deg ori =', showlegend=True)
+        .add_trace(px.line(x=freqs.cpd, y=resp_v)
             .update_traces(
                 line_color='red',
-                name='vertical',
+                name='90deg ori ||',
                 showlegend=True
-                )
-            .data[0]
+                ).data[0]
             )
     )
+
+    if use_log_xaxis:
+        fig = fig.update_xaxes(type='log')
 
     return fig
 
