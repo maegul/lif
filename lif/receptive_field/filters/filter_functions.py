@@ -989,17 +989,22 @@ def mk_even_semi_circle_angles(n_angles: int = 8) -> ArcLength[np.ndarray]:
 def find_null_high_sf(sf_params: do.DOGSpatFiltArgs) -> SpatFrequency[float]:
     """Find spatial frequency at which DOG filter reponse is zero"""
 
-    n = 0
+    f = 0
     sf_min = False
-    while not sf_min and (n < 1000):  # 1000 cpd is too much!
-        n += 1
-        r = mk_dog_sf_ft(SpatFrequency(0), SpatFrequency(n), sf_params)
-        sf_min = np.isclose(r, 0)  # type: ignore
 
-    if n == 1000 and (not sf_min):  # no spat freq limit was found
-        raise ValueError('Could not find spat-freq that elicits a zero resp for sf_params')
+    x_freq = SpatFrequency(0)
+    for f in range(1000):  # 1000 cpd is too much, unrealistically high resolution!
+        # 0 for x and n for y just means oriented at 0/180 degs
+        y_freq = SpatFrequency(f, unit='cpd')
+        r = mk_dog_sf_ft(x_freq, y_freq, sf_params)
+        sf_min = np.isclose(r, 0)
+        if sf_min:
+            break
 
-    return SpatFrequency(n, 'cpd')
+    if (not sf_min):  # no spat freq limit was found
+        raise exc.FilterError('Could not find spat-freq that elicits a zero resp for sf_params')
+
+    return SpatFrequency(f, 'cpd')
 
 
 def mk_high_density_spat_freqs(
