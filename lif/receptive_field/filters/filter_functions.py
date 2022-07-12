@@ -393,30 +393,30 @@ def mk_temp_coords(
         temp_res: Time[scalar],
         temp_ext: Time[scalar],
         tau = None,
-        temp_ext_n_tau: float = TEMP_EXT_N_TAU) -> Time[np.ndarray]: ...
+        temp_ext_n_tau: Optional[float] = None) -> Time[np.ndarray]: ...
 @overload  # tau provided
 def mk_temp_coords(
         temp_res: Time[scalar],
         temp_ext: None,
         tau: Time[scalar],
-        temp_ext_n_tau: float = TEMP_EXT_N_TAU) -> Time[np.ndarray]: ...
+        temp_ext_n_tau: Optional[float] = None) -> Time[np.ndarray]: ...
 @overload  # both none ... exception raised
 def mk_temp_coords(
         temp_res: Time[scalar],
         temp_ext: None,
         tau: None,
-        temp_ext_n_tau: float = TEMP_EXT_N_TAU) -> NoReturn: ...
+        temp_ext_n_tau: Optional[float] = None) -> NoReturn: ...
 @overload  # both provided ... exception raised
 def mk_temp_coords(
         temp_res: Time[scalar],
         temp_ext: Time[scalar],
         tau: Time[scalar],
-        temp_ext_n_tau: float = TEMP_EXT_N_TAU) -> NoReturn: ...
+        temp_ext_n_tau: Optional[float] = None) -> NoReturn: ...
 def mk_temp_coords(
         temp_res: Time[scalar],
         temp_ext: Optional[Time[scalar]] = None,
         tau: Optional[Time[scalar]] = None,
-        temp_ext_n_tau: float = TEMP_EXT_N_TAU) -> Time[np.ndarray]:
+        temp_ext_n_tau: Optional[float] = None) -> Time[np.ndarray]:
     """Array of times with resolution temp_res and extent temp_ext or tau * temp_text_n_tau
 
     Returned coords are in the same unit as `temp_res`.
@@ -453,7 +453,9 @@ def mk_temp_coords(
 
     # set temp_ext according to tau and temp_ext_n_tau
     if tau:
-        if temp_ext_n_tau < TEMP_EXT_N_TAU:  # hardcode prohibition against n_tau less than TEMP_EXT_N_TAU!
+        if (temp_ext_n_tau is None):
+            temp_ext_n_tau = TEMP_EXT_N_TAU
+        elif temp_ext_n_tau < TEMP_EXT_N_TAU:  # hardcode prohibition against n_tau less than TEMP_EXT_N_TAU!
             raise exc.CoordsValueError(dedent(f'''
                 temp_ext_n_tau ({temp_ext_n_tau}) should be {TEMP_EXT_N_TAU} or more
                 Any lower and the sum of the filter will be diminished
@@ -893,31 +895,45 @@ def mk_sf_ft_polar_freqs(
             ) -> Tuple[SpatFrequency, SpatFrequency]:
     """Return 2D x and y freq values equivalent to polar args provided
 
-    To aid in use of ft functions like mk_dog_sf_ft which require both
+    To aid in use of ft functions like [mk_dog_sf_ft][mk_dog_sf_ft] which require both
     x and y frequencies.
 
-    "X frequencies -> vertical gratings"
-    If a DOG rf is longer in the vertical than horizontal, and so
-    "prefers" the "vertical" or "90deg" orientation, then it will have
-    a higher preferred SF along the x-axis of frequencies (not the y!).
-    This is because a frequency is concerned with the DIRECTION in which
-    a 2D sinusoidal is modulating.
-    Thus, a vertically aligned 2D sinusoidal grating actually modulates
-    horizontally.
+    Args:
+        theta:
+            * angle in the `2D` `FT` image
+            * Also the angle of the **direction of modulation** of a sinusoid
+            the in space domain (see notes).
+            * EG, `0degs` --> **horizontal** modulation ---> **vertically** alligned grating
 
-    Parameters
-    ----
-    theta: angle in FFT image
-        Also the angle of the direction of modulation
-        0degs: |--> (horizontal)
+        freq: Actual frequency
+            Magnitude of polar coordinate from center
+            In 2D FFT, polar magnitude is frequency
 
-    freq: Actual frequency
-        Magnitude of polar coordinate from center
-        In 2D FFT, polar magnitude is frequency
+    Returns:
+        freq_x: cartesian freqs for 2D FFT along the `x` axis
+        freq_y: cartesian freqs for 2D FFT along the `y` axis
 
-    Returns
-    ----
-    freq_x, freq_y: cartesian freqs for 2D FFT
+    Notes:
+        * `X frequencies` `-->` `vertically oriented gratings`
+        * If a DOG rf is longer in the vertical than horizontal, and so
+        "prefers" the "vertical" or `90deg` orientation, then it will have
+        a higher preferred SF along the `x-axis` of frequencies, **not the y!**.
+        * This is because a frequency is concerned with the **DIRECTION** in which
+        a 2D sinusoidal is modulating.
+        * Thus, a vertically aligned 2D sinusoidal grating actually modulates
+        horizontally or along the `x` axis.
+
+        ```
+        --------  <---- * grating modulating "horizontally" or along x-axis
+        --------        * theta=ArcLength(0, 'deg')
+        --------        * freq_x=SpatFreq(2, 'cpd'), freq_y=SpatFreq(0, 'cpd')
+        --------
+
+        | | | |  <---- * grating modulating "vertically" or along y-axis
+        | | | |        * theta=ArcLength(90, 'deg')
+        | | | |        * freq_x=SpatFreq(0, 'cpd'), freq_y=SpatFreq(2, 'cpd')
+        | | | |
+        ```
     """
     # freq_x: SpatFrequency[val_gen]
     # freq_y: SpatFrequency[val_gen]
@@ -961,16 +977,33 @@ def mk_dog_sf_conv_amp(
 
     # return dog_sf_amp / spat_res.deg  # NOPE ... not degrees
 
+    # >! Using a unit convention here!
     # use mnt as convention at the moment, and square as spatial
     return dog_sf_amp / (spat_res.mnt**2)
 
 
 # > Orientation Biases
 
-def mk_ori_biased_sd_factors(ratio: float) -> Tuple[float, float]:
-    """Presuming base SD is average, ratio will maintain average of v & h as base
+# functions for giving radially symmetric spatial filters an orientation bias
+# by adjusting their horizontal and vertical SD values according to definitions
+# from the literature
 
-    presumption: a + b = 2, a/b = ratio (ie, a is bigger and bias is vertically long)
+def mk_ori_biased_sd_factors(ratio: float) -> Tuple[float, float]:
+    """Generate factors for altering the `sd` values of a 2D spatial DOG filter
+
+    Presuming that the pre-defined (radially symmetric) `sd` should be
+    and remain the  average, the generated ratio will maintain
+    an average of `v` and `h` that is the same as the pre-defined `sd` value.
+
+    Args:
+        ratio: Desired value of `a/b` where `a`, `b` <-> `major`, `minor` axes
+            the of spatial filter
+    Returns:
+        axis factors (a,b) to multiple actual `sd` values by to create the orientation bias.
+
+    Constraints:
+        * Average maintained: `a + b = 2`
+        * Ratio created: `a/b = ratio` (ie, `a` is bigger)
     """
 
     a = (2*ratio)/(ratio+1)
@@ -1031,14 +1064,16 @@ def circ_var_sd_ratio_naito(
         ratio: float, sf_params: do.DOGSpatFiltArgs,
         angles: ArcLength[np.ndarray], spat_freqs: SpatFrequency[np.ndarray]
         ) -> Optional[float]:
-    """Calculate circ_var of spat filt if v and h sds have ratio.
+    """Calculate circ_var of spat filt if v and h sds have provided `ratio`.
+
+    Args:
+        ratio:
 
     Uses definition of ori bias from Naito (2013).
     IE: Measure circ var at a high spatial frequency (higher than preferred)
     where the response is 50% of that to the preferred frequency.
 
     Uses mk_ori_biased_sd_factors to convert ratio to sd factors
-
     """
 
     # make new sf parameters with prescribed ratio
@@ -1078,6 +1113,10 @@ def circ_var_sd_ratio_naito(
     return circ_var
 
 
+# >> SD Ratio Methods and module attribute
+# bit hacky here ... going to create a module attribute for getting
+# desired sd-ratio-method functions (and checking if it's available)
+
 # circ var sd functions should match this type
 _circ_var_sd_ratio_method_type = Callable[
         [float, do.DOGSpatFiltArgs, ArcLength[np.ndarray], SpatFrequency[np.ndarray]],
@@ -1103,7 +1142,9 @@ def mk_ori_biased_spatfilt_params_from_spat_filt(
         spat_filt: do.DOGSpatialFilter,
         circ_var: float
         ) -> do.DOGSpatFiltArgs:
-    """Create new spatial filter params from a spat filter with an orientation bias
+    """Create new spatial filter params from a spat filter by adding an orientation bias
+
+    The bias will be for horizontal orientations (ie spat filt is stretched horizontally)
 
     Args:
         circ_var: the circular variance that the new parameters will have
