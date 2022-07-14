@@ -256,36 +256,25 @@ def mk_spat_ext_from_sd_limit(
 # Main behaviour is require only one of a spat_ext or std dev arg
 # and return the appropriate output or raise an error ... thus
 # the overloads
-@overload  # both none: Exception
-def mk_sd_limited_spat_coords(
-        spat_res: ArcLength[int],
-        spat_ext: None,
-        sd: None,
-        sd_limit: float = SPAT_FILT_SD_LIMIT) -> NoReturn: ...
-@overload  # both provided: Exception
-def mk_sd_limited_spat_coords(
-        spat_res: ArcLength[int],
-        spat_ext: ArcLength[scalar],
-        sd: ArcLength[scalar],
-        sd_limit: float = SPAT_FILT_SD_LIMIT) -> NoReturn: ...
 @overload  # only one: good
 def mk_sd_limited_spat_coords(
         spat_res: ArcLength[int],
-        spat_ext: None,
+        # default value needed for this particular overload,
+        # "*" allows default value arg before non-default-value arg (as now keyword only anyway)
+        spat_ext: None = None, *,
         sd: ArcLength[scalar],
-        sd_limit: float = SPAT_FILT_SD_LIMIT) -> ArcLength[np.ndarray]: ...
+        sd_limit: Optional[float] = None) -> ArcLength[np.ndarray]: ...
 @overload  # only one: good
 def mk_sd_limited_spat_coords(
         spat_res: ArcLength[int],
         spat_ext: ArcLength[scalar],
-        sd: None,
-        sd_limit: float = SPAT_FILT_SD_LIMIT) -> ArcLength[np.ndarray]: ...
-
+        sd: None = None,
+        sd_limit: Optional[float] = None) -> ArcLength[np.ndarray]: ...
 def mk_sd_limited_spat_coords(
         spat_res: ArcLength[int] = ArcLength(1, 'mnt'),
         spat_ext: Optional[ArcLength[scalar]] = None,
         sd: Optional[ArcLength[scalar]] = None,
-        sd_limit: float = SPAT_FILT_SD_LIMIT) -> ArcLength[np.ndarray]:
+        sd_limit: Optional[float] = None) -> ArcLength[np.ndarray]:
     """Wraps `mk_spat_coords_1d` to limit extent by number of SD if provided
 
     Must provide either spat_ext or sd, **but not both or neither**.
@@ -312,6 +301,8 @@ def mk_sd_limited_spat_coords(
     if spat_ext:
         final_spat_ext = spat_ext
     elif sd:
+        if sd_limit is None:
+            sd_limit = SPAT_FILT_SD_LIMIT
         final_spat_ext = mk_spat_ext_from_sd_limit(sd, sd_limit)
     # remove "possibly unbound" typing issue
     final_spat_ext: ArcLength[scalar] = cast(ArcLength[scalar], final_spat_ext)
@@ -392,26 +383,14 @@ def mk_spat_coords(
 def mk_temp_coords(
         temp_res: Time[scalar],
         temp_ext: Time[scalar],
-        tau = None,
+        tau: None = None,
         temp_ext_n_tau: Optional[float] = None) -> Time[np.ndarray]: ...
 @overload  # tau provided
 def mk_temp_coords(
         temp_res: Time[scalar],
-        temp_ext: None,
+        temp_ext: None = None, *,  # set rest as keyword only so no need for default val
         tau: Time[scalar],
         temp_ext_n_tau: Optional[float] = None) -> Time[np.ndarray]: ...
-@overload  # both none ... exception raised
-def mk_temp_coords(
-        temp_res: Time[scalar],
-        temp_ext: None,
-        tau: None,
-        temp_ext_n_tau: Optional[float] = None) -> NoReturn: ...
-@overload  # both provided ... exception raised
-def mk_temp_coords(
-        temp_res: Time[scalar],
-        temp_ext: Time[scalar],
-        tau: Time[scalar],
-        temp_ext_n_tau: Optional[float] = None) -> NoReturn: ...
 def mk_temp_coords(
         temp_res: Time[scalar],
         temp_ext: Optional[Time[scalar]] = None,
