@@ -1,25 +1,228 @@
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
 import brian2
 from scipy.ndimage.filters import gaussian_filter1d
 
 from ..receptive_field.filters import filter_functions as ff
 from ..receptive_field.filters.filter_functions import (
-    do, ArcLength, SpatFrequency, Time, TempFrequency)
+    do, ArcLength, SpatFrequency, Time, TempFrequency, scalar)
 from ..convolution import estimate_real_amp_from_f1 as est_amp
 # from lif.receptive_field.filters.data_objects import DOGSpatialFilter, TQTempFilter
 from ..convolution import convolve
 from ..utils.data_objects import DOGSpatialFilter, SpaceTimeParams, TQTempFilter
 
 import plotly.express as px
+import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 import numpy as np
 
+# > Filters
+
+def tq_temp_filt(
+        temp_filter: do.TQTempFilter,
+        temp_res: Time = Time(1, 'ms'), temp_ext: Optional[Time] = None,
+        tau: Union[bool, float] = False):
+
+    # tau arg when bool is whether to use tau with the default factor
+    # when float, it is the above and the factor simultaneously ... for quick interface
+    if (temp_ext and tau) or ((not temp_ext) and (not tau)):
+        raise ValueError('Must provide only one of temp_ext or tau')
+
+    filter_tau = temp_filter.parameters.arguments.tau
+
+    # kinda not ok ... but maybe(?) worth it for the simple interface of this function ...
+    # now just need to provide either temp_ext or tau args.
+    if temp_ext:
+        temp_coords = ff.mk_temp_coords(temp_res, temp_ext)
+    else:
+        temp_coords = ff.mk_temp_coords(
+            temp_res,
+            tau=filter_tau,
+            temp_ext_n_tau=(tau if not isinstance(tau, bool) else None)
+            )
+
+    filter_values = ff.mk_tq_tf(temp_coords, temp_filter.parameters)
+
+    fig = (
+        go.Figure()
+        .add_trace(
+            go.Scatter(
+                name='Temp Filter',
+                x=temp_coords.ms, y=filter_values
+                )
+            )
+        .update_layout(
+            xaxis_title='Time (ms)', yaxis_title='Amplitude')
+    )
+
+    return fig
+
+
+def spat_filt(
+        spat_filter: do.DOGSpatialFilter,
+        spat_res: ArcLength[scalar] = ArcLength(1, 'mnt'),
+        spat_ext: Optional[ArcLength[scalar]] = None, sd: Union[bool, float] = False
+        ):
+
+    if (spat_ext and sd) or ((not spat_ext) and (not sd)):
+        raise ValueError('Must provide only one of spat_ext and sd')
+
+    filter_sd = spat_filter.parameters.max_sd()
+
+    if spat_ext:
+        spat_coords = ff.mk_sd_limited_spat_coords(spat_res=spat_res, spat_ext=spat_ext )
+
+    else:
+        spat_coords = ff.mk_sd_limited_spat_coords(
+            spat_res=spat_res,
+            sd=filter_sd,
+            sd_limit=(sd if (not isinstance(sd, bool)) else None)
+            )
+
+    cent_params = spat_filter.parameters.cent
+    surr_params = spat_filter.parameters.surr
+
+    cent_filter_values = cent_params.amplitude * ff.mk_gauss_1d(
+        coords=spat_coords, sd=cent_params.arguments.h_sd)
+    surr_filter_values = -1 * surr_params.amplitude * ff.mk_gauss_1d(
+        coords=spat_coords, sd=surr_params.arguments.h_sd)
+    sf_values = cent_filter_values + surr_filter_values
+
+    fig = (
+        go.Figure()
+        .add_trace(
+            go.Scatter(
+                name='cent',
+                x=spat_coords.mnt, y=cent_filter_values,
+                line={'color': 'red'}
+                )
+            )
+        .add_trace(
+            go.Scatter(
+                name='surr',
+                x=spat_coords.mnt, y=surr_filter_values,
+                line={'color': 'blue'}
+                )
+            )
+        .add_trace(
+            go.Scatter(
+                name='RF',
+                x=spat_coords.mnt, y=sf_values,
+                line={'color': 'purple', 'width': 4}
+                )
+            )
+        .update_layout(
+            xaxis_title='Distance (arc mnts)', yaxis_title='Amplitude')
+        .update_yaxes(zeroline=True, zerolinewidth=5, zerolinecolor='grey')
+        )
+
+    return fig
+
+# > Filter Fits
 
 def tq_temp_filt_fit(
         fit_filter: do.TQTempFilter,
-        temp_res: Time = Time(1, 'ms'), temp_ext: Time = Time(200, 'ms')
+        n_temp_freqs: int = 50,
+        use_log_xaxis: bool = True, use_log_freqs: bool = True
+        ):
+
+    # render the filter in frequency domain (as the original data)
+    freqs = fit_filter.source_data.data.frequencies
+    tf_ft = ff.mk_tq_tf_ft(freqs=freqs, tf_params=fit_filter.parameters)
+
+    # render high-resolution filter in the frequency domain
+    min_freq, max_freq = freqs.base.min(), freqs.base.max()
+    if use_log_freqs:
+        min_exp, max_exp = (np.log10(v) for v in (min_freq, max_freq))
+        freqs_hres = TempFrequency(10**np.linspace(min_exp, max_exp, n_temp_freqs))
+    else:
+        freqs_hres = TempFrequency(np.linspace(min_freq, max_freq, n_temp_freqs))
+
+    tf_ft_hres = ff.mk_tq_tf_ft(freqs=freqs_hres, tf_params=fit_filter.parameters)
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            name='tq_filter_hres',
+            x=freqs_hres.hz, y=tf_ft_hres,
+            mode='lines', line={'color':'gray', 'dash':'3px,1px'}
+            )
+        )
+    fig.add_trace(
+        go.Scatter(
+            name='tq_filter',
+            x=freqs.hz,
+            y=tf_ft,
+            mode='lines+markers'
+            )
+        )
+    fig.add_trace(
+        go.Scatter(
+            name='source',
+            x=freqs.hz,
+            y=fit_filter.source_data.data.amplitudes,
+            mode='lines+markers'
+            )
+        )
+    fig.update_layout(xaxis_title='Frequency (Hz)', yaxis_title='Amplitude')
+
+    if use_log_xaxis:
+        fig = fig.update_xaxes(type='log')  # type: ignore
+
+    return fig
+
+
+def spat_filt_fit(
+        fit_filter: do.DOGSpatialFilter,
+        n_spat_freqs: int = 50,
+        use_log_xaxis: bool = True, use_log_freqs: bool = True
+        ):
+
+    # render the filter in frequency domain (as the original data)
+    freqs = fit_filter.source_data.data.frequencies
+    sf_ft = ff.mk_dog_sf_ft_1d(freqs=freqs, dog_args=fit_filter.parameters)
+
+    # render high-resolution filter in the frequency domain
+    min_freq, max_freq = freqs.base.min(), freqs.base.max()
+    if use_log_freqs:
+        min_exp, max_exp = (np.log10(v) for v in (min_freq, max_freq))
+        freqs_hres = SpatFrequency(10**np.linspace(min_exp, max_exp, n_spat_freqs))
+    else:
+        freqs_hres = SpatFrequency(np.linspace(min_freq, max_freq, n_spat_freqs))
+
+    sf_ft_hres = ff.mk_dog_sf_ft_1d(freqs=freqs_hres, dog_args=fit_filter.parameters)
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            name='spat_filter_hres',
+            x=freqs_hres.cpd, y=sf_ft_hres,
+            line={'color': 'grey', 'dash': '3px,1px'})
+        )
+    fig.add_trace(
+        go.Scatter(
+            name='spat_filter',
+            x=freqs.cpd, y=sf_ft)
+        )
+    fig.add_trace(
+        go.Scatter(
+            name='source',
+            x=freqs.cpd, y=fit_filter.source_data.data.amplitudes)
+        )
+    fig.update_layout(
+        xaxis_title='Spatial Freq (CPD)', yaxis_title='Amplitude')
+
+    if use_log_xaxis:
+        fig.update_layout(xaxis_type='log')
+
+    return fig
+
+
+def tq_temp_filt_profile(
+        fit_filter: do.TQTempFilter,
+        temp_res: Time = Time(1, 'ms'), temp_ext: Time = Time(200, 'ms'),
+        **kwargs
         ):
     """Plot a fitted tq temp filter against the original data
     """
@@ -27,18 +230,14 @@ def tq_temp_filt_fit(
     # render the filter in the time domain
     time = ff.mk_temp_coords(temp_res=temp_res, temp_ext=temp_ext)
     tf = ff.mk_tq_tf(t=time, tf_params=fit_filter.parameters)
-    # render the filter in frequency domain (as the original data)
-    freqs = fit_filter.source_data.data.frequencies
-    tf_ft = ff.mk_tq_tf_ft(freqs=freqs, tf_params=fit_filter.parameters)
+    # # render the filter in frequency domain (as the original data)
+    # freqs = fit_filter.source_data.data.frequencies
+    # tf_ft = ff.mk_tq_tf_ft(freqs=freqs, tf_params=fit_filter.parameters)
 
-    filt = px.line(x=time.ms, y=tf)
+    # filt = px.line(x=time.ms, y=tf)
+    filt = go.Scatter(x=time.ms, y=tf, mode='lines', showlegend=False)
+    filt_ft = tq_temp_filt_fit(fit_filter, **kwargs)
 
-    ft = px.line(
-        x=freqs.hz,
-        y=[tf_ft, fit_filter.source_data.data.amplitudes],
-        log_x=True, markers=True)
-    ft.data[0].name = 'tq_filter'
-    ft.data[1].name = 'source'
 
     fig = (
         make_subplots(rows=1, cols=2,
@@ -47,8 +246,8 @@ def tq_temp_filt_fit(
                 'Filter and data (frequency domain)'],
             y_title='Amplitude'
             )
-        .add_trace(filt.data[0], 1, 1)
-        .add_traces(ft.data, 1, 2)
+        .add_trace(filt, 1, 1)
+        .add_traces(filt_ft.data, 1, 2)
         .update_xaxes(title_text='Time (ms)', row=1, col=1)
         .update_xaxes(title_text='Frequency (Hz)', type='log', row=1, col=2)
         )
@@ -56,12 +255,15 @@ def tq_temp_filt_fit(
     return fig
 
 
+# > Oriented Spatial Filters
+
 def dog_sf_ft_hv(
         dog_args: do.DOGSpatFiltArgs,
         n_spat_freqs: int = 50,
         use_log_freqs: bool = True,
         freqs: Optional[SpatFrequency] = None,
-        use_log_xaxis: bool = True
+        use_log_xaxis: bool = True,
+        width: int = 800, height: int = 400
         ):
     '''Response of DOG spat filter to stimuli oriented vertically and horizontally
 
@@ -103,7 +305,9 @@ def dog_sf_ft_hv(
 
     fig = (
         px
-        .line(x=freqs.cpd, y=resp_h, labels={'x': 'Spat Freq (CPD)', 'y': 'Response'})
+        .line(x=freqs.cpd, y=resp_h,
+            labels={'x': 'Spat Freq (CPD)', 'y': 'Response'},
+            width=width, height=height)
         .update_traces(name='0deg ori =', showlegend=True)
         .add_trace(px.line(x=freqs.cpd, y=resp_v)
             .update_traces(
@@ -118,161 +322,6 @@ def dog_sf_ft_hv(
         fig = fig.update_xaxes(type='log')
 
     return fig
-
-
-def real_amp_est(r, t, f1_target):
-    """Plot results of estimating real amplitude
-
-    Plots signal used for estimate and actual FFT
-
-    Parameters
-    ----
-
-
-    Returns
-    ----
-
-    """
-    r_rect = r.copy()
-    r_rect[r_rect < 0] = 0
-
-    s, f = est_amp.gen_fft(r_rect, t)
-
-    fig = make_subplots(1, 2, column_titles=['Response', 'FFT'])
-
-    fig_r = px.line(x=t.s, y=[r, r_rect])
-    _ = fig_r.data[0].update(name='full')
-    _ = fig_r.data[1].update(name='rect')
-
-    plot = (
-        fig
-        .add_traces(fig_r.data, 1, 1)
-        .add_trace(px.line(x=f, y=np.abs(s)).data[0], 1, 2)
-        .add_annotation(
-            x=1, y=f1_target, showarrow=True, arrowhead=1,
-            text=f'F1 Amplitude={f1_target}', row=1, col=2,
-            ax=50
-            )
-    )
-
-    return plot
-
-
-def joint_sf_tf_amp(
-        tf: TQTempFilter, sf: DOGSpatialFilter,
-        n_increments: int = 20, width=650, height=650):
-    '''Plots joint distribution of Response Amplitudes to SF and TF filters
-
-    Joint response from joint_spat_temp_conv_amp()
-    '''
-
-    # ===========
-    # tf = TQTempFilter.load(TQTempFilter.get_saved_filters()[0])
-    # sf = DOGSpatialFilter.load(DOGSpatialFilter.get_saved_filters()[0])
-    # -----------
-    temp_freqs = tf.source_data.data.frequencies
-    spat_freqs_x = sf.source_data.data.frequencies
-
-    temp_freqs = TempFrequency(
-        np.linspace(temp_freqs.base.min(), temp_freqs.base.max(), n_increments))
-    spat_freqs_x = SpatFrequency(
-        np.linspace(spat_freqs_x.base.min(), spat_freqs_x.base.max(), n_increments))
-
-    sf_freq_mg_x, tf_freq_mg = np.meshgrid(spat_freqs_x.base, temp_freqs.hz)  # type: ignore
-    sf_freq_mg_x = SpatFrequency(sf_freq_mg_x)
-    sf_freq_mg_y = SpatFrequency(np.zeros_like(sf_freq_mg_x.base))
-    tf_freq_mg = TempFrequency(tf_freq_mg)
-
-    joint_sf_tf_amp = ff.joint_spat_temp_conv_amp(
-        temp_freqs=tf_freq_mg, spat_freqs_x=sf_freq_mg_x, spat_freqs_y=sf_freq_mg_y,
-        sf=sf, tf=tf
-        )
-
-    fig = make_subplots(
-        2, 2,
-        shared_xaxes=True, shared_yaxes=True, column_widths=[0.7, 0.3], row_heights=[0.3, 0.7])
-    joint_heatmap = (
-        px
-        .imshow(
-            joint_sf_tf_amp, x=spat_freqs_x.cpd, y=temp_freqs.hz, origin='lower',
-            labels={'x': 'SF', 'y': 'TF', 'color': 'Amp'}
-            )
-    )
-
-    spat_freq_source = px.line(
-        x=sf.source_data.data.frequencies.cpd, y=sf.source_data.data.amplitudes)
-
-    temp_freq_source = px.line(
-        y=tf.source_data.data.frequencies.hz, x=tf.source_data.data.amplitudes)
-
-    base_sf, base_tf = (
-        tf.source_data.resp_params.sf.cpd, sf.source_data.resp_params.tf.hz
-        )
-
-    plot = (
-        fig
-        .add_traces(
-            [joint_heatmap.data[0], spat_freq_source.data[0], temp_freq_source.data[0]],
-            [2, 1, 2], [1, 1, 2])
-        .update_xaxes(title='Spat Freq (CPD)', row=2, col=1)
-        .update_yaxes(title='Temp Freq (Hz)', row=2, col=1)
-        .add_vline(
-            x=base_sf, row=1, col=1, annotation_text=f'{base_sf} CPD',
-            annotation_position='bottom right')
-        .add_hline(
-            y=base_tf, row=2, col=2, annotation_text=f'{base_tf} Hz',
-            annotation_position='top left')
-        .update_layout(width=width, height=height)
-    )
-
-    return plot
-
-
-def poisson_trials_rug(spike_monitor: brian2.SpikeMonitor):
-    """Plot rug plot for each spike for each trial
-
-    """
-
-    all_spikes = convolve.aggregate_poisson_trials(spike_monitor)
-
-    plot = (
-        px
-        .scatter(
-            x=all_spikes[1], y=all_spikes[0],
-            template='none')
-        .update_traces(marker=dict(
-            symbol='line-ns', line_width=1, color='black'))
-        )
-
-    return plot
-
-
-def psth(
-        st_params: SpaceTimeParams,
-        spike_monitor: brian2.SpikeMonitor,
-        n_trials: int = 10, bin_width: Time = Time(10, 'ms'),
-        sigma: float = 1):
-
-    bins = ff.mk_temp_coords(bin_width, Time(st_params.temp_ext.base + bin_width.base))
-    all_spikes = convolve.aggregate_poisson_trials(spike_monitor)
-
-    cnts, cnt_bins = np.histogram(all_spikes[1], bins=bins.base)  # type: ignore
-
-    cnts_hz = cnts / bin_width.s / n_trials
-    cnts_smooth = gaussian_filter1d(cnts_hz, sigma=sigma)
-
-    plot = (
-        px
-        .bar(x=cnt_bins[:-1], y=cnts_hz, template='none')
-        .update_traces(marker_color='#bbb')
-        .add_trace(
-            px.line(x=cnt_bins[:-1], y=cnts_smooth)
-            .update_traces(line_color='red')
-            .data[0]
-            )
-        )
-
-    return plot
 
 
 def mk_sf_orientation_resp(
@@ -333,14 +382,22 @@ def ori_spat_freq_heatmap(
         sf_params: do.DOGSpatFiltArgs,
         n_orientations: int = 8,
         n_spat_freqs: int = 50,
+        use_log_freqs: bool = True, use_log_yaxis: bool = True,
+        log_yaxis_start_exponent: float = 0,
         width: int = 500, height: int = 500):
     """Heatmap of with ori on x and spat_freq on y, color ~ response
 
     """
 
     angles = ff.mk_even_semi_circle_angles(n_orientations)
+
     max_spat_freq = ff.find_null_high_sf(sf_params)
-    spat_freqs = do.SpatFrequency(np.linspace(0, max_spat_freq.base, n_spat_freqs))
+    if use_log_freqs:
+        max_freq_exponent = np.log10(max_spat_freq.base)
+        freq_exponents = np.linspace(log_yaxis_start_exponent, max_freq_exponent, n_spat_freqs)
+        spat_freqs = do.SpatFrequency(10**freq_exponents)
+    else:
+        spat_freqs = do.SpatFrequency(np.linspace(0, max_spat_freq.base, n_spat_freqs))
 
     resps = np.empty((spat_freqs.base.size, angles.base.size))
     for i, ori in enumerate(angles.deg):
@@ -352,6 +409,9 @@ def ori_spat_freq_heatmap(
             labels={'x': 'Orientation (Deg)', 'y': 'Spat Freq (CPD)'},
             origin='lower', width=width, height=height, aspect='auto')
     fig.update_xaxes(tickvals=angles.deg, ticks='outside')  # type: ignore
+
+    if use_log_yaxis:
+        fig = fig.update_yaxes(type='log')
 
     return fig
 
@@ -421,3 +481,170 @@ def orientation_circ_var_subplots(
             fig.add_trace(ori_fig.data[0], col=sfi+1, row=cvi+1)
 
     return fig
+
+
+# > Convolution and LIF results
+
+def real_amp_est(r, t, f1_target):
+    """Plot results of estimating real amplitude
+
+    Plots signal used for estimate and actual FFT
+
+    Parameters
+    ----
+
+
+    Returns
+    ----
+
+    """
+    r_rect = r.copy()
+    r_rect[r_rect < 0] = 0
+
+    s, f = est_amp.gen_fft(r_rect, t)
+
+    fig = make_subplots(1, 2, column_titles=['Response', 'FFT'])
+
+    fig_r = px.line(x=t.s, y=[r, r_rect])
+    _ = fig_r.data[0].update(name='full')
+    _ = fig_r.data[1].update(name='rect')
+
+    plot = (
+        fig
+        .add_traces(fig_r.data, 1, 1)
+        .add_trace(px.line(x=f, y=np.abs(s)).data[0], 1, 2)
+        .add_annotation(
+            x=1, y=f1_target, showarrow=True, arrowhead=1,
+            text=f'F1 Amplitude={f1_target}', row=1, col=2,
+            ax=50
+            )
+    )
+
+    return plot
+
+
+def joint_sf_tf_amp(
+        tf: TQTempFilter, sf: DOGSpatialFilter,
+        n_increments: int = 20, width=650, height=650):
+    '''Plots joint distribution of Response Amplitudes to spatial and temporal frequencies
+
+    Also plots original temporal and spatial frequency response data the filters
+    were based on with the "*intersection*" as solid lines.
+
+    Joint response from joint_spat_temp_conv_amp()
+    '''
+
+    temp_freqs = tf.source_data.data.frequencies
+    spat_freqs_x = sf.source_data.data.frequencies
+
+    temp_freqs = TempFrequency(
+        np.linspace(temp_freqs.base.min(), temp_freqs.base.max(), n_increments))
+    spat_freqs_x = SpatFrequency(
+        np.linspace(spat_freqs_x.base.min(), spat_freqs_x.base.max(), n_increments))
+
+    sf_freq_mg_x, tf_freq_mg = np.meshgrid(spat_freqs_x.base, temp_freqs.hz)  # type: ignore
+    sf_freq_mg_x = SpatFrequency(sf_freq_mg_x)
+    sf_freq_mg_y = SpatFrequency(np.zeros_like(sf_freq_mg_x.base))
+    tf_freq_mg = TempFrequency(tf_freq_mg)
+
+    joint_sf_tf_amp = ff.joint_spat_temp_conv_amp(
+        temp_freqs=tf_freq_mg, spat_freqs_x=sf_freq_mg_x, spat_freqs_y=sf_freq_mg_y,
+        sf=sf, tf=tf
+        )
+
+    main_size, margin_size = 0.7, 0.3
+    fig = make_subplots(
+        2, 2,
+        shared_xaxes=True, shared_yaxes=True,
+        column_widths=[main_size, margin_size], row_heights=[margin_size, main_size])
+
+    joint_heatmap = (
+        px
+        .imshow(
+            joint_sf_tf_amp, x=spat_freqs_x.cpd, y=temp_freqs.hz, origin='lower',
+            labels={'x': 'SF', 'y': 'TF', 'color': 'Amp'}
+            )
+    )
+
+    base_sf, base_tf = (
+        tf.source_data.resp_params.sf.cpd, sf.source_data.resp_params.tf.hz
+        )
+
+    sfp = spat_filt_fit(sf, use_log_xaxis=False, use_log_freqs=False)
+    tfp = tq_temp_filt_fit(tf, use_log_xaxis=False, use_log_freqs=False)
+
+    # swap x an y for temp filt to align with the heatmap
+    for tr in tfp.data:
+        tr.x, tr.y = tr.y, tr.x  # type: ignore
+
+    plot = (
+        fig
+        .add_traces(
+            #                       V--all traces in sfp ("splat" operator)
+            [joint_heatmap.data[0], *sfp.data, *tfp.data],
+            #   V--splat for "1" repeated for every sfp trace
+            rows=[2, *([1]*len(sfp.data)), *([2]*len(tfp.data))],  # type: ignore
+            cols=[1, *([1]*len(sfp.data)), *([2]*len(tfp.data))])  # type: ignore
+        .update_xaxes(title='Spat Freq (CPD)', row=2, col=1)
+        .update_yaxes(title='Temp Freq (Hz)', row=2, col=1)
+        .add_vline(
+            x=base_sf, row=1, col=1, annotation_text=f'{base_sf} CPD',
+            annotation_position='bottom right')
+        .add_hline(
+            y=base_tf, row=2, col=2, annotation_text=f'{base_tf} Hz',
+            annotation_position='top left')
+        .update_layout(width=width, height=height,
+            coloraxis_colorbar={'len': main_size, 'yanchor': 'bottom', 'y': 0}
+            )
+    )
+
+    return plot
+
+
+def poisson_trials_rug(spike_monitor: brian2.SpikeMonitor):
+    """Plot rug plot for each spike for each trial
+
+    """
+
+    all_spikes = convolve.aggregate_poisson_trials(spike_monitor)
+
+    plot = (
+        px
+        .scatter(
+            x=all_spikes[1], y=all_spikes[0],
+            template='none')
+        .update_traces(marker=dict(
+            symbol='line-ns', line_width=1, color='black'))
+        )
+
+    return plot
+
+
+def psth(
+        st_params: SpaceTimeParams,
+        spike_monitor: brian2.SpikeMonitor,
+        n_trials: int = 10, bin_width: Time = Time(10, 'ms'),
+        sigma: float = 1):
+
+    bins = ff.mk_temp_coords(bin_width, Time(st_params.temp_ext.base + bin_width.base))
+    all_spikes = convolve.aggregate_poisson_trials(spike_monitor)
+
+    cnts, cnt_bins = np.histogram(all_spikes[1], bins=bins.base)  # type: ignore
+
+    cnts_hz = cnts / bin_width.s / n_trials
+    cnts_smooth = gaussian_filter1d(cnts_hz, sigma=sigma)
+
+    plot = (
+        px
+        .bar(x=cnt_bins[:-1], y=cnts_hz, template='none')
+        .update_traces(marker_color='#bbb')
+        .add_trace(
+            px.line(x=cnt_bins[:-1], y=cnts_smooth)
+            .update_traces(line_color='red')
+            .data[0]
+            )
+        )
+
+    return plot
+
+
