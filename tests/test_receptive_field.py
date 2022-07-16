@@ -11,7 +11,7 @@ from lif.convolution import (
     convolve as conv,
     estimate_real_amp_from_f1 as est_amp
     )
-from lif.utils.units.units import ArcLength, SpatFrequency, TempFrequency, Time
+from lif.utils.units.units import ArcLength, SpatFrequency, TempFrequency, Time, scalar
 from lif.utils import data_objects as do, exceptions as exc
 
 from lif.receptive_field.filters import (
@@ -405,7 +405,6 @@ def test_spat_coords_int(coord_args: Tuple[ArcLength[int], ArcLength[float]]):
     assert np.issubdtype(coords.value.dtype, np.integer)
 
 
-@mark.proto
 def test_spat_coords_origin_bottom_left():
     r,e = ArcLength(1, 'mnt'), ArcLength(500, 'mnt')
     X,Y = ff.mk_spat_coords(r, e)
@@ -500,30 +499,6 @@ def test_spat_temp_coords_units_correct(spat_res_unit, temp_res_unit):
     assert t.unit == temp_res_unit
 
 
-# >> Data object creation veracity
-
-def test_gauss_params_round_trip():
-
-    gauss_params = do.Gauss2DSpatFiltParams(
-        amplitude=5,
-        arguments=do.Gauss2DSpatFiltArgs(
-            h_sd=ArcLength(3), v_sd=ArcLength(11)
-            )
-        )
-
-    assert gauss_params == do.Gauss2DSpatFiltParams.from_iter(gauss_params.array())  # type: ignore
-
-
-def test_dog_spat_filt_1d_round_trip():
-
-    params = do.DOGSpatFiltArgs1D(
-        cent=do.Gauss1DSpatFiltParams(1, ArcLength(11)),
-        surr=do.Gauss1DSpatFiltParams(0.5, ArcLength(22))
-        )
-
-    assert params == do.DOGSpatFiltArgs1D.from_iter(params.array())
-
-
 # >> DoG and Gaussian Filters
 
 @given(
@@ -577,6 +552,7 @@ def test_gauss_2d_sum(x_sd: float, y_sd: float, mag: float):
     assert np.isclose(gauss_2d.sum()*spat_res.mnt**2, mag)  # type: ignore
 
 
+@hypothesis.settings(deadline=300)  # deadline of 300 ms from default of 200
 @given(
     mag_cent=basic_float_strat,
     mag_surr=basic_float_strat,
@@ -664,6 +640,19 @@ def test_dog_rf(
     rf = rf_cent - rf_surr
 
     assert np.allclose(rf, dog_rf)  # type: ignore
+
+
+# >>> !!Orientation Biases
+# functions and
+
+@given(ratio=basic_float_strat)
+def test_ori_biases_sd_factors_comply_with_constraints(ratio: float):
+
+    a, b = ff.mk_ori_biased_sd_factors(ratio)
+
+    assert np.isclose(a + b, 2)
+    assert np.isclose(a/b, ratio)
+
 
 
 # >> Fourier
@@ -754,6 +743,31 @@ def test_dog_sf_ft_symmetry(xfreqs, yfreqs, factor):
         factor * ff.mk_dog_sf_ft(xfreqs, yfreqs, dog_rf_params, collapse_symmetry=False)
         )
 
+@mark.proto
+@given(sd_val=st.floats(min_value=10, max_value=100))
+def test_gauss_1d_ft(sd_val: float):
+    """manual fft and custom fourier for 1d gauss match
+    """
+
+    sd = ArcLength(sd_val, 'mnt')
+    spat_res = ArcLength(1, 'mnt')
+    coords = ff.mk_sd_limited_spat_coords(spat_res = spat_res, sd=sd)
+    t_gauss = ff.mk_gauss_1d(coords=coords, sd=sd)
+
+    assert np.isclose(t_gauss.sum(), 1)  # integral should always be 1
+
+    # use numpy fft
+    tg_fft = np.abs(fft.rfft(t_gauss))
+    tg_fft_freq = fft.rfftfreq(coords.mnt.shape[0], d=spat_res.mnt)
+    # use this codebase's function
+    freq = SpatFrequency(tg_fft_freq, 'cpm')
+    tg_ft = ff.mk_gauss_1d_ft(freqs=freq, sd=sd)
+
+    # always some errors in comparing analytical and numerical fouriers ... just ease the
+    # tolerance a little (maybe should use relative tolerance instead?)
+    assert np.all(np.isclose(tg_fft, tg_ft, atol=1e-5))
+
+
 # Do I need to use hypothesis for this?  Main point is that any equivalence is good?
 # @mark.parametrize(
 #         'cent_h_sd,cent_v_sd,surr_h_sd,surr_v_sd,mag_cent,mag_surr',
@@ -817,7 +831,10 @@ def test_dog_rf_gauss2d_fft(
         in np.meshgrid(dog_rf_fft_freqs, dog_rf_fft_freqs)  # type: ignore
         )
     # FT = T * FFT ~ amplitude of convolution (T -> spatial resolution)
-    dog_rf_ft = ff.mk_dog_sf_ft(fx, fy, dog_args=dog_rf_params, collapse_symmetry=False) / spat_res.value
+    dog_rf_ft = (
+        ff.mk_dog_sf_ft(fx, fy, dog_args=dog_rf_params, collapse_symmetry=False)
+        /
+        spat_res.value)
 
     # atol adjusted as there's some systemic error in comparing continuous with FFT DFT
     # check graphs of the difference to see
