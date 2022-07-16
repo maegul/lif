@@ -3,8 +3,9 @@
 # so that don't have to worry about imports
 # from .receptive_field.filters.data_objects import *
 from .plot import plot
+# from . import plot
 from .utils.units import units
-# from . import convolve as conv
+from .convolution import convolve as conv
 from .stimulus import stimulus as stim
 from .utils.data_objects import *
 from .receptive_field.filters.filter_functions import *

@@ -1,4 +1,7 @@
-from typing import Tuple
+"""
+Utility functions for calculating circular variance and von mises distribution functions
+"""
+from typing import Tuple, cast
 
 import numpy as np
 from scipy.interpolate import interp1d
@@ -7,7 +10,17 @@ from ...utils.units.units import ArcLength, val_gen
 
 
 def circ_var(r: np.ndarray, theta: ArcLength[np.ndarray]) -> float:
-    """Circular Variance (Ringach (2000)) (0 most circular, 1 most axial)
+    """Circular Variance of given magnitudes (r) at given angles (theta)
+
+    Args:
+        r: Magnitudes of the vectors
+        theta: angles of the vectors
+
+    Returns:
+        circular variance: with 0 being radially symmetrical (circular) and 1 axial
+
+    Notes:
+         Based on definition in Ringach (2000) (0 most circular, 1 most axial)
     """
     x: float = np.sum((r * np.exp(1j * 2 * theta.rad))) / np.sum(r)
 
@@ -17,18 +30,42 @@ def circ_var(r: np.ndarray, theta: ArcLength[np.ndarray]) -> float:
 
 def von_mises(
         x: ArcLength[val_gen],
-        a: float = 1, k: float = 0.5,
-        phi: float = np.pi / 2) -> val_gen:
-    """Single von mises function (Swindale (1998))
-    """
-    curve: val_gen = np.exp(k * (np.cos(phi - x.rad)**2 - 1))  # type: ignore
+        a: float = 1, k: float = 0.5, phi: float = np.pi / 2) -> val_gen:
+    """von mises distribution values for `x` for given params `a`,`k` and `phi`
 
-    return a * curve
+    Args:
+        x: angle or array of angles for which the distribution's values are generated
+        a: amplitude ... value at the "*preferred*" angle
+        k: "*width*" of the distribution, higher values -> *tighter* distribution
+        phi: "*preferred anble*", like the mean of a guassian.
+
+    Notes:
+        Based on Swindale (1998)
+
+    Examples:
+        >>> von_mises(ArcLength(90, 'deg'))
+        1.0
+        >>> von_mises(ArcLength(90, 'deg'), a=13)
+        13.0
+        >>> cvvm.von_mises(ArcLength(np.array([10, 180+10]), 'deg'))
+        array([0.61574451, 0.61574451])
+
+    """
+    curve = a * (np.exp(k * (np.cos(phi - x.rad)**2 - 1)))
+    curve = cast(val_gen, curve)  # np functions don't pick up on generic, must cast
+
+    return curve
 
 
 def generate_von_mises_k_to_circ_var_vals(
         n_angles: int = 8, n_vals: int = 100) -> Tuple[np.ndarray, np.ndarray]:
-    """
+    """Equivalent values for the `k` parameter of a `von mises` to its circular variance
+
+    Two arrays returned where the `nth` value in one array corresponds to the `nth` in
+    the other.
+
+    Returns:
+        k values
 
     n_angles default is 8, as at this value the estimation of circ_var becomes stable
     16 would be better, but provides more accuracy only at finely tuned circ var values

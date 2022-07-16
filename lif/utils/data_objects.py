@@ -178,6 +178,12 @@ class TQTempFilter(ConversionABC):
     optimisation_result: OptimizeResult
 
     def save(self, overwrite: bool = False):
+        """Save this filter object to file as in pickle format.
+
+        Will save to the data directory as defined in settings.
+
+        Will not overwrite existing file unless arg `overwrite = True`
+        """
 
         key: str = (
             self.source_data.meta_data.make_key()
@@ -449,6 +455,8 @@ class CircularVarianceSDRatioVals(ConversionABC):
     def _mk_interpolated(self):
         """Add methods for interpolation in both directions (using interp1d)"""
 
+        # bit clunky and hacky here, along with the checking for '_circ_var' attr above
+        # this should be in a post_init method.
         interp_func = partial(interp1d, fill_value='extrapolate')
 
         self._sd_ratio = interp_func(
@@ -463,8 +471,11 @@ class DOGSpatialFilter(ConversionABC):
 
     source_data: SpatFiltParams
     parameters: DOGSpatFiltArgs
+    """Arguments needed to generate the spatial filter in this code base"""
     optimisation_result: OptimizeResult
+    """Output of the optimisation process/function"""
     ori_bias_params: CircularVarianceSDRatioVals
+    """Values for generating orientation biased version of this filter"""
 
     def save(self, overwrite: bool = False, custom_key: str = 'Unknown'):
 

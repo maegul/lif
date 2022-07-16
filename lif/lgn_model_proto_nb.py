@@ -1,84 +1,89 @@
-# ===========
+# > Imports and setup
+# +
 from lif import *
-# -----------
-# ===========
+# -
+# +
 import plotly.express as px
 import plotly.graph_objects as go
-# -----------
-# ===========
+# -
+# +
 from scipy.ndimage import interpolation
-# -----------
-# ===========
+# -
+
+# >> Spat filt and ori biased duplicate
+# +
 sf = DOGSpatialFilter.load(DOGSpatialFilter.get_saved_filters()[0])
-ori_sf_params = sf.mk_ori_biased_parameters(0.5)
-# -----------
-# ===========
+ori_sf_params = ff.mk_ori_biased_spatfilt_params_from_spat_filt(sf, 0.6)
+# -
+
+# >> coords and RF
+# +
 spat_res = ArcLength(1, 'mnt')
 xc, yc = ff.mk_spat_coords(sd=ori_sf_params.max_sd(), spat_res=spat_res)
 spat_filt = ff.mk_dog_sf(xc, yc, ori_sf_params)
-# -----------
+# -
 
 # > Rotating RF
-# ===========
+# +
 # tf = TQTempFilter.load(TQTempFilter.get_saved_filters()[0])
 sf = DOGSpatialFilter.load(DOGSpatialFilter.get_saved_filters()[0])
-# -----------
-# ===========
+# -
+# +
 sf.parameters.max_sd().mnt
-# -----------
-# ===========
+# -
+# +
 ori_sf_params = sf.mk_ori_biased_parameters(0.5)
 ori_sf_params.max_sd().mnt
-# -----------
-# ===========
+# -
+# +
 ff.mk_spat_ext_from_sd_limit(ori_sf_params.max_sd()).mnt / 0.5
-# -----------
-# ===========
+# -
+# +
 spat_res = ArcLength(1, 'mnt')
 xc, yc = ff.mk_spat_coords(sd=ori_sf_params.max_sd(), spat_res=spat_res)
-# -----------
-# ===========
+# -
+# +
 xc.mnt.max() / ori_sf_params.max_sd().mnt
-# -----------
-# ===========
+# -
+# +
 spat_filt = ff.mk_dog_sf(xc, yc, ori_sf_params)
-# -----------
-# ===========
+# -
+# +
 spat_filt.shape
-# -----------
-# ===========
+# -
+# +
 px.imshow(
     spat_filt,
     color_continuous_scale=px.colors.diverging.Portland,
     color_continuous_midpoint=0
     ).show()
-# -----------
-# ===========
+# -
+# +
 rot_spat_filt = interpolation.rotate(spat_filt, 45, reshape=False)
-# -----------
-# ===========
+# -
+# +
 spat_filt.shape, rot_spat_filt.shape
-# -----------
-# ===========
+# -
+# +
 px.imshow(
     rot_spat_filt,
     color_continuous_scale=px.colors.diverging.Portland,
     color_continuous_midpoint=0
     ).show()
-# -----------
+# -
 
 
 # > Slicing Stimulus
 # Need to know how big ot make stimulus to fit all RFs ...
-# ===========
+# +
 spat_res
-# -----------
-# ===========
+# -
+# +
 # 3 times extent to experiment with slicing
 spat_ext = ArcLength(3 * ff.mk_spat_ext_from_sd_limit(ori_sf_params.max_sd()).base)
 spat_ext
-# -----------
-# ===========
+# -
+# +
 st_params = do.SpaceTimeParams(
     spat_ext, spat_res,
     Time(0.2), Time(1, 'ms')
@@ -87,51 +92,51 @@ stim_params = do.GratingStimulusParams(
     spat_freq=SpatFrequency(4), temp_freq=TempFrequency(2),
     orientation=ArcLength(90)
     )
-# -----------
-# ===========
+# -
+# +
 grating = stim.mk_sinstim(st_params, stim_params)
 grating.shape
 spat_filt.shape[0] // 2
-# -----------
+# -
 
 # >> Spatial Extent Play
 # testing whether size of stimulus is predictable
 # and whether size needed is predictable too
 st_params.spat_ext.mnt
 np.ceil(st_params.spat_ext.mnt/2) * 2
-# ===========
+# +
 xc.mnt.min()
 center_idx = xc.base.shape[0]//2
 xc.base[center_idx, center_idx]
-# -----------
-# ===========
+# -
+# +
 test_coords = ff.mk_spat_coords_1d(st_params.spat_res, st_params.spat_ext)
 test_coords.mnt.shape
 test_coords.mnt.max()
 test_coords.deg[-1]
-# -----------
-# ===========
+# -
+# +
 # now ... just use mk_rounded_spat_radius
 ff.mk_rounded_spat_radius(st_params.spat_res, st_params.spat_ext).mnt == test_coords.mnt[-1]
-# -----------
+# -
 st_params.spat_ext.mnt
-# ===========
+# +
 ff.mk_spat_radius(st_params.spat_ext)
-# -----------
+# -
 
 # >> Calculate Slice Indices
-# ===========
+# +
 grating.shape, spat_filt.shape
-# -----------
-# ===========
+# -
+# +
 # spat filt radius will be
 spat_filt_radius = ff.mk_spat_radius(
     ff.mk_spat_ext_from_sd_limit(ori_sf_params.max_sd())
     )
 spat_filt_diam = (spat_filt_radius.mnt * 2) + 1
 spat_filt_radius, spat_filt_diam, spat_filt.shape
-# -----------
-# ===========
+# -
+# +
 def mk_putative_spat_coords_ext(sf_params: DOGSpatFiltArgs) -> ArcLength[float]:
 
     sf_radius = ff.mk_spat_radius(
@@ -139,15 +144,15 @@ def mk_putative_spat_coords_ext(sf_params: DOGSpatFiltArgs) -> ArcLength[float]:
         )
 
     return ArcLength((sf_radius.value * 2) + 1, sf_radius.unit)
-# -----------
-# ===========
+# -
+# +
 mk_putative_spat_coords_ext(ori_sf_params)
-# -----------
-# ===========
+# -
+# +
 sf_pos = (0, 0)  # x, y coords in mnts
-# -----------
+# -
 # >>> Rounding Spat to Res
-# ===========
+# +
 # ... now part of filter functions ...
 def round_coord_to_res(
         coord: ArcLength[float], res: ArcLength[int]) -> ArcLength[int]:
@@ -172,8 +177,8 @@ def round_coord_to_res(
 
     return ArcLength(rounded_val, res_unit)
 
-# -----------
-# ===========
+# -
+# +
 def round_spat_coords_to_resolution(
         x: ArcLength[float], y: ArcLength[float],
         res: ArcLength[int]
@@ -188,33 +193,33 @@ def round_spat_coords_to_resolution(
     new_y = round_coord_to_res(y, res)
 
     return new_x, new_y
-# -----------
-# ===========
+# -
+# +
 round_test = round_coord_to_res(ArcLength(3.34, 'mnt'), ArcLength(1, 'sec'))
 round_test.value, round_test.unit
-# -----------
-# ===========
+# -
+# +
 sf_pos = (ArcLength(3.5, 'mnt'), ArcLength(5.3, 'mnt'))
-# -----------
-# ===========
+# -
+# +
 sf_pos_rounded = round_spat_coords_to_resolution(*sf_pos, res=spat_res)
 sf_pos_rounded
-# -----------
+# -
 
 # >> how make slice from pos to match size of spat_filt
 
 # X Know extent of sclice in spatial terms
-# ===========
+# +
 put_ext = mk_putative_spat_coords_ext(ori_sf_params)
 print(f'{put_ext.value}:{put_ext.unit}, radius: {put_ext.value//2}')
-# -----------
+# -
 
 # X translate to desired position
-# ===========
+# +
 sf_pos = (ArcLength(3.5, 'mnt'), ArcLength(5.3, 'mnt'))
 sf_pos_rounded = round_spat_coords_to_resolution(*sf_pos, res=spat_res)
 sf_pos_rounded
-# -----------
+# -
 
 # Now in units of resolution ... but how translate to indices?
 
@@ -222,24 +227,24 @@ sf_pos_rounded
 
 # spat_filt and stimulus will be made with the same resolution
 # so ... from extent to extent will be the same number of pixels
-# ===========
+# +
 st_params
-# -----------
-# ===========
+# -
+# +
 test_res, test_ext = (
     ArcLength(1, 'mnt'),
     ArcLength(100, 'mnt')
     )
 test_coords = ff.mk_spat_coords_1d(test_res, test_ext)
-# -----------
-# ===========
+# -
+# +
 ff.mk_spat_radius(test_ext)
-# -----------
-# ===========
+# -
+# +
 # test_coords.base.shape
 test_coords.value
-# -----------
-# ===========
+# -
+# +
 # testing ... should add to tests
 # ... some of this may now be redundant with shift to
 # using rounding to res approach in filter functions
@@ -248,24 +253,24 @@ spat_coord_max = ff.mk_spat_radius(test_ext)
 spat_coord_stride = np.max(np.diff(test_coords.value))
 # center is shape // 2 or (ext // 2) / res (dividing by res necessary for when res is not 1)
 spat_coord_cent_idx2 = int((test_ext.value // 2) / test_res.value)
-# -----------
-# ===========
+# -
+# +
 test_coords.value[spat_coord_cent_idx] == 0
 test_coords.value[spat_coord_cent_idx2] == 0
 test_coords.value[0] == -spat_coord_max.value
 test_coords.value[-1] == spat_coord_max.value
 spat_coord_stride == test_res.value
 test_coords.value[spat_coord_cent_idx+1] == test_res.value
-# -----------
-# ===========
+# -
+# +
 test_coords
-# -----------
-# ===========
+# -
+# +
 sf_pos = (ArcLength(3.5, 'mnt'), ArcLength(5.3, 'mnt'))
 sf_pos_rounded = round_spat_coords_to_resolution(*sf_pos, res=spat_res)
 test_sf_pos = sf_pos_rounded[0]
-# -----------
-# ===========
+# -
+# +
 test_rf_ext = ArcLength(20, 'mnt')
 test_rf_coords = ff.mk_spat_coords_1d(test_res, test_rf_ext)
 
@@ -293,8 +298,8 @@ test_coord_patch = test_coords.value[
     ]
 
 test_coord_patch.shape, test_rf_coords.value.shape
-# -----------
-# ===========
+# -
+# +
 # >>> Final function: mk_rf_stim_index
 def mk_rf_stim_index(
         st_params: SpaceTimeParams,
@@ -357,25 +362,25 @@ def mk_rf_stim_index(
     ## and the stimulus, then the extents for both are whole number multiples
     ## to have passed the check
 
-# -----------
+# -
 
-# ===========
+# +
 spat_filt_diam, spat_filt_radius
-# -----------
-# ===========
+# -
+# +
 # how take account of resolution?  Divide radius by resolution (into pixels)?
 # resolution is not independent in my implementation
 # it seems it really must be a whole number factor of spat coords and extent!!
 len(range(3-33, 3 + 33 + 1))
-# -----------
+# -
 np.arange(3-33, 3 + 33 + 1)[33]
 
-# ===========
+# +
 res = 5
 ext = 33
 cds = np.arange(-ext, ext+res, res)
 cds.shape, cds[cds.shape[0]//2]
-# -----------
+# -
 
 
 
@@ -384,18 +389,18 @@ cds.shape, cds[cds.shape[0]//2]
 # >> THeta Trans Func
 # unnecessary ... rotation works just fine
 # from 90 degs ... rotates anti-clockwise in degrees
-# ===========
+# +
 def img_theta_trans(theta):
     '''
     Transforms theta to operate in a way that works intuitively for scipy.ndimage.interpolation.rotate
     '''
     return -1*(theta%180) - 90
-# -----------
-# ===========
+# -
+# +
 theta = np.linspace(0, 360, 360, False)
 px.line(x=theta, y=img_theta_trans(theta)).show()
-# -----------
-# ===========
+# -
+# +
 rot_spat_filt = interpolation.rotate(spat_filt, img_theta_trans(135), reshape=False)
 
 px.imshow(
@@ -403,16 +408,16 @@ px.imshow(
     color_continuous_scale=px.colors.diverging.Portland,
     color_continuous_midpoint=0
     ).show()
-# -----------
+# -
 
-# ===========
+# +
 test_img = np.zeros((101, 101))
 test_img[0:50, 50] = 1
-# -----------
-# ===========
+# -
+# +
 angle = -75
 px.imshow(
     interpolation.rotate(test_img, angle, reshape=False),
     title = f'{angle}'
     ).show()
-# -----------
+# -

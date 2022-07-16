@@ -241,7 +241,6 @@ def test_dog_spat_filt_1d_round_trip():
 
 # >>> Orientation Biased Creation methods
 
-@mark.proto
 @mark.parametrize('arclength_unit', ('mnt', 'deg', 'sec'))
 def test_gauss2d_spat_filt_args_ori_biased_duplicate(arclength_unit):
     h_sd, v_sd = (ArcLength(v, arclength_unit) for v in (20, 20))
@@ -278,7 +277,7 @@ def test_gauss2d_spat_filt_args_ori_biased_duplicate(arclength_unit):
         gauss_2d_args.h_sd.unit
         )
 
-@mark.proto
+
 @mark.parametrize('arclength_unit', ('mnt', 'deg', 'sec'))
 def test_spat_filt_args_ori_biased_duplicate(arclength_unit):
     mag_cent, cent_h_sd, cent_v_sd = 1, 20, 20
@@ -297,7 +296,7 @@ def test_spat_filt_args_ori_biased_duplicate(arclength_unit):
     ori_biased_dog_rf = dog_rf_params.mk_ori_biased_duplicate(
         v_sd_factor=v_sd_factor, h_sd_factor=h_sd_factor)
 
-    # different objects (prob does test for deepcopy success)
+    # different objects (prob does NOT test for deepcopy success)
     assert ori_biased_dog_rf != dog_rf_params
 
     # values are correct

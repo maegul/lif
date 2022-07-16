@@ -113,7 +113,7 @@ class ArcLength(_UnitBC[val_gen]):
     """Length as an angle from an origin
 
     value: length
-    unit: deg|mnt|sec (degrees, minutes, seconds), default deg
+    unit: deg|mnt|sec|rad (degrees, minutes, seconds, radians), default deg
     """
 
     value: val_gen

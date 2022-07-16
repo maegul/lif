@@ -5,17 +5,21 @@ nav:
   - 'Overview':
     - 'Architecture': "ARCHITECTURE.md"
   - 'Utilities':
+    - 'Demos': 'utilities/demo.md'
     - 'Units': 'utilities/units.md'
     - 'Data objects': 'utilities/data_objects.md'
     - 'Settings Management': 'utilities/settings.md'
   - 'Receptive Fields':
+    - 'Demos: Making Filters': 'receptive_fields/demo_making_filters.md'
+    - 'Demos: Filter Functions': 'receptive_fields/demo_basic_filter_functions.md'
     - 'Filter Functions': 'receptive_fields/filter_functions.md'
+    - 'Circular Variance': 'receptive_fields/circular_variance.md'
     - 'Filters (making)': 'receptive_fields/filters.md'
   - 'Stimulus': 'stimulus.md'
   - 'Spiking & Convolution':
+    - 'Demos': 'convolution_and_spiking/demo.md'
     - 'convolution_and_spiking/convolution_and_spiking.md'
     - 'Corrections': 'convolution_and_spiking/corrections.md'
-    - 'Example': 'convolution_and_spiking/Example.md'
 theme:
   name: "material"
   palette:

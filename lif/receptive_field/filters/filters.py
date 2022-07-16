@@ -250,14 +250,17 @@ def _make_ori_biased_lookup_vals(
 
     circ_var_opt_func = partial(
         cv_sd_ratio_method,
-        sf_params=sf_params, angles=angles, spat_freqs=spat_freqs)
+        sf_params=sf_params, angles=angles, spat_freqs=spat_freqs)  # type: ignore
 
 
     max_sd_ratio_res = _find_max_sd_ratio(circ_var_opt_func)
     assert max_sd_ratio_res.success is True, 'Optimisation not successful'
 
     ratio_vals = np.linspace(1, max_sd_ratio_res.x[0], 1000)
-    cv_vals = [circ_var_opt_func(ratio) for ratio in ratio_vals]
+    cv_vals = [
+        circ_var_opt_func(ratio)  # type: ignore
+        for ratio in ratio_vals
+        ]
     cv_vals_clean = np.array([
         np.nan if val is None else val
         for val in cv_vals

@@ -3,7 +3,9 @@ from typing import Optional, Tuple, Union
 import brian2
 from scipy.ndimage.filters import gaussian_filter1d
 
-from ..receptive_field.filters import filter_functions as ff
+from ..receptive_field.filters import (
+    filter_functions as ff,
+    cv_von_mises as cvvm)
 from ..receptive_field.filters.filter_functions import (
     do, ArcLength, SpatFrequency, Time, TempFrequency, scalar)
 from ..convolution import estimate_real_amp_from_f1 as est_amp
@@ -256,6 +258,26 @@ def tq_temp_filt_profile(
 
 
 # > Oriented Spatial Filters
+
+def von_mises_k_circ_var():
+    """Convenience function to show relationship between von mises and circ var
+
+    Data is precalculated in the cv_von_mises module and used directly from there
+
+    The "interpolated" line is from linear interpolation.
+    """
+    fig = (px
+        .line(
+            x=cvvm.kvals, y=[cvvm.cvvals, cvvm.k_cv(cvvm.kvals)],
+            range_y=[0, 1],
+            labels={'x': 'von mises k', 'value': 'circ var'})
+        )
+
+    fig.data[0].name = 'actual'
+    fig.data[1].update(name='interpolated', mode='markers')
+
+    return fig
+
 
 def dog_sf_ft_hv(
         dog_args: do.DOGSpatFiltArgs,

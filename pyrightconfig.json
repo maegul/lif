@@ -1,5 +1,9 @@
 {
 	"venvPath": "/Users/errollloyd/miniconda3/envs",
-	"venv": "hws_lif"
 	// "venv": "comp_neuro"
+	"venv": "hws_lif",
+	"exclude": [
+		"**/.pytest_cache", "**/.hypothesis", "**/.ipynb_checkpoints", "./docs",
+		"**/*.ipynb"
+	]
 }
