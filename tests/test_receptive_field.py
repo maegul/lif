@@ -169,19 +169,6 @@ def test_tq_params_array_round_trip():
     assert t == do.TQTempFiltParams.from_iter(t.array())
 
 
-def test_fit_tq_temp_filt():
-
-    # mock data known to lead to a fit
-    fs = TempFrequency(np.array([0.25, 0.5, 1, 2, 4, 8, 16, 32, 64]))
-    amps = np.array([32, 30, 34, 40, 48, 48, 28, 20, 3])
-
-    data = filters.do.TempFiltData(frequencies=fs, amplitudes=amps)
-    opt_res = filters._fit_tq_temp_filt(data)
-
-    assert opt_res.success == True  # noqa: E712
-
-
-# >> @ test tq_temp_filt provides decent fit
 
 basic_float_strat = st.floats(min_value=1, max_value=10, allow_infinity=False, allow_nan=False)
 
@@ -643,7 +630,7 @@ def test_dog_rf(
 
 
 # >>> !!Orientation Biases
-# functions and
+# functions and interface
 
 @given(ratio=basic_float_strat)
 def test_ori_biases_sd_factors_comply_with_constraints(ratio: float):
@@ -743,7 +730,6 @@ def test_dog_sf_ft_symmetry(xfreqs, yfreqs, factor):
         factor * ff.mk_dog_sf_ft(xfreqs, yfreqs, dog_rf_params, collapse_symmetry=False)
         )
 
-@mark.proto
 @given(sd_val=st.floats(min_value=10, max_value=100))
 def test_gauss_1d_ft(sd_val: float):
     """manual fft and custom fourier for 1d gauss match
@@ -763,8 +749,9 @@ def test_gauss_1d_ft(sd_val: float):
     freq = SpatFrequency(tg_fft_freq, 'cpm')
     tg_ft = ff.mk_gauss_1d_ft(freqs=freq, sd=sd)
 
-    # always some errors in comparing analytical and numerical fouriers ... just ease the
-    # tolerance a little (maybe should use relative tolerance instead?)
+    # always some errors in comparing analytical and numerical fouriers ...
+    # just ease the # tolerance a little
+    # (maybe should use relative tolerance instead?)
     assert np.all(np.isclose(tg_fft, tg_ft, atol=1e-5))
 
 
