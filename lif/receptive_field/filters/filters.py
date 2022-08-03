@@ -7,15 +7,19 @@
 """
 
 from __future__ import annotations
+import warnings
 from functools import partial
 from typing import Optional, Tuple
+from textwrap import dedent
 
 import numpy as np
 from scipy.optimize import least_squares, OptimizeResult, minimize, minimize_scalar
 
 # from . import data_objects as do, filter_functions as ff
-from . import filter_functions as ff
-from ...utils import data_objects as do
+from . import (
+    filter_functions as ff,
+    cv_von_mises as cvvm)
+from ...utils import data_objects as do, exceptions as exc
 from ...utils.units.units import ArcLength, SpatFrequency, TempFrequency, Time
 
 PI: float = np.pi  # type: ignore
@@ -214,6 +218,8 @@ def _find_sd_ratio(circ_var_opt_func, circ_var_target):
     return res
 
 def _find_max_sd_ratio(circ_var_opt_func, max_circ_var_target=0.999):
+    """what ratio provides the max_circ_var_target from the provided funciton
+    """
 
     def obj_func(ratio: float):
         cv = circ_var_opt_func(ratio=ratio)
@@ -239,59 +245,91 @@ def _make_ori_biased_lookup_vals(
         one of 'naito' (default), 'leventhal', 'both'
     """
 
-    cv_sd_ratio_method = ff.circ_var_sd_ratio_methods.get_method(method)
+    # Get function corresponding to provided method
+    cv_sd_ratio_method = cvvm.circ_var_sd_ratio_methods.get_method(method)
     if cv_sd_ratio_method is None:
         raise ValueError(
-            f'provided method {method} not available from {ff.circ_var_sd_ratio_methods}'
+            f'provided method {method} not available from {cvvm.circ_var_sd_ratio_methods}'
             )
 
-    angles = ff.mk_even_semi_circle_angles()
-    spat_freqs = ff.mk_high_density_spat_freqs(sf_params)
+    # prepare angles and spatial frequencies for calculating tables
+    # relatively important for complying with the prescribed method
+    # and using the appropriate number of angles (which can bias lookup values)
+    angles = cvvm.mk_even_semi_circle_angles()
+    spat_freqs = cvvm.mk_high_density_spat_freqs(sf_params)
 
+    # partial of the method function with params, angles, and freqs set
     circ_var_opt_func = partial(
         cv_sd_ratio_method,
         sf_params=sf_params, angles=angles, spat_freqs=spat_freqs)  # type: ignore
 
-
+    # Find ratio corresponding to max circ var value (using default value)
     max_sd_ratio_res = _find_max_sd_ratio(circ_var_opt_func)
+    # as uses optimisation (that should be fine for simple task like this) ... check
     assert max_sd_ratio_res.success is True, 'Optimisation not successful'
+    if max_sd_ratio_res.success is not True:
+        raise exc.FilterError(
+            'Could not determine the sd ratio for maximal circular variance')
 
-    ratio_vals = np.linspace(1, max_sd_ratio_res.x[0], 1000)
+    max_sd_ratio = max_sd_ratio_res.x[0]
+    # create table of values
+    # start with ratios from 1 to max (derived above)
+    # then calculate corresponding circ var values
+    ratio_vals = np.linspace(1, max_sd_ratio, 1000)
     cv_vals = [
         circ_var_opt_func(ratio)  # type: ignore
         for ratio in ratio_vals
         ]
+    # replace None
     cv_vals_clean = np.array([
         np.nan if val is None else val
         for val in cv_vals
     ])
 
+    # warn if failed to get values for any ratios
+    n_nan_vals = np.isnan(cv_vals_clean).sum()
+    if n_nan_vals:
+        warnings.warn(dedent(f'''
+            Circular Variance values were not obtained
+            for {n_nan_vals} out of {len(ratio_vals)} ratio values.
+            These ratio values are: ...
+            {ratio_vals[np.isnan(cv_vals_clean)]}
+            '''))
+
+    # create object and return
     cv_ratio_obj = do.CircularVarianceSDRatioVals(
             sd_ratio_vals=ratio_vals,
             circular_variance_vals=cv_vals_clean
         )
 
     return cv_ratio_obj
-    # cv_vals = np.linspace(0, 1, 100)
 
-    # ratio_opt_results = [
-    #     _find_sd_ratio(circ_var_opt_func, circ_var_target=cv_val)
-    #     for cv_val in cv_vals
-    # ]
 
-    # ratio_vals = np.array([
-    #     opt_res.x
-    #     if opt_res.success
-    #     else np.nan
-    #     for opt_res in ratio_opt_results
-    # ])
+def _make_ori_biased_lookup_vals_for_all_methods(
+        sf_params: do.DOGSpatFiltArgs
+        ) -> do.CircularVarianceParams:
 
-    # cv_ratio_obj = do.CircularVarianceSDRatioVals(
-    #         sd_ratio_vals=ratio_vals,
-    #         circular_variance_vals=cv_vals
-    #     )
+    # get all methods
+    all_cv_methods = cvvm.circ_var_sd_ratio_methods._all_methods()
 
-    # return cv_ratio_obj
+    sd_ratio_val_objs = {}
+    for cv_method in all_cv_methods:
+        try:
+            ratio_val_obj = _make_ori_biased_lookup_vals(
+                sf_params=sf_params, method=cv_method)
+        # crash (as failed fitting ... fix up if persistent problem later)
+        except exc.FilterError as e:
+            raise exc.FilterError(
+                dedent(f'''
+                    Failed to create lookup vals for {cv_method} method
+                    when applied to {sf_params}''')
+                ) from e
+
+        sd_ratio_val_objs[cv_method] = ratio_val_obj
+
+    circ_var_params = do.CircularVarianceParams(**sd_ratio_val_objs)
+
+    return circ_var_params
 
 
 def make_dog_spat_filt(parameters: do.SpatFiltParams) -> do.DOGSpatialFilter:
@@ -320,7 +358,10 @@ def make_dog_spat_filt(parameters: do.SpatFiltParams) -> do.DOGSpatialFilter:
             )
         )
 
-    ori_bias_params = _make_ori_biased_lookup_vals(params)
+    # create look up parameters for creating orientation biased filters
+    # from circular one
+    # ori_bias_params = _make_ori_biased_lookup_vals(params)
+    ori_bias_params = _make_ori_biased_lookup_vals_for_all_methods(params)
 
     spat_filt = do.DOGSpatialFilter(
         source_data=parameters,

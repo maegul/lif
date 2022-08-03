@@ -16,7 +16,8 @@ from lif.utils import data_objects as do, exceptions as exc
 
 from lif.receptive_field.filters import (
     filters,
-    filter_functions as ff
+    filter_functions as ff,
+    cv_von_mises as cvvm
     )
 
 import numpy as np
@@ -635,7 +636,7 @@ def test_dog_rf(
 @given(ratio=basic_float_strat)
 def test_ori_biases_sd_factors_comply_with_constraints(ratio: float):
 
-    a, b = ff.mk_ori_biased_sd_factors(ratio)
+    a, b = cvvm.mk_ori_biased_sd_factors(ratio)
 
     assert np.isclose(a + b, 2)
     assert np.isclose(a/b, ratio)

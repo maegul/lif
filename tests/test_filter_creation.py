@@ -10,11 +10,14 @@ import numpy as np
 
 from lif.utils.units.units import (
     ArcLength, SpatFrequency, TempFrequency, Time, scalar)
-from lif.utils import data_objects as do, exceptions as exc
+from lif.utils import (
+    data_objects as do,
+    exceptions as exc)
 
 from lif.receptive_field.filters import (
     filters,
-    filter_functions as ff
+    filter_functions as ff,
+    cv_von_mises as cvvm
     )
 
 # > Temporal
@@ -35,14 +38,19 @@ def test_fit_tq_temp_filt_success():
 # success is a good enough test?
 
 # > Spatial
-def test_fit_dog_spat_filt_success():
-    # values known to work
-    freq = np.array([
+
+# values known to work
+mock_sf_freq = np.array([
         0.102946, 0.256909, 0.515686, 1.035121, 2.062743, 4.140486, 8.311079,
         16.205212, 33.003893])
-    amp = np.array([
+mock_sf_amp = np.array([
         15.648086, 16.727744, 15.764523, 18.014953, 27.488355, 28.952478,
         16.119054, 1.355197, 1.537217])
+
+@mark.proto
+def test_fit_dog_spat_filt_success():
+    freq = mock_sf_freq
+    amp = mock_sf_amp
 
     data = do.SpatFiltData(
         amplitudes=amp,
@@ -52,5 +60,55 @@ def test_fit_dog_spat_filt_success():
     opt_res = filters._fit_dog_ft(data)
 
     assert opt_res.success == True
+
+
+@mark.proto
+def test_circ_var_methods_match():
+    """Dumb simple test to ensure that the attributes of two dataclasses match
+
+    yea ... that dumb.
+
+    Idea is that all circ_variance code should be in a separate module for
+    circular variance stuff ... but the objects for composition with spatial
+    filters should be in the data objects module.
+    Here, we test that they contain the same methods for defining the circular
+    variance of a receptive field
+    """
+
+    assert (
+        do.CircularVarianceParams.__dataclass_fields__.keys()
+        ==
+        cvvm._CircVarSDRatioMethods.__dataclass_fields__.keys()
+        )
+
+@mark.proto
+def test_ori_biased_lookup_val_creation_success():
+
+    # creating mock parameters from known parameters that work
+    test_sf_params = do.DOGSpatFiltArgs(
+        cent=do.Gauss2DSpatFiltParams(
+            amplitude=36.4265938532914,
+            arguments=do.Gauss2DSpatFiltArgs(
+                h_sd=ArcLength(value=1.4763319256270793, unit='mnt'),
+                v_sd=ArcLength(value=1.4763319256270793, unit='mnt'))),
+        surr=do.Gauss2DSpatFiltParams(
+            amplitude=21.123002637615535,
+            arguments=do.Gauss2DSpatFiltArgs(
+                h_sd=ArcLength(value=6.455530597672735, unit='mnt'),
+                v_sd=ArcLength(value=6.455530597672735, unit='mnt')
+                )
+            )
+        )
+
+    cv_params = (
+        filters
+        ._make_ori_biased_lookup_vals_for_all_methods(test_sf_params))
+
+    assert all(
+        cv_method in cv_params.__dir__()
+        for cv_method in cvvm.circ_var_sd_ratio_methods._all_methods()
+        )
+
+
 
 

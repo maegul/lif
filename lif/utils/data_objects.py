@@ -4,7 +4,7 @@ Classes for handling and grouping basic data objects
 
 from __future__ import annotations
 from functools import partial
-from typing import Union, Optional, Iterable, Dict, Any, Tuple, List
+from typing import Union, Optional, Iterable, Dict, Any, Tuple, List, Callable
 from dataclasses import dataclass, astuple, asdict, field
 import datetime as dt
 from pathlib import Path
@@ -416,17 +416,17 @@ class DOGSpatFiltArgs(ConversionABC):
 
         return spat_filt_args
 
+# >> Circular Variance Objects
 
 @dataclass
 class CircularVarianceSDRatioVals(ConversionABC):
-    """Circular Variance to SD ration values"""
+    """Circular Variance to SD ration values for a particular method"""
 
     sd_ratio_vals: np.ndarray
     circular_variance_vals: np.ndarray
 
     def ratio2circ_var(self, ratio: val_gen) -> val_gen:
         """Return circular variance for given sd ratio
-
         """
 
         if not hasattr(self, '_circ_var'):
@@ -440,14 +440,13 @@ class CircularVarianceSDRatioVals(ConversionABC):
 
     def circ_var2ratio(self, circ_var: val_gen) -> val_gen:
         """Return sd ratio for given circular variance
-
         """
 
         if not hasattr(self, '_sd_ratio'):
             self._mk_interpolated()
 
         # bounds circ_var ratio ( between 0 and 1 )
-        if not np.all(circ_var >= 0) and np.all(circ_var <= 1):  # type: ignore
+        if not np.all(circ_var >= 0) and np.all(circ_var < 1):  # type: ignore
             raise ValueError(f'Circ var must be between 0 and 1, is {circ_var}')
 
         return self._sd_ratio(circ_var)
@@ -455,7 +454,7 @@ class CircularVarianceSDRatioVals(ConversionABC):
     def _mk_interpolated(self):
         """Add methods for interpolation in both directions (using interp1d)"""
 
-        # bit clunky and hacky here, along with the checking for '_circ_var' attr above
+        # bit clunky and hacky here, along with the checking for attrs above
         # this should be in a post_init method.
         interp_func = partial(interp1d, fill_value='extrapolate')
 
@@ -463,6 +462,28 @@ class CircularVarianceSDRatioVals(ConversionABC):
             self.circular_variance_vals, self.sd_ratio_vals)
         self._circ_var = interp_func(
             self.sd_ratio_vals, self.circular_variance_vals)
+
+@dataclass
+class CircularVarianceParams(ConversionABC):
+    """Interface to obtaining SD Ratio values"""
+
+    naito: CircularVarianceSDRatioVals
+    # leventhal: CircularVarianceSDRatioVals
+
+    def _get_method(self, method: str) -> CircularVarianceSDRatioVals:
+        return self.__getattribute__(method)
+
+    @classmethod
+    def _all_methods(cls) -> list:
+        return list(cls.__dataclass_fields__.keys())
+
+    def ratio2circ_var(self, ratio: val_gen, method = 'naito') -> val_gen:
+        lookup_obj = self._get_method(method)
+        return lookup_obj.ratio2circ_var(ratio)
+
+    def circ_var2ratio(self, circ_var: val_gen, method = 'naito') -> val_gen:
+        lookup_obj = self._get_method(method)
+        return lookup_obj.circ_var2ratio(circ_var)
 
 
 @dataclass
@@ -474,7 +495,8 @@ class DOGSpatialFilter(ConversionABC):
     """Arguments needed to generate the spatial filter in this code base"""
     optimisation_result: OptimizeResult
     """Output of the optimisation process/function"""
-    ori_bias_params: CircularVarianceSDRatioVals
+    # ori_bias_params: CircularVarianceSDRatioVals
+    ori_bias_params: CircularVarianceParams
     """Values for generating orientation biased version of this filter"""
 
     def save(self, overwrite: bool = False, custom_key: str = 'Unknown'):
