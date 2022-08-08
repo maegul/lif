@@ -1,7 +1,7 @@
 """
 Utility functions for calculating circular variance and von mises distribution functions
 """
-from typing import Tuple, cast, Callable, Optional, List
+from typing import Tuple, cast, Callable, Optional, List, Protocol
 from dataclasses import dataclass
 
 import numpy as np
@@ -185,23 +185,36 @@ def mk_high_density_spat_freqs(
 
 
 def circ_var_sd_ratio_naito(
-        ratio: float, sf_params: do.DOGSpatFiltArgs,
+        ratio: float,
+        sf_args: do.DOGSpatFiltArgs, sf_params: do.SpatFiltParams,
         angles: ArcLength[np.ndarray], spat_freqs: SpatFrequency[np.ndarray]
         ) -> Optional[float]:
     """Calculate circ_var of spat filt if v and h sds have provided `ratio`.
 
-    Args:
-        ratio:
-
-    Uses definition of ori bias from Naito (2013).
-    IE: Measure circ var at a high spatial frequency (higher than preferred)
-    where the response is 50% of that to the preferred frequency.
-
     Uses mk_ori_biased_sd_factors to convert ratio to sd factors
+
+    Args:
+        ratio: ratio between major and minor axes of spat filter
+        sf_args: spatial filter args
+        sf_params: general data from the literature
+        angles:
+            The orientations for which responses will be used to calculate overall circ_var.
+            Should be evenly spaced and not too dense (use, eg, mk_even_semi_circle_angles)
+        spat_freqs:
+            This definition of circular variance depends on the filter's spatial frequency
+            response curve. These spatial frequencies should be as high density as is
+            practical to enable an accurate estimate (use, eg mk_high_density_spat_freqs)
+
+    Notes:
+        **Naito Method for circular variance measurement**
+
+        * Using the method for "high spatial frequency" stimuli
+        * Find preferred spatial frequency.
+        * Find spatial frequency where the response is 50% of that to the preferred frequency.
     """
 
     # make new sf parameters with prescribed ratio
-    new_sf_params = sf_params.mk_ori_biased_duplicate(
+    new_sf_params = sf_args.mk_ori_biased_duplicate(
             *mk_ori_biased_sd_factors(ratio)
         )
 
@@ -236,22 +249,83 @@ def circ_var_sd_ratio_naito(
 
     return circ_var_value
 
+def circ_var_sd_ratio_shou(
+        ratio: float,
+        sf_args: do.DOGSpatFiltArgs, sf_params: do.SpatFiltParams,
+        angles: ArcLength[np.ndarray], spat_freqs: SpatFrequency[np.ndarray]
+        ) -> Optional[float]:
+    """Circular varaince of sf_args spatial filter with sd ratio of ratio
+
+    Uses the definition in Shou and Leventhal (1989) (see notes below)
+
+    Notes:
+        **Measurement of circular variance in Shou and Leventhal (1989)**
+
+        * Find high spatial frequency limit at the non-optimal orientation
+        * Use spatial frequency "just below" this limit.
+        * Procedure is similar to that in Levick and Thibos (1982)
+
+        **Procedure in Levick and Thibos**
+
+        * Find spatial frequency "near the high-frequency limit yet low enough
+            to elicit a reliable response."
+        * First, assess "limiting frequency by ear for all orientations"
+        * Lowest frequency "thus obtained was reduced by 10%" for rest of analysis
+    """
+
+    # make new sf parameters with prescribed ratio
+    new_sf_params = sf_args.mk_ori_biased_duplicate(
+            *mk_ori_biased_sd_factors(ratio)
+        )
+
+    # get spatial freq resp curve for horizontal grating (drifiting along 90 deg vector)
+    # horizontal as mk_ori_biased_sd_factors makes vertically elongated sd factors
+    # and this method gets threshold response from non-preferred grating (or lowest sf)
+    spat_freq_resp_h = ff.mk_dog_sf_ft(
+            *ff.mk_sf_ft_polar_freqs(ArcLength(90), spat_freqs),
+            new_sf_params
+        )
+
+    # find spat_freq at resp is just above "noise"
+    # lets estimate noise as being F1 modulation that is 15% of the DC firing rate
+    threshold = 0.10 * sf_params.resp_params.dc
+    above_threshold_mask = spat_freq_resp_h > threshold
+
+    # if no such responses, can't define circ var and so return None
+    if above_threshold_mask.sum() == 0:
+        return None
+
+    # get highest spat freq that is above the threshold (ie, the last one)
+    last_above_threshold_idx = above_threshold_mask.nonzero()[0][-1]
+
+    threshold_spat_freq = SpatFrequency(spat_freqs.base[last_above_threshold_idx])
+
+    sf_x, sf_y = ff.mk_sf_ft_polar_freqs(angles, threshold_spat_freq)
+    resp = ff.mk_dog_sf_ft(sf_x, sf_y, new_sf_params)
+    circ_var_value = circ_var(resp, angles)
+
+    return circ_var_value
+
 # >> SD Ratio Methods and module attribute
 # bit hacky here ... going to create a module attribute for getting
 # desired sd-ratio-method functions (and checking if it's available)
 
 # circ var sd functions should match this type
-_circ_var_sd_ratio_method_type = Callable[
-        [float, do.DOGSpatFiltArgs, ArcLength[np.ndarray], SpatFrequency[np.ndarray]],
-        Optional[float]
-    ]
+class CircVarSDRatioMethod(Protocol):
+    def __call__(self,
+        ratio: float,
+        sf_args: do.DOGSpatFiltArgs, sf_params: do.SpatFiltParams,
+        angles: ArcLength[np.ndarray], spat_freqs: SpatFrequency[np.ndarray]
+        ) -> Optional[float]: ...
+
 
 @dataclass(frozen=True)
 class _CircVarSDRatioMethods:
     "Lookup of available circ_var DOG sd ratio estimation functions"
-    naito: _circ_var_sd_ratio_method_type = circ_var_sd_ratio_naito
+    naito: CircVarSDRatioMethod = circ_var_sd_ratio_naito
+    shou: CircVarSDRatioMethod = circ_var_sd_ratio_shou
 
-    def get_method(self, method: str) -> _circ_var_sd_ratio_method_type:
+    def get_method(self, method: str) -> CircVarSDRatioMethod:
         return self.__getattribute__(method)
 
     @classmethod

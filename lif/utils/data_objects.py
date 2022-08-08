@@ -468,6 +468,7 @@ class CircularVarianceParams(ConversionABC):
     """Interface to obtaining SD Ratio values"""
 
     naito: CircularVarianceSDRatioVals
+    shou: CircularVarianceSDRatioVals
     # leventhal: CircularVarianceSDRatioVals
 
     def _get_method(self, method: str) -> CircularVarianceSDRatioVals:

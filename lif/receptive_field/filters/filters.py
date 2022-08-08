@@ -217,12 +217,17 @@ def _find_sd_ratio(circ_var_opt_func, circ_var_target):
 
     return res
 
-def _find_max_sd_ratio(circ_var_opt_func, max_circ_var_target=0.999):
+def _find_max_sd_ratio(
+        circ_var_method: cvvm.CircVarSDRatioMethod,
+        sf_args: do.DOGSpatFiltArgs, sf_params: do.SpatFiltParams,
+        angles: ArcLength[np.ndarray], spat_freqs: SpatFrequency[np.ndarray],
+        max_circ_var_target=0.999):
     """what ratio provides the max_circ_var_target from the provided funciton
     """
 
     def obj_func(ratio: float):
-        cv = circ_var_opt_func(ratio=ratio)
+        cv = circ_var_method(ratio=ratio,
+                sf_args=sf_args, sf_params=sf_params, angles=angles, spat_freqs=spat_freqs)
         if cv is None:
             return 1
         return abs(cv - max_circ_var_target)
@@ -236,13 +241,13 @@ def _find_max_sd_ratio(circ_var_opt_func, max_circ_var_target=0.999):
 
 
 def _make_ori_biased_lookup_vals(
-        sf_params: do.DOGSpatFiltArgs,
+        sf_args: do.DOGSpatFiltArgs, sf_params: do.SpatFiltParams,
         method: str = 'naito',
         ) -> do.CircularVarianceSDRatioVals:
     """Make ori bias lookup values
 
     method:
-        one of 'naito' (default), 'leventhal', 'both'
+        one of 'naito' (default), 'leventhal'
     """
 
     # Get function corresponding to provided method
@@ -256,15 +261,19 @@ def _make_ori_biased_lookup_vals(
     # relatively important for complying with the prescribed method
     # and using the appropriate number of angles (which can bias lookup values)
     angles = cvvm.mk_even_semi_circle_angles()
-    spat_freqs = cvvm.mk_high_density_spat_freqs(sf_params)
+    spat_freqs = cvvm.mk_high_density_spat_freqs(sf_args)
 
     # partial of the method function with params, angles, and freqs set
-    circ_var_opt_func = partial(
-        cv_sd_ratio_method,
-        sf_params=sf_params, angles=angles, spat_freqs=spat_freqs)  # type: ignore
+    # circ_var_opt_func = partial(
+    #     cv_sd_ratio_method,
+    #     sf_args=sf_args, angles=angles, spat_freqs=spat_freqs)
 
     # Find ratio corresponding to max circ var value (using default value)
-    max_sd_ratio_res = _find_max_sd_ratio(circ_var_opt_func)
+    max_sd_ratio_res = _find_max_sd_ratio(cv_sd_ratio_method,
+                            sf_args=sf_args, sf_params=sf_params,
+                            angles=angles, spat_freqs=spat_freqs)
+
+    # max_sd_ratio_res = _find_max_sd_ratio(circ_var_opt_func)
     # as uses optimisation (that should be fine for simple task like this) ... check
     assert max_sd_ratio_res.success is True, 'Optimisation not successful'
     if max_sd_ratio_res.success is not True:
@@ -277,7 +286,9 @@ def _make_ori_biased_lookup_vals(
     # then calculate corresponding circ var values
     ratio_vals = np.linspace(1, max_sd_ratio, 1000)
     cv_vals = [
-        circ_var_opt_func(ratio)  # type: ignore
+        cv_sd_ratio_method(ratio,
+            sf_args=sf_args, sf_params=sf_params,
+            angles=angles, spat_freqs=spat_freqs)
         for ratio in ratio_vals
         ]
     # replace None
@@ -306,7 +317,7 @@ def _make_ori_biased_lookup_vals(
 
 
 def _make_ori_biased_lookup_vals_for_all_methods(
-        sf_params: do.DOGSpatFiltArgs
+        sf_args: do.DOGSpatFiltArgs, sf_params: do.SpatFiltParams,
         ) -> do.CircularVarianceParams:
 
     # get all methods
@@ -316,13 +327,13 @@ def _make_ori_biased_lookup_vals_for_all_methods(
     for cv_method in all_cv_methods:
         try:
             ratio_val_obj = _make_ori_biased_lookup_vals(
-                sf_params=sf_params, method=cv_method)
+                sf_args=sf_args, sf_params=sf_params, method=cv_method)
         # crash (as failed fitting ... fix up if persistent problem later)
         except exc.FilterError as e:
             raise exc.FilterError(
                 dedent(f'''
                     Failed to create lookup vals for {cv_method} method
-                    when applied to {sf_params}''')
+                    when applied to {sf_args}''')
                 ) from e
 
         sd_ratio_val_objs[cv_method] = ratio_val_obj
@@ -343,7 +354,7 @@ def make_dog_spat_filt(parameters: do.SpatFiltParams) -> do.DOGSpatialFilter:
     cent_sd = ArcLength(cent_sd, 'mnt')
     surr_sd = ArcLength(surr_sd, 'mnt')
 
-    params = do.DOGSpatFiltArgs(
+    sf_args = do.DOGSpatFiltArgs(
         cent=do.Gauss2DSpatFiltParams(
                 amplitude=cent_a,
                 arguments=do.Gauss2DSpatFiltArgs(
@@ -361,11 +372,12 @@ def make_dog_spat_filt(parameters: do.SpatFiltParams) -> do.DOGSpatialFilter:
     # create look up parameters for creating orientation biased filters
     # from circular one
     # ori_bias_params = _make_ori_biased_lookup_vals(params)
-    ori_bias_params = _make_ori_biased_lookup_vals_for_all_methods(params)
+    ori_bias_params = _make_ori_biased_lookup_vals_for_all_methods(
+                        sf_args=sf_args, sf_params=parameters)
 
     spat_filt = do.DOGSpatialFilter(
         source_data=parameters,
-        parameters=params,
+        parameters=sf_args,
         optimisation_result=opt_res,
         ori_bias_params=ori_bias_params
         )

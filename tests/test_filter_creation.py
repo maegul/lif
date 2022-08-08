@@ -47,6 +47,32 @@ mock_sf_amp = np.array([
         15.648086, 16.727744, 15.764523, 18.014953, 27.488355, 28.952478,
         16.119054, 1.355197, 1.537217])
 
+mock_sf_params = do.SpatFiltParams(
+    data=do.SpatFiltData(
+        amplitudes=mock_sf_amp,
+        frequencies=SpatFrequency(value=mock_sf_freq, unit='cpd')),
+    resp_params=do.SFRespMetaData(
+        dc=15, tf=TempFrequency(value=4, unit='hz'), mean_lum=100, contrast=0.5),
+    meta_data=do.CitationMetaData(
+        author='Kaplan_et_al', year=1987,
+        title='contrast affects transmission', reference='fig8A_open_circle', doi=None)
+    )
+
+mock_sf_args = do.DOGSpatFiltArgs(
+    cent=do.Gauss2DSpatFiltParams(
+        amplitude=36.4265938532914,
+        arguments=do.Gauss2DSpatFiltArgs(
+            h_sd=ArcLength(value=1.4763319256270793, unit='mnt'),
+            v_sd=ArcLength(value=1.4763319256270793, unit='mnt'))),
+    surr=do.Gauss2DSpatFiltParams(
+        amplitude=21.123002637615535,
+        arguments=do.Gauss2DSpatFiltArgs(
+            h_sd=ArcLength(value=6.455530597672735, unit='mnt'),
+            v_sd=ArcLength(value=6.455530597672735, unit='mnt')
+            )
+        )
+    )
+
 @mark.proto
 def test_fit_dog_spat_filt_success():
     freq = mock_sf_freq
@@ -85,28 +111,51 @@ def test_circ_var_methods_match():
 def test_ori_biased_lookup_val_creation_success():
 
     # creating mock parameters from known parameters that work
-    test_sf_params = do.DOGSpatFiltArgs(
-        cent=do.Gauss2DSpatFiltParams(
-            amplitude=36.4265938532914,
-            arguments=do.Gauss2DSpatFiltArgs(
-                h_sd=ArcLength(value=1.4763319256270793, unit='mnt'),
-                v_sd=ArcLength(value=1.4763319256270793, unit='mnt'))),
-        surr=do.Gauss2DSpatFiltParams(
-            amplitude=21.123002637615535,
-            arguments=do.Gauss2DSpatFiltArgs(
-                h_sd=ArcLength(value=6.455530597672735, unit='mnt'),
-                v_sd=ArcLength(value=6.455530597672735, unit='mnt')
-                )
-            )
-        )
 
     cv_params = (
-        filters
-        ._make_ori_biased_lookup_vals_for_all_methods(test_sf_params))
+        filters._make_ori_biased_lookup_vals_for_all_methods(mock_sf_args, mock_sf_params)
+        )
 
     assert all(
         cv_method in cv_params.__dir__()
         for cv_method in cvvm.circ_var_sd_ratio_methods._all_methods()
+        )
+
+@mark.proto
+@mark.integration
+def test_spat_filt_creation():
+
+
+    freq = mock_sf_freq
+    amp = mock_sf_amp
+
+    data = do.SpatFiltData(
+        amplitudes=amp,
+        frequencies=SpatFrequency(freq, 'cpd')  # known to be CPD
+    )
+
+    resp_params = do.SFRespMetaData(
+        dc=15, tf=TempFrequency(4, 'hz'),
+        mean_lum=100, contrast=0.5
+        )
+    meta_data = do.CitationMetaData(
+        author='Kaplan_et_al',
+        year=1987,
+        title='contrast affects transmission',
+        reference='fig8A_open_circle',
+        doi=None)
+    sf_params = do.SpatFiltParams(
+        data = data, resp_params = resp_params, meta_data = meta_data
+        )
+
+    sf = filters.make_dog_spat_filt(sf_params)
+
+    # hopefully no errors!
+    # assertions??!!
+
+    assert (
+        sf.ori_bias_params.ratio2circ_var(4, method='shou') ==
+        sf.ori_bias_params.shou.ratio2circ_var(4)
         )
 
 
