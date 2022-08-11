@@ -62,9 +62,10 @@ def tq_temp_filt(
 
 
 def spat_filt(
-        spat_filter: do.DOGSpatialFilter,
+        spat_filter: Union[do.DOGSpatialFilter,do.DOGSpatFiltArgs],
         spat_res: ArcLength[scalar] = ArcLength(1, 'mnt'),
-        spat_ext: Optional[ArcLength[scalar]] = None, sd: Union[bool, float] = False
+        spat_ext: Optional[ArcLength[scalar]] = None,
+        sd: Union[bool, float] = False
         ):
 
     if (spat_ext and sd) or ((not spat_ext) and (not sd)):
@@ -73,7 +74,8 @@ def spat_filt(
     filter_sd = spat_filter.parameters.max_sd()
 
     if spat_ext:
-        spat_coords = ff.mk_sd_limited_spat_coords(spat_res=spat_res, spat_ext=spat_ext )
+        spat_coords = ff.mk_sd_limited_spat_coords(
+            spat_res=spat_res, spat_ext=spat_ext )
 
     else:
         spat_coords = ff.mk_sd_limited_spat_coords(
@@ -308,7 +310,7 @@ def dog_sf_ft_hv(
 
     # if no specific freqs are provided, generate automatically
     if not freqs:
-        max_spat_freq = ff.find_null_high_sf(dog_args)
+        max_spat_freq = cvvm.find_null_high_sf(dog_args)
         if use_log_freqs:
             max_freq_exponent = np.log10(max_spat_freq.base)
             freq_exponents = np.linspace(-1, max_freq_exponent, n_spat_freqs)
@@ -358,7 +360,7 @@ def mk_sf_orientation_resp(
     of modulation.  Also wrapped to be within [0, 180].
     """
 
-    angles = ff.mk_even_semi_circle_angles(n_angles)
+    angles = cvvm.mk_even_semi_circle_angles(n_angles)
     # angles represent direction of modulation
     ori_resp = ff.mk_dog_sf_ft(
         *ff.mk_sf_ft_polar_freqs(angles, spat_freq),
@@ -411,9 +413,9 @@ def ori_spat_freq_heatmap(
 
     """
 
-    angles = ff.mk_even_semi_circle_angles(n_orientations)
+    angles = cvvm.mk_even_semi_circle_angles(n_orientations)
 
-    max_spat_freq = ff.find_null_high_sf(sf_params)
+    max_spat_freq = cvvm.find_null_high_sf(sf_params)
     if use_log_freqs:
         max_freq_exponent = np.log10(max_spat_freq.base)
         freq_exponents = np.linspace(log_yaxis_start_exponent, max_freq_exponent, n_spat_freqs)
@@ -457,7 +459,7 @@ def orientation_circ_var_subplots(
     spat_freqs = SpatFrequency(
         np.linspace(
             0,
-            ff.find_null_high_sf(sf.parameters).base,
+            cvvm.find_null_high_sf(sf.parameters).base,
             100)
         )
     sf_resp = ff.mk_dog_sf_ft(
@@ -501,6 +503,37 @@ def orientation_circ_var_subplots(
                 do.SpatFrequency(spat_f)
                 )
             fig.add_trace(ori_fig.data[0], col=sfi+1, row=cvi+1)
+
+    return fig
+
+
+def circ_var_sd_ratio_method_comparison(
+        sf: do.DOGSpatialFilter,
+        ratios: Optional[np.ndarray] = None):
+    """For provided spatial filter, plot circular variance over sd ratio
+    for all the available methods.
+    """
+
+    if not ratios:
+        ratios = np.linspace(1, 10, 100)
+
+    all_methods = sf.ori_bias_params.all_methods()
+
+    fig = (
+        go.Figure()
+        .add_traces(
+            [
+                go.Scatter(
+                        name=f'{method.title()} method',
+                        x = ratios,
+                        y = sf.ori_bias_params.ratio2circ_var(ratios, method=method) )
+                    for method in all_methods
+            ]
+        )
+        .update_xaxes(title='SD Ratio')
+        .update_yaxes(title='Circular Variance')
+        .update_layout(title='SD Ratio to Circular Variance')
+        )
 
     return fig
 

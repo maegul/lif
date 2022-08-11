@@ -630,19 +630,6 @@ def test_dog_rf(
     assert np.allclose(rf, dog_rf)  # type: ignore
 
 
-# >>> !!Orientation Biases
-# functions and interface
-
-@given(ratio=basic_float_strat)
-def test_ori_biases_sd_factors_comply_with_constraints(ratio: float):
-
-    a, b = cvvm.mk_ori_biased_sd_factors(ratio)
-
-    assert np.isclose(a + b, 2)
-    assert np.isclose(a/b, ratio)
-
-
-
 # >> Fourier
 
 @mark.parametrize(

@@ -249,6 +249,7 @@ def circ_var_sd_ratio_naito(
 
     return circ_var_value
 
+
 def circ_var_sd_ratio_shou(
         ratio: float,
         sf_args: do.DOGSpatFiltArgs, sf_params: do.SpatFiltParams,

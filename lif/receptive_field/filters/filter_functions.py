@@ -973,7 +973,9 @@ def mk_dog_sf_conv_amp(
 
 def mk_ori_biased_spatfilt_params_from_spat_filt(
         spat_filt: do.DOGSpatialFilter,
-        circ_var: float
+        circ_var: float,
+        # careful!  default value better be valid for method it will be passed to
+        method: str = 'naito'
         ) -> do.DOGSpatFiltArgs:
     """Create new spatial filter params from a spat filter by adding an orientation bias
 
@@ -981,13 +983,17 @@ def mk_ori_biased_spatfilt_params_from_spat_filt(
 
     Args:
         circ_var: the circular variance that the new parameters will have
+        method:
+            which method of measuring/defining circular variance should be used.
+            Passed directly to filter's methods.
+            See [circular variance parameters class][utils.data_objects.CircularVarianceParams].
 
     Returns:
         new params, with adjusted `sd` values so that the spatial filter
             they describe will have the provided `circ_var` (circular variance)
     """
 
-    sd_ratio = spat_filt.ori_bias_params.circ_var2ratio(circ_var)
+    sd_ratio = spat_filt.ori_bias_params.circ_var2ratio(circ_var, method=method)
     # as first return val is biggest, this makes horizontally  elongated
     # orientation 0 degs
     h_sd_fact, v_sd_fact = cvvm.mk_ori_biased_sd_factors(sd_ratio)

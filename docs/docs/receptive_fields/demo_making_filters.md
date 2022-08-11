@@ -217,7 +217,6 @@ for filter in do.TQTempFilter.get_saved_filters():
     print(filter.name)
     print('')
 ```
-
 ```
 /Users/errollloyd/.lif_hws_data ...
 Kaplan_et_al_1987_contrast_affects_transmission_fig_6a_open_circles-TQTempFilter.pkl
