@@ -9,7 +9,7 @@
 from __future__ import annotations
 import warnings
 from functools import partial
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Callable, cast
 from textwrap import dedent
 
 import numpy as np
@@ -268,19 +268,39 @@ def _make_ori_biased_lookup_vals(
     #     cv_sd_ratio_method,
     #     sf_args=sf_args, angles=angles, spat_freqs=spat_freqs)
 
-    # Find ratio corresponding to max circ var value (using default value)
+    # Find ratio corresponding to max circ var value
+    max_circ_var_target = 0.999
     max_sd_ratio_res = _find_max_sd_ratio(cv_sd_ratio_method,
+                            max_circ_var_target=max_circ_var_target,
                             sf_args=sf_args, sf_params=sf_params,
                             angles=angles, spat_freqs=spat_freqs)
 
     # max_sd_ratio_res = _find_max_sd_ratio(circ_var_opt_func)
     # as uses optimisation (that should be fine for simple task like this) ... check
-    assert max_sd_ratio_res.success is True, 'Optimisation not successful'
     if max_sd_ratio_res.success is not True:
         raise exc.FilterError(
             'Could not determine the sd ratio for maximal circular variance')
 
+    # convenience wrapper to get circ var values
+    get_cv_val: Callable[[float], Optional[float]] = lambda r: cv_sd_ratio_method(r,
+                            sf_args=sf_args, sf_params=sf_params,
+                            angles=angles, spat_freqs=spat_freqs)
+
     max_sd_ratio = max_sd_ratio_res.x[0]
+    max_circ_var = get_cv_val(max_sd_ratio)
+    # pretty certain that not none by this point as minimisation got to this value
+    max_circ_var = cast(float, max_circ_var)
+
+    # if method can't get to circular variance 0.9 or higher (1 - 0.1)
+    if max_sd_ratio_res.fun > 0.1:
+        warnings.warn(dedent(f'''
+            Provided method ({method}) cannot generate a circular variance greater than
+            {max_circ_var}.
+            The maximal SD ratio derived from minimisation was {max_sd_ratio}
+            with a circular variance of {max_circ_var_target-max_sd_ratio_res.fun}.
+            ''')
+            )
+
     # create table of values
     # start with ratios from 1 to max (derived above)
     # then calculate corresponding circ var values
@@ -310,7 +330,9 @@ def _make_ori_biased_lookup_vals(
     # create object and return
     cv_ratio_obj = do.CircularVarianceSDRatioVals(
             sd_ratio_vals=ratio_vals,
-            circular_variance_vals=cv_vals_clean
+            circular_variance_vals=cv_vals_clean,
+            method=method,
+            _max_sd_ratio=max_sd_ratio, _max_circ_var=max_circ_var
         )
 
     return cv_ratio_obj

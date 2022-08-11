@@ -422,8 +422,13 @@ class DOGSpatFiltArgs(ConversionABC):
 class CircularVarianceSDRatioVals(ConversionABC):
     """Circular Variance to SD ration values for a particular method"""
 
-    sd_ratio_vals: np.ndarray
-    circular_variance_vals: np.ndarray
+    sd_ratio_vals: np.ndarray = field(repr=False)
+    circular_variance_vals: np.ndarray = field(repr=False)
+    method: str
+    _max_sd_ratio: float = field(repr=False)
+    "Highest sd ratio used to generate lookup tables"
+    _max_circ_var: float = field(repr=False)
+    "Highest circular variance used/generated in lookup tables"
 
     def ratio2circ_var(self, ratio: val_gen) -> val_gen:
         """Return circular variance for given sd ratio
@@ -446,7 +451,7 @@ class CircularVarianceSDRatioVals(ConversionABC):
             self._mk_interpolated()
 
         # bounds circ_var ratio ( between 0 and 1 )
-        if not np.all(circ_var >= 0) and np.all(circ_var < 1):  # type: ignore
+        if not (np.all(circ_var >= 0) and np.all(circ_var < 1)):  # type: ignore
             raise ValueError(f'Circ var must be between 0 and 1, is {circ_var}')
 
         return self._sd_ratio(circ_var)
@@ -471,19 +476,19 @@ class CircularVarianceParams(ConversionABC):
     shou: CircularVarianceSDRatioVals
     # leventhal: CircularVarianceSDRatioVals
 
-    def _get_method(self, method: str) -> CircularVarianceSDRatioVals:
+    def get_method(self, method: str) -> CircularVarianceSDRatioVals:
         return self.__getattribute__(method)
 
     @classmethod
-    def _all_methods(cls) -> list:
+    def all_methods(cls) -> List[str]:
         return list(cls.__dataclass_fields__.keys())
 
     def ratio2circ_var(self, ratio: val_gen, method = 'naito') -> val_gen:
-        lookup_obj = self._get_method(method)
+        lookup_obj = self.get_method(method)
         return lookup_obj.ratio2circ_var(ratio)
 
     def circ_var2ratio(self, circ_var: val_gen, method = 'naito') -> val_gen:
-        lookup_obj = self._get_method(method)
+        lookup_obj = self.get_method(method)
         return lookup_obj.circ_var2ratio(circ_var)
 
 
