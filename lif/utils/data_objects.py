@@ -416,6 +416,19 @@ class DOGSpatFiltArgs(ConversionABC):
 
         return spat_filt_args
 
+    @property
+    def parameters(self):
+        """Convenience to allow either DOGSpatFiltArgs or a DOGSpatialFilter
+        object to be used by a function whenever just using the DOGSpatFiltArgs
+        object (which is a child attribute of a DOGSpatialFilter object) is
+        desired.
+
+        As DOGSpatialFilter objects have DOGSpatFiltArgs objects as "parameters",
+        `sf_args = sf.parameters` will work in either case.
+        Thus a variety of functions can happily take either kind of object.
+        """
+        return self
+
 # >> Circular Variance Objects
 
 @dataclass
