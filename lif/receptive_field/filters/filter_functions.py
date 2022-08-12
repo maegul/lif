@@ -73,7 +73,7 @@ def round_coord_to_res(
     if high and low:
         raise ValueError('high and low cannot both be True')
     if not isinstance(res.value, int):
-        raise TypeError(f'res value must be int, not {type(res.value)}')
+        raise exc.CoordsValueError(f'res value must be int, not {type(res.value)}')
 
     res_val = res.value
     res_unit = res.unit

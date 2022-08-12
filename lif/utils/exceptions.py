@@ -1,7 +1,7 @@
 """Custom Exceptions for simulation purposes"""
 
 
-class CoordsValueError(Exception):
+class CoordsValueError(ValueError):
     """Error with creation of coordinates"""
     pass
 
