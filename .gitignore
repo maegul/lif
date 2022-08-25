@@ -7,5 +7,8 @@
 .hypothesis
 proto*
 
+# ignore pytest cashe
+.pytest_cache/
+
 .coverage
 htmlcov

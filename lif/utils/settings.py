@@ -52,6 +52,7 @@ class SimulationParams(ParamsObj):
     "General parameters for simulations"
     _file_name: Path = SIMULATION_PARAMS_FILE_NAME
     spat_filt_sd_factor: float = 5
+    "By how many times the spatial coordinates should be than the largest Std Dev parameter"
     temp_filt_n_tau: float = 10
 
 

@@ -36,8 +36,8 @@ extra_css:
 plugins:
 - search
 - mkdocstrings:
-    watch:
-      - ../lif
+    # watch:
+    #   - ../lif
     handlers:
       python:
         selection:

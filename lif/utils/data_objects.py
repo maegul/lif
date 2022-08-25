@@ -564,6 +564,12 @@ class DOGSpatialFilter(ConversionABC):
         return spat_filt
 
 
+# As both have an equivalent "parameters" attribute, and so can be treated
+# as the same functional type for certain purposes,
+# this is a convenient type for such instances
+DOGSF = Union[DOGSpatialFilter,DOGSpatFiltArgs]
+"Convenient type so that either may be provided though only parameters to be used"
+
 # > Full LGN Model
 
 @dataclass
