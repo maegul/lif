@@ -12,7 +12,11 @@ from lif.convolution import (
     estimate_real_amp_from_f1 as est_amp
     )
 from lif.utils.units.units import ArcLength, SpatFrequency, TempFrequency, Time, scalar
-from lif.utils import data_objects as do, exceptions as exc
+from lif.utils import (
+    settings,
+    data_objects as do,
+    exceptions as exc
+    )
 
 from lif.receptive_field.filters import (
     filters,
@@ -424,6 +428,164 @@ def test_spat_coords_match_1d_coords(
     assert coord_1d.base.shape[0] == x.base.shape[1]  # lengths should match
 
 
+@mark.proto
+@given(
+    spat_res=st.integers(1, 10),
+    spat_ext_factor=st.floats(10, 100, allow_nan=False, allow_infinity=False),
+    )
+def test_spat_coords_match_sd_limited_1d_coords(
+        spat_res, spat_ext_factor):
+
+    spat_ext = spat_res * spat_ext_factor
+
+    x, y = ff.mk_spat_coords(
+            spat_res=ArcLength(spat_res, 'mnt'),
+            spat_ext=ArcLength(spat_ext, 'mnt'),
+        )
+
+    assert x.base.shape == y.base.shape  # basic test, mostly trivial
+
+    # spatial slice
+    coord_1d = ff.mk_sd_limited_spat_coords(ArcLength(spat_res, 'mnt'), ArcLength(spat_ext, 'mnt'))
+
+    assert np.allclose(coord_1d.base, x.base[0,:])  # first dimension is Y axis, second x axis.
+    assert coord_1d.base.shape[0] == x.base.shape[1]  # lengths should match
+
+
+@mark.proto
+@given(
+    spat_res=st.integers(1, 10),
+    sf_max_sd=st.floats(5, 100, allow_nan=False, allow_infinity=False),
+    )
+def test_spat_coords_span_sufficient_sd_multiples(
+        spat_res, sf_max_sd):
+
+    coords = ff.mk_sd_limited_spat_coords(
+            spat_res=ArcLength(spat_res, 'mnt'),
+            sd=ArcLength(sf_max_sd, 'mnt'),
+        )
+
+    # times 2 as it is a radial factor ... diameter (ie, full size of coords) is double
+    minimum_sd_multiples = settings.SimulationParams.spat_filt_sd_factor * 2
+    actual_sd_multiples = ((coords.mnt[-1] - coords.mnt[0]) / sf_max_sd)
+
+    # event(f'n_multiples: {actual_sd_multiples}')
+
+    assert  actual_sd_multiples > minimum_sd_multiples
+
+
+@mark.proto
+@given(
+    spat_res=st.integers(1, 10),
+    sf_max_sd=st.floats(5, 100, allow_nan=False, allow_infinity=False),
+    sd_unit=st.sampled_from(['mnt', 'deg', 'sec'])
+    )
+def test_spat_coords_span_extent_matches_analytical_value(
+        spat_res, sf_max_sd, sd_unit):
+    """Just to ensure that the spatial extent of a rendered spatial filter
+    can be accurately determined from the spatial filter's parameters
+    """
+    spat_res = ArcLength(spat_res, 'mnt')
+    sd = ArcLength(sf_max_sd, 'mnt').as_new_unit(sd_unit)
+    coords = ff.mk_sd_limited_spat_coords(
+                spat_res=spat_res,
+                sd=sd,
+            )
+    coords_size = coords.value.size
+    predicted_coords_radius = (
+        ff.mk_rounded_spat_radius(
+            spat_res=spat_res,
+            spat_ext=ff.mk_spat_ext_from_sd_limit(sd)
+            ).value
+        )
+    predicted_coords_size = ((predicted_coords_radius / spat_res.value) * 2) + 1
+
+    assert coords_size == predicted_coords_size
+
+    # more manual calculation ... just to make sure
+    # multiply the sd by the sd_factor in settings
+    predicted_sd_limit = ArcLength(
+            sd.value * 2*settings.simulation_params.spat_filt_sd_factor,
+            sd.unit
+            )
+    # make a rounded spat_radius, double, divide by size of spat_res and add 1 for zero-center
+    predicted_coords_radius2 = (
+            (
+                ff.mk_rounded_spat_radius(spat_res, predicted_sd_limit).value
+                * 2
+                / spat_res.value
+            )
+            + 1
+        )
+
+    assert coords_size == predicted_coords_radius2
+
+
+# >>> spat filt sd strats
+cent_sd_strat = st.floats(min_value=10, max_value=29, allow_infinity=False, allow_nan=False)
+surr_sd_strat = st.floats(min_value=30, max_value=50, allow_infinity=False, allow_nan=False)
+
+@mark.integration
+# @hypothesis.settings(deadline=300)  # deadline of 300 ms from default of 200
+@given(
+        spat_res=st.integers(1, 10),
+        spat_res_unit=st.sampled_from(['mnt', 'sec']),  # deg would be too big to be integer
+        cent_h_sd=cent_sd_strat, cent_v_sd=cent_sd_strat, # though same start, diff vals
+        surr_h_sd=surr_sd_strat, surr_v_sd=surr_sd_strat,
+        rf_unit=st.sampled_from(['mnt', 'deg', 'sec'])
+    )
+def test_spat_filt_size_prediction(
+        spat_res, spat_res_unit,
+        cent_h_sd, cent_v_sd,
+        surr_h_sd, surr_v_sd,
+        rf_unit):
+    """Test accurate prediction of rendered spat filt for various combinations of parameters
+
+    Including different units for rf and spat_res, within reason and small enough to maintain
+    workable array sizes
+    """
+
+    spat_res = ArcLength(
+            int(ArcLength(spat_res, 'mnt')[spat_res_unit]),
+            spat_res_unit
+        )
+    # event(f'{spat_res, cent_h_sd, cent_v_sd, surr_h_sd, surr_v_sd, rf_unit}')
+
+    # ensure values are kept small enough to not blow up
+    # the size of arrays
+    if rf_unit == 'deg':
+        cent_h_sd, cent_v_sd, surr_h_sd, surr_v_sd = (
+            v / 55  # not 60, but 55, to create more random vals
+                for v
+                in (cent_h_sd, cent_v_sd, surr_h_sd, surr_v_sd )
+            )
+    if rf_unit == 'sec':
+        cent_h_sd, cent_v_sd, surr_h_sd, surr_v_sd = (
+            v * 65  # not 60, but 65, to create more random vals
+                for v
+                in (cent_h_sd, cent_v_sd, surr_h_sd, surr_v_sd )
+            )
+
+    dog_rf_params = do.DOGSpatFiltArgs(
+        cent=do.Gauss2DSpatFiltParams.from_iter(
+            [1, cent_h_sd, cent_v_sd], arclength_unit=rf_unit),
+        surr=do.Gauss2DSpatFiltParams.from_iter(
+            [1, surr_h_sd, surr_v_sd], arclength_unit=rf_unit)
+        )
+
+    xc, yc = ff.mk_spat_coords(
+        sd=dog_rf_params.max_sd(),
+        spat_res=spat_res)
+
+    spat_filt_rendered = ff.mk_dog_sf(xc, yc, dog_rf_params)
+
+    predicted = ff.spat_filt_size_in_res_units(
+                    spat_res=spat_res,
+                    sf=dog_rf_params)
+
+    assert xc.value.shape[0] == spat_filt_rendered.shape[0] == predicted
+
+
 @given(spat_res_unit=st.sampled_from(['sec','mnt', 'deg']))
 def test_spat_coords_units_correct(spat_res_unit):
 
@@ -748,9 +910,6 @@ def test_gauss_1d_ft(sd_val: float):
 #         'cent_h_sd,cent_v_sd,surr_h_sd,surr_v_sd,mag_cent,mag_surr',
 #         [(10, 13, 30, 30, 17/16, 15/16)]
 #     )
-cent_sd_strat = st.floats(min_value=10, max_value=29, allow_infinity=False, allow_nan=False)
-surr_sd_strat = st.floats(min_value=30, max_value=50, allow_infinity=False, allow_nan=False)
-
 
 @hypothesis.settings(deadline=300)  # deadline of 300 ms from default of 200
 @given(
@@ -944,6 +1103,32 @@ def test_sf_ft_positive_for_negative_freq():
             np.isclose(ft_val, ft_vals[0])
             for ft_val in ft_vals
         ])
+
+# >> Spatial filter rotation
+@mark.proto
+def test_sf_rotation_does_not_change_array_size():
+
+    dog_rf_params = do.DOGSpatFiltArgs(
+        cent=do.Gauss2DSpatFiltParams.from_iter(
+            [1.1, 10, 10], arclength_unit='mnt'),
+        surr=do.Gauss2DSpatFiltParams.from_iter(
+            [0.9, 30, 30], arclength_unit='mnt')
+        )
+
+    xc, yc = ff.mk_spat_coords(spat_res=ArcLength(1,'mnt'), spat_ext=ArcLength(100,'mnt'))
+    dog_rf = ff.mk_dog_sf(xc, yc, dog_args=dog_rf_params)
+
+
+    orientation_size_checks = [
+        (ff.mk_oriented_sf(dog_rf, ArcLength(ori, 'deg')).shape == dog_rf.shape)
+        for ori in np.linspace(0, 180, 10)
+    ]
+
+    assert all(orientation_size_checks)
+
+
+def test_sf_rotation_produces_correct_orientation_preference():
+    assert False
 
 # > Convolution management and adjustment
 

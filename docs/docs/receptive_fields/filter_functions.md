@@ -30,6 +30,32 @@ For simplicity and predictability, the following constraints have been enforced 
 	- _In other words:_ the `x` coordinates go up left-to-right, the `y` coordinates go up bottom-to-top; as occurs in mathematical 2D graphs.
 	- The way `np.meshgrid` orders the dimensions is inline with the typical ordering of the axes in `numpy`, where, for a 2D array for instance, the rows are the first axis and the columns the second (`C order` or `Row major`).  In terms of `y` and `x`, this means that the `y` coordinates vary along the first axis of the array and `x` the second.  EG: `X[[0, 1, 2], 0]` will three numbers with the same value, but `X[0, [0, 1, 2]]` will show multiple and different x coordinates. Vice versa for `Y[[0, 1, 2], 0]` (coordinates vary) and `Y[0, [0, 1, 2]]` (do not vary).
 
+#### Dependency Chart
+
+```
+"-->" ~ "Uses or depends on"
+"(A, B)" ~ "Provides A and B as arguments to"
+ 													  (res, spat_filt args)
+* mk_spat_coords <--- (res, sd)                       * spat_filt_size_in_res_units --> (n units)
+| (res, sd)											  |
+V 													  | 
+* mk_sd_limited_spat_coords 						  |
+|      \  											  |
+|       \ (sd) 										  |
+| (res)  * mk_spat_ext_from_sd_limit (rounds up) * <--|
+|       / (ext) 									  |
+V      / 											  |
+* mk_spat_coords_1d 								  |
+|      \ 											  |
+|       \ (res, ext) 								  |
+| (res)  * mk_rounded_spat_radius * <-----------------|
+|        |           \ (res, ext / 2)
+|       / <---------- * round_coord_to_res (rounds up)
+V      / (radius)
+* np.arange 
+```
+
+
 
 ### Temporal Coordinates
 

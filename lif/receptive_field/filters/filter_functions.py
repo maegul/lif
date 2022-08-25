@@ -7,6 +7,7 @@ from textwrap import dedent
 
 from brian2.core.variables import Variable
 import numpy as np
+from scipy.ndimage import interpolation
 
 # import matplotlib.pyplot as plt
 
@@ -147,7 +148,8 @@ def mk_rounded_spat_radius(
 
     spat_radius = round_coord_to_res(
         ArcLength(spat_ext[spat_res.unit] / 2, spat_res.unit),
-        spat_res, high=True
+        spat_res,
+        high=True
     )
 
     return spat_radius
@@ -245,7 +247,8 @@ def mk_spat_ext_from_sd_limit(
     Returns Arclenth in same units as sd.
     """
 
-    max_sd = int(np.ceil(sd_limit * sd.value))
+    max_sd = sd_limit * sd.value
+    # max_sd = int(np.ceil(sd_limit * sd.value))
     spat_ext = ArcLength(2 * max_sd, sd.unit)
 
     return spat_ext
@@ -310,6 +313,26 @@ def mk_sd_limited_spat_coords(
     coords = mk_spat_coords_1d(spat_res=spat_res, spat_ext=final_spat_ext)
 
     return coords
+
+
+def spat_filt_size_in_res_units(spat_res: ArcLength[int], sf: do.DOGSF) -> int:
+    """Size of a "rendered" spatial filter in number of spatial resolution units
+    """
+    sf_args = sf.parameters
+
+    # should be in same unit as spat_res
+    spat_radius = mk_rounded_spat_radius(
+        spat_res=spat_res,
+        spat_ext=mk_spat_ext_from_sd_limit(sf_args.max_sd())
+        )
+
+    #              |- * shouldn't need to make int but done for typing
+    #              |        |- * divide by spat_res, as needs to be number of spat_res units
+    #              |        |      should be fine to use values, as both in same unit
+    #              V        V      from mk_rounded_spat_radius
+    n_res_units = int((spat_radius.value / spat_res.value) * 2) + 1
+
+    return n_res_units
 
 
 def mk_spat_coords(
@@ -1004,6 +1027,29 @@ def mk_ori_biased_spatfilt_params_from_spat_filt(
 
     return new_sf_params
 
+
+def mk_oriented_sf(sf: np.ndarray, orientation: ArcLength[scalar]) -> np.ndarray:
+    """Rotate a rendered spat filter (array) to have provided orientation
+
+    Args:
+        sf: Rendered spatial filter.  IE, 2D array of values on a spatial canvas.
+        orientation:
+            Any spatial filter that has been transformed so as to have an
+            orientation bias, will be horizontally oriented and prefer gratings
+            horizontally oriented.  IE, the starting orientation of a spatial filter
+            is `0°`.
+            Such a spatial, filter will be rotated by `orientation` anti-clockwise,
+            and so, starting from `0°`, will have a preferred orientation that matches
+            the provided `orientation` argument.
+    Returns:
+        rotated sf:
+            Same Spatial filter but rotated using `scipy.ndimage.interpolation.rotate`.
+            The size of the array will not be changed (so the spatial extent settings
+            will remain intact).
+    """
+
+    rotated_sf = interpolation.rotate(sf, orientation.deg, reshape=False)
+    return rotated_sf
 
 # > Temporal
 
