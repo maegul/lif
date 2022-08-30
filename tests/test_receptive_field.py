@@ -579,11 +579,48 @@ def test_spat_filt_size_prediction(
 
     spat_filt_rendered = ff.mk_dog_sf(xc, yc, dog_rf_params)
 
-    predicted = ff.spat_filt_size_in_res_units(
+    predicted = ff.spatial_extent_in_res_units(
                     spat_res=spat_res,
                     sf=dog_rf_params)
 
     assert xc.value.shape[0] == spat_filt_rendered.shape[0] == predicted
+
+
+
+@mark.integration
+# @hypothesis.settings(deadline=300)  # deadline of 300 ms from default of 200
+@given(
+        spat_res=st.integers(1, 10),
+        spat_res_unit=st.sampled_from(['mnt', 'sec']),  # deg would be too big to be integer
+        spat_ext=st.floats(10, 100, allow_infinity=False, allow_nan=False),
+        spat_ext_unit=st.sampled_from(['mnt', 'deg'])
+    )
+def test_spat_coords_size_prediction(
+        spat_res, spat_res_unit,
+        spat_ext, spat_ext_unit):
+
+
+    spat_res = ArcLength(
+            int(ArcLength(spat_res, 'mnt')[spat_res_unit]),
+            spat_res_unit
+        )
+    # event(f'{spat_res, cent_h_sd, cent_v_sd, surr_h_sd, surr_v_sd, rf_unit}')
+
+    # ensure values are kept small enough to not blow up
+    # the size of arrays
+    if spat_ext_unit == 'deg':
+        spat_ext = (spat_ext / 55)  # not 60, but 55, to create more random vals
+
+    if spat_ext_unit == 'sec':
+        spat_ext = (spat_ext * 65)  # not 60, but 65, to create more random vals
+
+    spat_ext = ArcLength(spat_ext, spat_ext_unit)
+
+    # event(f'{spat_res.value, spat_res.unit} ... {spat_ext.value, spat_ext.unit}')
+    xc, _ = ff.mk_spat_coords(spat_res=spat_res, spat_ext=spat_ext)
+    predicted_n_res_units = ff.spatial_extent_in_res_units(spat_res, spat_ext=spat_ext)
+
+    assert xc.value.shape[0] == (predicted_n_res_units)
 
 
 @given(spat_res_unit=st.sampled_from(['sec','mnt', 'deg']))

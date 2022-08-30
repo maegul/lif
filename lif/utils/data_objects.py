@@ -4,7 +4,7 @@ Classes for handling and grouping basic data objects
 
 from __future__ import annotations
 from functools import partial
-from typing import Union, Optional, Iterable, Dict, Any, Tuple, List, Callable
+from typing import Union, Optional, Iterable, Dict, Any, Tuple, List
 from dataclasses import dataclass, astuple, asdict, field
 import datetime as dt
 from pathlib import Path
@@ -573,6 +573,72 @@ DOGSF = Union[DOGSpatialFilter,DOGSpatFiltArgs]
 # > Full LGN Model
 
 @dataclass
+class RFLocation(ConversionABC):
+    """Spatial Location of a single receptive field
+
+    Uses cartesian coords (in arc lengths), but
+    has constructor using polar coords if necessary.
+    """
+    x: ArcLength[scalar]
+    y: ArcLength[scalar]
+
+    @classmethod
+    def from_polar(
+        cls,
+        theta: ArcLength[scalar], mag: ArcLength[scalar],
+        unit: str = 'mnt') -> 'RFLocation':
+        """Construct using polar coordinates
+
+        * `theta` and `mag` define a vector.
+        * `unit` defines the `ArcLength` unit for the final `x`,`y` coords
+        """
+        x = ArcLength(mag[unit] * np.cos(theta.rad), unit)
+        y = ArcLength(mag[unit] * np.sin(theta.rad), unit)
+
+        return cls(x=x, y=y)
+
+    def round_to_spat_res(self, spat_res: ArcLength[int]) -> 'RFLocation':
+        """New object with `x`,`y` coords snapped to `spat_res`
+        """
+        x = ff.round_coord_to_res(coord=self.x, res=spat_res)
+        y = ff.round_coord_to_res(coord=self.y, res=spat_res)
+
+        return self.__class__(x=x, y=y)
+
+
+@dataclass
+class RFStimSpatIndices(ConversionABC):
+    """Indices to use for slicing a RF's view of a stimulus
+
+    Indices are to be used directly on the array
+
+    Examples:
+        # rf_idxs: RFStimIndices
+        >>> stim[rf_idxs.x1:rf_idxs.x2, rf_idxs.y1:rf_idxs.y2]
+    """
+    x1: int
+    x2: int
+    y1: int
+    y2: int
+
+    def is_within_extent(self, st_params: SpaceTimeParams) -> bool:
+        """Do all indices fall within the shape of the stimulus array?
+
+        Uses the space time parameters to determine what the extent will be,
+        then checkes of all indices are within 0 and the predicted size.
+        """
+
+        full_ext = ff.spatial_extent_in_res_units(
+            st_params.spat_res, spat_ext = st_params.spat_ext)
+
+        return all(
+            0 <= self.__getattribute__(idx) < full_ext
+                for idx in ('x1', 'x2', 'y1', 'y2')
+            )
+
+
+
+@dataclass
 class LGNCell(ConversionABC):
     """Single LGN Cell that provides input to a V1 Cell"""
 
@@ -580,7 +646,7 @@ class LGNCell(ConversionABC):
     temp_filt: TQTempFilter
     orientation: ArcLength[float]
     circ_var: float
-    location: Tuple[float, float]  # tentative, maybe requires own data object
+    location: RFLocation
 
     # need to rotate to orientation and get spatial_filter at specified circ_var
     # best (?):

@@ -59,3 +59,37 @@ def mk_sinstim(
         )
 
     return img
+
+
+def mk_rf_stim_spatial_slice_idxs(
+        st_params: do.SpaceTimeParams,
+        spat_filt_params: do.DOGSpatFiltArgs,
+        spat_filt_location: do.RFLocation
+        ) -> do.RFStimSpatIndices:
+
+    spat_res = st_params.spat_res
+    sf_loc = spat_filt_location.round_to_spat_res(spat_res)
+
+    sf_ext_n_res = ff.spatial_extent_in_res_units(spat_res, sf=spat_filt_params)
+    sf_radius_n_res = sf_ext_n_res//2
+    stim_ext_n_res = ff.spatial_extent_in_res_units(spat_res, spat_ext=st_params.spat_ext)
+    stim_cent_idx = int(stim_ext_n_res//2)  # as square, center is same for x and y
+    # as snapped to res, should be whole number quotients
+    x_pos_n_res = sf_loc.x.value // spat_res.value
+    y_pos_n_res = sf_loc.y.value // spat_res.value
+
+    slice_x_idxs = (
+        int(stim_cent_idx - sf_radius_n_res + x_pos_n_res),
+        # add 1 as endpoint of a slice is not inclusive (a[3:4] has size one!)
+        int(stim_cent_idx + sf_radius_n_res + x_pos_n_res + 1),
+        )
+    slice_y_idxs = (
+        int(stim_cent_idx - sf_radius_n_res - y_pos_n_res),
+        int(stim_cent_idx + sf_radius_n_res - y_pos_n_res + 1),
+        )
+
+    rf_idxs = do.RFStimSpatIndices(
+        x1=slice_x_idxs[0], x2=slice_x_idxs[1],
+        y1=slice_y_idxs[0], y2=slice_y_idxs[1])
+
+    return rf_idxs

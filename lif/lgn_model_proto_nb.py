@@ -29,26 +29,15 @@ spat_filt = ff.mk_dog_sf(xc, yc, ori_sf_params)
 sf = DOGSpatialFilter.load(DOGSpatialFilter.get_saved_filters()[0])
 # -
 # +
-sf.parameters.max_sd().mnt
-# -
-# +
-ori_sf_params = sf.mk_ori_biased_parameters(0.5)
+ori_sf_params = ff.mk_ori_biased_spatfilt_params_from_spat_filt(sf, 0.5)
 ori_sf_params.max_sd().mnt
-# -
-# +
-ff.mk_spat_ext_from_sd_limit(ori_sf_params.max_sd()).mnt / 0.5
 # -
 # +
 spat_res = ArcLength(1, 'mnt')
 xc, yc = ff.mk_spat_coords(sd=ori_sf_params.max_sd(), spat_res=spat_res)
 # -
 # +
-xc.mnt.max() / ori_sf_params.max_sd().mnt
-# -
-# +
 spat_filt = ff.mk_dog_sf(xc, yc, ori_sf_params)
-# -
-# +
 spat_filt.shape
 # -
 # +
@@ -59,9 +48,7 @@ px.imshow(
     ).show()
 # -
 # +
-rot_spat_filt = interpolation.rotate(spat_filt, 45, reshape=False)
-# -
-# +
+rot_spat_filt = interpolation.rotate(spat_filt, 70, reshape=False)
 spat_filt.shape, rot_spat_filt.shape
 # -
 # +
@@ -72,16 +59,16 @@ px.imshow(
     ).show()
 # -
 
-
-# > Slicing Stimulus
-# Need to know how big ot make stimulus to fit all RFs ...
-# +
-spat_res
-# -
+# > New Attempt
+# >> Setup
 # +
 # 3 times extent to experiment with slicing
 spat_ext = ArcLength(3 * ff.mk_spat_ext_from_sd_limit(ori_sf_params.max_sd()).base)
-spat_ext
+spat_ext, spat_res
+# -
+# +
+# predicted size of
+ff.mk_rounded_spat_radius(spat_res, spat_ext).value*2 + 1
 # -
 # +
 st_params = do.SpaceTimeParams(
@@ -95,34 +82,126 @@ stim_params = do.GratingStimulusParams(
 # -
 # +
 grating = stim.mk_sinstim(st_params, stim_params)
-grating.shape
-spat_filt.shape[0] // 2
+grating.shape, spat_filt.shape[0] // 2
+# -
+# >>> Predicting size of grating
+# +
+print(
+    ff.spatial_extent_in_res_units(st_params.spat_res, spat_ext=st_params.spat_ext),
+    grating.shape[0]
+    )
+# -
+# +
+grating_size_n_res = ff.spatial_extent_in_res_units(
+    st_params.spat_res, spat_ext=st_params.spat_ext)
 # -
 
-# >> Spatial Extent Play
-# testing whether size of stimulus is predictable
-# and whether size needed is predictable too
-st_params.spat_ext.mnt
-np.ceil(st_params.spat_ext.mnt/2) * 2
+
+# >> RF Location
 # +
-xc.mnt.min()
-center_idx = xc.base.shape[0]//2
-xc.base[center_idx, center_idx]
+st_params.spat_ext.mnt, st_params.spat_res.mnt
+
 # -
 # +
-test_coords = ff.mk_spat_coords_1d(st_params.spat_res, st_params.spat_ext)
-test_coords.mnt.shape
-test_coords.mnt.max()
-test_coords.deg[-1]
+@dataclass
+class RFLocation:
+    x: ArcLength[scalar]
+    y: ArcLength[scalar]
+
+    @classmethod
+    def from_polar(
+        cls,
+        theta: ArcLength[scalar], mag: ArcLength[scalar],
+        unit: str = 'mnt') -> 'RFLocation':
+        x = ArcLength(mag[unit] * np.cos(theta.rad), unit)
+        y = ArcLength(mag[unit] * np.sin(theta.rad), unit)
+
+        return cls(x=x, y=y)
+
+    def round_to_spat_res(self, spat_res: ArcLength[int]) -> 'RFLocation':
+        x = ff.round_coord_to_res(coord=self.x, res=spat_res)
+        y = ff.round_coord_to_res(coord=self.x, res=spat_res)
+
+        return self.__class__(x=x, y=y)
 # -
 # +
-# now ... just use mk_rounded_spat_radius
-ff.mk_rounded_spat_radius(st_params.spat_res, st_params.spat_ext).mnt == test_coords.mnt[-1]
+rf_loc = RFLocation.from_polar(ArcLength(115), ArcLength(50, 'mnt'))
+rf_loc.round_to_spat_res(st_params.spat_res)
 # -
-st_params.spat_ext.mnt
 # +
-ff.mk_spat_radius(st_params.spat_ext)
+rf_loc = (
+    RFLocation
+    .from_polar(ArcLength(115), ArcLength(50, 'mnt'))
+    .round_to_spat_res(st_params.spat_res)
+    )
+print(rf_loc)
 # -
+
+# >> Determining Spat Filt Spatial Extent
+# +
+spat_res = ArcLength(1, 'mnt')
+xc, yc = ff.mk_spat_coords(sd=ori_sf_params.max_sd(), spat_res=spat_res)
+spat_filt = ff.mk_dog_sf(xc, yc, ori_sf_params)
+spat_filt.shape
+# -
+# +
+predicted_n_spat_res_coords = ff.spatial_extent_in_res_units(
+    spat_res=st_params.spat_res,
+    sf=ori_sf_params)
+print(f'''
+    predicted = {predicted_n_spat_res_coords}
+    actual = {spat_filt.shape}
+    ''')
+# -
+# >>>> Old basic approach (for posterity)
+# +
+# (
+#     ff.mk_rounded_spat_radius(
+#         st_params.spat_res,
+#         ArcLength(
+#             ori_sf_params.max_sd().value
+#             * 2*settings.simulation_params.spat_filt_sd_factor,
+#             ori_sf_params.max_sd().unit
+#             )
+#             )
+#     .value * 2 + 1
+# )
+# -
+
+
+# > Slicing Stimulus
+# Need to know how big ot make stimulus to fit all RFs ...
+# +
+# 3 times extent to experiment with slicing
+spat_ext = ArcLength(3 * ff.mk_spat_ext_from_sd_limit(ori_sf_params.max_sd()).base)
+spat_ext, spat_res
+# -
+# +
+st_params = do.SpaceTimeParams(
+    spat_ext, spat_res,
+    Time(0.2), Time(1, 'ms')
+    )
+stim_params = do.GratingStimulusParams(
+    spat_freq=SpatFrequency(4), temp_freq=TempFrequency(2),
+    orientation=ArcLength(90)
+    )
+# -
+# +
+grating = stim.mk_sinstim(st_params, stim_params)
+grating.shape, spat_filt.shape[0] // 2
+# -
+
+# >> Spatial Extent of spatial filter
+# +
+# predictable now with appropriate function
+predictable = (
+    ff.spatial_extent_in_res_units(st_params.spat_res, ori_sf_params)
+    ==
+    spat_filt.shape[0]
+    )
+print(predictable)
+# -
+
 
 # >> Calculate Slice Indices
 # +
@@ -210,15 +289,15 @@ sf_pos_rounded
 
 # X Know extent of sclice in spatial terms
 # +
-put_ext = mk_putative_spat_coords_ext(ori_sf_params)
-print(f'{put_ext.value}:{put_ext.unit}, radius: {put_ext.value//2}')
+sf_ext = ff.spatial_extent_in_res_units(st_params.spat_res, ori_sf_params)
+print(f'Spat FIlt Extent in number of resolution units: {sf_ext}\nResolution: {st_params.spat_res}')
 # -
 
 # X translate to desired position
 # +
-sf_pos = (ArcLength(3.5, 'mnt'), ArcLength(5.3, 'mnt'))
-sf_pos_rounded = round_spat_coords_to_resolution(*sf_pos, res=spat_res)
-sf_pos_rounded
+sf_loc = do.RFLocation(ArcLength(3.5, 'mnt'), ArcLength(5.3, 'mnt'))
+sf_loc_snapped = sf_loc.round_to_spat_res(st_params.spat_res)
+print(sf_loc_snapped)
 # -
 
 # Now in units of resolution ... but how translate to indices?
@@ -228,7 +307,7 @@ sf_pos_rounded
 # spat_filt and stimulus will be made with the same resolution
 # so ... from extent to extent will be the same number of pixels
 # +
-st_params
+st_params.asdict_()
 # -
 # +
 test_res, test_ext = (
@@ -301,39 +380,91 @@ test_coord_patch.shape, test_rf_coords.value.shape
 # -
 # +
 # >>> Final function: mk_rf_stim_index
-def mk_rf_stim_index(
+def mk_rf_stim_slice_idxs(
         st_params: SpaceTimeParams,
         spat_filt_params: DOGSpatFiltArgs,
-        pos_cent_x: ArcLength[float], pos_cent_y: ArcLength[float]
+        spat_filt_location: do.RFLocation
+        # pos_cent_x: ArcLength[float], pos_cent_y: ArcLength[float]
         ):
 
-    # in same units as spat_res and value is int
-    # spat_filt_radius = ff.mk_spat_radius(
-    #     ff.mk_spat_ext_from_sd_limit(
-    #         # unit is preserved, so convert to spat_res now and allow ceil and int
-    #         # conversions to occur after conversion to appropriate unit
-    #         spat_filt_params.max_sd().in_same_units_as(
-    #             st_params.spat_res  # type: ignore  float int problems :(
-    #             )
-    #         ))
+    spat_res = st_params.spat_res
+    sf_loc = spat_filt_location.round_to_spat_res(spat_res)
 
-    # derive radius of spatial filter from resolution of st_params and params of spat filt
-    # as extents and radii are rounded using mk_rounded_spat_radius, this is accurate
-    spat_filt_radius = ff.mk_rounded_spat_radius(
-            st_params.spat_res,
-            ff.mk_spat_ext_from_sd_limit(
-                spat_filt_params.max_sd().in_same_units_as(
-                    st_params.spat_res  # type: ignore
-                    )
-                )
+    sf_ext_n_res = ff.spatial_extent_in_res_units(spat_res, sf=spat_filt_params)
+    sf_radius_n_res = sf_ext_n_res//2
+    stim_ext_n_res = ff.spatial_extent_in_res_units(spat_res, spat_ext=st_params.spat_ext)
+    stim_cent_idx = int(stim_ext_n_res//2)  # as square, center is same for x and y
+    # as snapped to res, should be whole number quotients
+    x_pos_n_res = sf_loc.x.value // spat_res.value
+    y_pos_n_res = sf_loc.y.value // spat_res.value
+
+    slice_x_idxs = (
+        int(stim_cent_idx - sf_radius_n_res + x_pos_n_res),
+        int(stim_cent_idx + sf_radius_n_res + x_pos_n_res + 1),
         )
-    # diameter is double plus 1 (for zero in the middle)
-    spat_filt_diam = (2 * spat_filt_radius.value) + 1
+    slice_y_idxs = (
+        int(stim_cent_idx - sf_radius_n_res - y_pos_n_res),
+        int(stim_cent_idx + sf_radius_n_res - y_pos_n_res + 1),
+        )
+
+    rf_idxs = do.RFStimSpatIndices(
+        x1=slice_x_idxs[0], x2=slice_x_idxs[1],
+        y1=slice_y_idxs[0], y2=slice_y_idxs[1])
+
+    return rf_idxs
+# -
+# +
+spat_filt_location = do.RFLocation(ArcLength(3.5, 'mnt'), ArcLength(5.3, 'mnt'))
+rf_idxs = mk_rf_stim_slice_idxs(st_params, ori_sf_params, spat_filt_location)
+rf_idxs.is_within_extent(st_params)
+# -
+# +
+stim_coords_x, stim_coords_y = ff.mk_spat_coords(st_params.spat_res, spat_ext=st_params.spat_ext)
+# -
+# +
+print(ff.spatial_extent_in_res_units(st_params.spat_res, sf=ori_sf_params))
+spat_filt_location = do.RFLocation(ArcLength(7, 'mnt'), ArcLength(0, 'mnt'))
+rf_idxs = mk_rf_stim_slice_idxs(st_params, ori_sf_params, spat_filt_location)
+print(rf_idxs)
+#                                      V: y goes first, as first axis are rows!
+rf_slice = stim_coords_x.value[rf_idxs.y1:rf_idxs.y2, rf_idxs.x1:rf_idxs.x2 ]
+print(rf_slice.shape)
+print(rf_slice[0,:])
+print(rf_slice[0, rf_slice.shape[0]//2])
+# -
+# +
+stim_sz = ff.spatial_extent_in_res_units(
+    st_params.spat_res, spat_ext=st_params.spat_ext)
+stim_cent_idx = int(np.floor(stim_sz/2))
+
+rf_pos = 5
+# why +1 necessary ... because endpoint is not inclusive (eg, [3:4] has size 1!!)
+pos_idxs = (5-rad + stim_cent_idx, 5+rad + stim_cent_idx + 1)
+pos_idxs
+
+grating[pos_idxs[0]:pos_idxs[1], 0, 0].shape
+# -
+# +
+pos = -5
+rad = 3
+ti = (33 - rad + pos, 33 + rad + pos + 1)
+print(
+    xc.value[33, ti[0]:ti[1]].shape[0] == (2*rad + 1),
+    xc.value[33, ti[0]:ti[1]][rad] == pos
+    )
+# -
 
     # rounding to resolution
-    pos_x, pos_y = round_spat_coords_to_resolution(
-            pos_cent_x, pos_cent_y, st_params.spat_res
-        )
+    # pos_x, pos_y = round_spat_coords_to_resolution(
+    #         pos_cent_x, pos_cent_y, st_params.spat_res
+    #     )
+
+    # should all be in same unit as spat_res
+    sf_loc_snapped = spat_filt_location.round_to_spat_res(spat_res)
+    pos_x, pos_y = sf_loc_snapped.x, sf_loc_snapped.y
+
+    rf_cent_idx_x =  1 * int(pos_x.value / spat_res.value)
+    rf_cent_idx_y = -1 * int(pos_y.value / spat_res.value)
 
     ###
     # translating continuous values to discrete indices (of the coords arrays)
@@ -341,19 +472,20 @@ def mk_rf_stim_index(
     # negative for y axis too!!!
 
     # presuming that these are in the same units!!
-    assert spat_filt_radius.unit == st_params.spat_res.unit, (
-        f'spat_filt_radius unit ({spat_filt_radius.unit}) '
-        f'not same as spat_res unit ({st_params.spat_res.unit})'
-        )
+    # assert spat_filt_radius.unit == st_params.spat_res.unit, (
+    #     f'spat_filt_radius unit ({spat_filt_radius.unit}) '
+    #     f'not same as spat_res unit ({st_params.spat_res.unit})'
+    #     )
+
     spat_filt_start_idx = -1 * int(  # negative as start slice below zero, then to above zero
             spat_filt_radius.value
             /
-            st_params.spat_res.value  # how many pixels does radius span
+            spat_res.value  # how many pixels does radius span
         )
 
     # adjust by pos
     pos_x_idx_adj = int(pos_x.value / st_params.spat_res.value)
-    pos_y_idx_adj = int(pos_y.value / st_params.spat_res.value)
+    pos_y_idx_adj = int(pos_y.value / spat_res.value)
     spat_filt_start_idx_x = spat_filt_start_idx + pos_x_idx_adj
     spat_filt_start_idx_y = spat_filt_start_idx + pos_y_idx_adj
 

@@ -314,17 +314,53 @@ def mk_sd_limited_spat_coords(
 
     return coords
 
+@overload
+def spatial_extent_in_res_units(
+        spat_res: ArcLength[int],
+        sf: do.DOGSF,
+        spat_ext: None = None
+        ) -> int: ...
+@overload
+def spatial_extent_in_res_units(
+        spat_res: ArcLength[int],
+        sf: None = None, *,
+        spat_ext: ArcLength[scalar]
+        ) -> int: ...
+def spatial_extent_in_res_units(
+        spat_res: ArcLength[int],
+        sf: Optional[do.DOGSF] = None,
+        spat_ext: Optional[ArcLength[scalar]] = None
+        ) -> int:
+    """Size of a "rendered" spatial extent in number of spatial resolution units
 
-def spat_filt_size_in_res_units(spat_res: ArcLength[int], sf: do.DOGSF) -> int:
-    """Size of a "rendered" spatial filter in number of spatial resolution units
+    Can either be a rendered spatial filter defined by the provided `sf`,
+    or a full spatial canvas defined by the provided `spat_ext` argument.
+
+    Cannot provide both `sf` and `spat_ext`, must only provide one.
+
+    If `sf` is provided, the `max_sd` of the `sf` is used with `mk_spat_ext_from_sd_limit`
+    to get what will be the eventual spatial extent.
+
+    If `spat_ext` is provided, it is used directly and will return the spatial extent for
+    any similar function that returns spatial coords based on `spat_ext` args, *such as*,
+    generating spatial coords.
     """
-    sf_args = sf.parameters
+
+    if (sf and spat_ext):
+        raise exc.CoordsValueError('Must only provide one of sf and spat_ext')
+
+    if sf:  # get spat ext from the size of the spatial filter
+        sf_args = sf.parameters
+        final_spat_ext = mk_spat_ext_from_sd_limit(sf_args.max_sd())
+    elif spat_ext:  # get spat_ext directly from the provided argument
+        final_spat_ext = spat_ext
+    else:
+        raise exc.CoordsValueError('Must provide at least one of spat_ext or sf')
 
     # should be in same unit as spat_res
     spat_radius = mk_rounded_spat_radius(
         spat_res=spat_res,
-        spat_ext=mk_spat_ext_from_sd_limit(sf_args.max_sd())
-        )
+        spat_ext=final_spat_ext)
 
     #              |- * shouldn't need to make int but done for typing
     #              |        |- * divide by spat_res, as needs to be number of spat_res units
@@ -1027,6 +1063,8 @@ def mk_ori_biased_spatfilt_params_from_spat_filt(
 
     return new_sf_params
 
+
+# >> Rotate spatial filters
 
 def mk_oriented_sf(sf: np.ndarray, orientation: ArcLength[scalar]) -> np.ndarray:
     """Rotate a rendered spat filter (array) to have provided orientation
