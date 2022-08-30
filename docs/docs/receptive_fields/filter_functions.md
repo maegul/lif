@@ -35,7 +35,7 @@ For simplicity and predictability, the following constraints have been enforced 
 ```
 "-->" ~ "Uses or depends on"
 "(A, B)" ~ "Provides A and B as arguments to"
- 													  (res, spat_filt args)
+ 													  (res, spat_ext/spat_filt args)
 * mk_spat_coords <--- (res, sd)                       * spat_filt_size_in_res_units --> (n units)
 | (res, sd)											  |
 V 													  | 

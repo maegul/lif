@@ -537,6 +537,24 @@ def circ_var_sd_ratio_method_comparison(
 
     return fig
 
+# > !! stimuli
+
+# old code ... hopefully still works!
+# need to install pyqtgraph ... which should be trivial
+
+import pyqtgraph as pg
+from pyqtgraph.Qt import QtGui
+
+def view_stim(stim, axes={'y': 0, 'x': 1, 't': 2}, xvals=None):
+    #     if time_axis == 2:
+    #         stim = stim.swapaxes(0,2).swapaxes(1,2)
+    #     if time_axis == 1:
+    #         stim = stim.swapaxes(0,1)
+
+    if not xvals:
+        xvals = np.arange(stim.shape[axes['t']])
+    pg.image(stim, xvals=xvals, axes=axes)
+    QtGui.QApplication.instance().exec_()
 
 # > Convolution and LIF results
 
