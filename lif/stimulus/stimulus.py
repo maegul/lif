@@ -68,21 +68,57 @@ def mk_rf_stim_spatial_slice_idxs(
         ) -> do.RFStimSpatIndices:
 
     spat_res = st_params.spat_res
+    # snap location to spat_res grid
     sf_loc = spat_filt_location.round_to_spat_res(spat_res)
 
+    # spatial filter's size in number of spatial resolution steps (ie, index vals)
     sf_ext_n_res = ff.spatial_extent_in_res_units(spat_res, sf=spat_filt_params)
+    # need radius, as will start with location as the center, then +/- the radius
+    # use truncated half (//2) as guaranteed to be odd with a central value
+    # that will be the location, radius will then "added" as a negative and positive
+    # extension of the central location coordinate
     sf_radius_n_res = sf_ext_n_res//2
+
+    # stimulus/canvas's spatial extent
     stim_ext_n_res = ff.spatial_extent_in_res_units(spat_res, spat_ext=st_params.spat_ext)
+    # index that corresponds to the center of the spatial coordinates
+    # as guaranteed to be odd, floor(size/2) or size//2 is the center index
     stim_cent_idx = int(stim_ext_n_res//2)  # as square, center is same for x and y
-    # as snapped to res, should be whole number quotients
+
+    # spatial filter location indices.
+    # As guaranteed to be snapped to res,
+    # should be whole number quotients when divided by spat_res raw value
     x_pos_n_res = sf_loc.x.value // spat_res.value
     y_pos_n_res = sf_loc.y.value // spat_res.value
 
+    # slicing indices
+    # 1: start with center (as all location coordinates treat the center as 0,0)
+    # 2: subtract the spatial filter radius for starting index
+    # 3: add spatial filter location index to translate the slice so that the sf's location
+    #     will be the center of the slice
+    # 4: ADD instead of subtract the radius, as this is the endpoint index of the slice
+    # 5: translate for the location as before, where location coordinates treat the center
+    #     as (0,0) and can be either pos or neg, so in either case, just need to add
+    # 6: add 1 to endpoint index as in python this is not inclusive, so, to get the full radius
+    #     on both sides we need to add 1 to the endpoint.
+    #     EG, if `3` is the location idx and the radius is `2`:
+    #       a[3-2:3] has size `2` but does not include the center/location (endpoint is not inclusive)
+    #       a[3:3+2] also has size `2`, but includes the center, so we're missing the final value
+    #       to make up the full radial extension of 3 values out from the center.
+    #     What we want is [2 vals] + [center] + [2 vals].  a[3-2:3] gives us "[2 vals]".
+    #      But, a[3:3+2] gives us [center] + [1 vals].  We need that last remaining value,
+    #      thus ... "+1".
     slice_x_idxs = (
+        #   1               2                 3
         int(stim_cent_idx - sf_radius_n_res + x_pos_n_res),
-        # add 1 as endpoint of a slice is not inclusive (a[3:4] has size one!)
+        #                   4                 5             6
         int(stim_cent_idx + sf_radius_n_res + x_pos_n_res + 1),
         )
+
+    # y coord slices ... same as for x but subtract the location indices
+    # as the first rows of the array are treated as the "top" of the "image".
+    # Thus, positive y coordinates represent the first rows (with minimal/low indices)
+    #  and negative y coords represent the last rows (maximal/high indices)
     slice_y_idxs = (
         int(stim_cent_idx - sf_radius_n_res - y_pos_n_res),
         int(stim_cent_idx + sf_radius_n_res - y_pos_n_res + 1),
