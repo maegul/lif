@@ -5,6 +5,9 @@ import pickle
 import glob
 from functools import partial
 from typing import Optional, Tuple, Union, List
+from dataclasses import dataclass
+import warnings
+from textwrap import dedent
 
 import numpy as np
 import pandas as pd
@@ -14,18 +17,21 @@ pdist = spatial.distance.pdist
 from scipy.optimize import curve_fit
 import scipy.optimize as opt
 import scipy.integrate as integrate
+import scipy.special as special
 
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+import plotly.express as px
+import plotly.graph_objects as go
+import plotly.subplots as spl
+# -
+# +
 from lif.utils.units.units import val_gen, ArcLength
 
 from ..receptive_field.filters import cv_von_mises as cvvm
 from ..utils import data_objects as do
-
-import plotly.express as px
-import plotly.graph_objects as go
-import plotly.subplots as spl
+from ..utils import exceptions as exc
 # -
 # > Core Distributions (Jin et al)
 
@@ -59,18 +65,26 @@ def jin_pdf_adj(x):
 	return jin_pdf_est  + (1 - np.sum(jin_pdf_est)) / jin_pdf_est.size
 # -
 
-# > Pair wise distance
+# > Pair wise distances
 # +
 def bivariate_gauss_radius_pdf(r: val_gen, sigma_x: float, sigma_y: float) -> val_gen:
-	"""Analytic PDF of radius magnitude of points drawn from bivariate Gaussian
+	"""Analytic PDF of radius magnitude of points drawn from a bivariate Gaussian.
 
 	Args:
-		r: Radius for which probability is sought
+		r:
+			Radius for which probability is sought.
+			Number is "unitless", as the Jin et al data is in dynamic
+			units of "Largest RF Diameter".
 		sigma_x: standard deviation of source gaussian along the x axis
 		sigma_y: standard deviation of source gaussian along the y axis
 
 	Notes:
-		From derivation in the complex plane ...
+		Derived from a Bivariate Gaussian in the complex plane.
+		See
+			> Schreier, P. J., & Scharf, L. L. (2010).
+			> Statistical signal processing of complex-valued data: The theory of improper and noncircular signals.
+			> Cambridge University Press.
+
 	"""
 
 	# Rayleigh x Bessel
@@ -109,131 +123,165 @@ def bivariate_gauss_radius_pdf(r: val_gen, sigma_x: float, sigma_y: float) -> va
 # >>> Functions
 
 # +
-def bivariate_gauss_radius_probability(a: float, b: float, sigma_x: float, sigma_y: float) -> float:
+def bivariate_gauss_radius_probability(
+		lower: float, upper: float, sigma_x: float, sigma_y: float) -> float:
+	"""**Probability** of bivariate gaussian vector radius between lower and upper bounds
 
-	func = lambda r: bivariate_gauss_radius_pdf(r, sigma_x=sigma_x, sigma_y=sigma_y)
-	probability = integrate.quad(func, a, b)
+	Integrates over the `bivariate_gauss_radius_pdf` function using `scipy.integrate.quad`.
+
+	Notes:
+		As a `PDF` a probability *Density* function for a continuous variable, values of
+		the `PDF` for any specific input radius do not correspond to an actual probability.
+		The integral of a `PDF` provides probability.  Thus, the unbounded integral of a PDF
+		is `1`, and a bounded integral provides the probability of a value within those
+		bounds.
+		An analytical histogram can be derived using this.
+	"""
+
+	probability = integrate.quad(
+		bivariate_gauss_radius_pdf,
+		lower, upper,
+		(sigma_x, sigma_y))
+
 	return probability[0]
 # -
 # +
 def bivariate_guass_radius_probability_array(
-		a: np.ndarray, b: np.ndarray, sigma_x: float, sigma_y: float
+		lower: Union[np.ndarray, List], upper: Union[np.ndarray, List],
+		sigma_x: float, sigma_y: float
 		) -> np.ndarray:
-	n_bins = len(a)
-	probabilities = np.empty_like(a)
+	"""Like `bivariate_gauss_radius_probability` but for multiple bounds.
 
-	# Vectorise this??
-	# how?
+	`lower` and `upper` must be structured as `[l1, l2,...], [u1, u2,...]`
+	such that the bounds will be, in order: `l1-u1, l2-u2, ...`.
+
+	An array of probabilities/integrals will be return for each lower-upper pair.
+	"""
+	if not (len(lower) == len(upper)):
+		raise ValueError(f'lower and upper must have same size (lens: {len(lower),len(upper)})')
+
+	n_bins = len(lower)
+	probabilities = np.empty_like(lower, dtype=np.floating)
+
 	for i in range(n_bins):
-		probabilities[i] = integrate.quad(
-			bivariate_gauss_radius_pdf,
-			a[i], b[i],
-			(sigma_x, sigma_y)
-			)[0]
-		# probabilities[i] = bivariate_gauss_radius_probability(
-		# 	a[i], b[i],
-		# 	sigma_x=sx, sigma_y=sy)
+		probability = bivariate_gauss_radius_probability(
+						lower[i], upper[i], sigma_x, sigma_y
+						)
+		probabilities[i] = probability
 
 	return probabilities
 # -
 
-# +
-ratios = np.linspace(1, 20, 1000)
-# -
-
 # >>> jin data
-# +
-dist_vals_on = np.array(
-	# dist      ,  normalised freq
-	#  V               V
-	[[2.00402154, 0.06479475],
-	[1.80057392, 0.07516205],
-	[1.59971301, 0.12699778],
-	[1.40243894, 0.16846659],
-	[1.20157816, 0.24362845],
-	[0.99713054, 0.27732179],
-	[0.79985647, 0.49244064],
-	[0.59899569, 0.75939523],
-	[0.40172169, 1.        ]])
-dist_vals_off = np.array(
-	[[2.00143457, 0.05183592],
-	[1.80057392, 0.05183592],
-	[1.59971301, 0.08034551],
-	[1.40243894, 0.22807769],
-	[1.20157816, 0.28250543],
-	[1.00071738, 0.44060473],
-	[0.79985647, 0.70496758],
-	[0.60258254, 0.63498918],
-	[0.39813485, 1.        ]])
-# normalise "norm freqs" to probabilities by dividing by sum
-dist_vals_on[:,1] = dist_vals_on[:,1] / dist_vals_on[:,1].sum()
-dist_vals_off[:,1] = dist_vals_off[:,1] / dist_vals_off[:,1].sum()
-# sort in ascending order of distance
-dist_vals_on = dist_vals_on[dist_vals_on[:,0].argsort()]
-dist_vals_off = dist_vals_off[dist_vals_off[:,0].argsort()]
 
-# join all together
-dist_vals_all = np.vstack((dist_vals_on, dist_vals_off))
-# has same length (axis 0) as the dist arrays above
-all_dist_type = np.array(
-	['ON', 'ON', 'ON', 'ON', 'ON', 'ON', 'ON', 'ON', 'ON',
-	'OFF', 'OFF', 'OFF', 'OFF', 'OFF', 'OFF', 'OFF', 'OFF', 'OFF'],
-	dtype=object)
-# snap distances to multiples of `0.2` [0.4, 2]
-dist_vals_on[:,0] = dist_vals_on[:,0].round(2)
-dist_vals_off[:,0] = dist_vals_off[:,0].round(2)
-dist_vals_all[:,0] = dist_vals_all[:,0].round(2)
+# data from tracey mctraceface
+# +
+@dataclass
+class _JinData:
+	dist_vals_on: np.ndarray
+	dist_vals_off: np.ndarray
+	dist_vals_all: np.ndarray
+	all_dist_type: np.ndarray
+
+	def distance_vals_zero_insert(self, type:str) -> np.ndarray:
+		'''Just distances with 0 at the beginning
+
+		type must be either "ON" of "OFF"
+		Distances presumed to be first column of data
+		'''
+
+		return np.r_[0, self.__getattribute__(f'dist_vals_{type}')[:,0]]
+
+# -
+# +
+def _make_jin_data_object():
+
+	dist_vals_on = np.array(
+		# dist      ,  normalised freq
+		#  V               V
+		[[2.00402154, 0.06479475],
+		[1.80057392, 0.07516205],
+		[1.59971301, 0.12699778],
+		[1.40243894, 0.16846659],
+		[1.20157816, 0.24362845],
+		[0.99713054, 0.27732179],
+		[0.79985647, 0.49244064],
+		[0.59899569, 0.75939523],
+		[0.40172169, 1.        ]])
+	dist_vals_off = np.array(
+		[[2.00143457, 0.05183592],
+		[1.80057392, 0.05183592],
+		[1.59971301, 0.08034551],
+		[1.40243894, 0.22807769],
+		[1.20157816, 0.28250543],
+		[1.00071738, 0.44060473],
+		[0.79985647, 0.70496758],
+		[0.60258254, 0.63498918],
+		[0.39813485, 1.        ]])
+	# normalise "norm freqs" to probabilities by dividing by sum
+	dist_vals_on[:,1] = dist_vals_on[:,1] / dist_vals_on[:,1].sum()
+	dist_vals_off[:,1] = dist_vals_off[:,1] / dist_vals_off[:,1].sum()
+	# sort in ascending order of distance
+	dist_vals_on = dist_vals_on[dist_vals_on[:,0].argsort()]
+	dist_vals_off = dist_vals_off[dist_vals_off[:,0].argsort()]
+
+	# snap distances to multiples of `0.2` [0.4, 2]
+	dist_vals_on[:,0] = dist_vals_on[:,0].round(2)
+	dist_vals_off[:,0] = dist_vals_off[:,0].round(2)
+
+	# join all together
+	dist_vals_all = np.vstack((dist_vals_on, dist_vals_off))
+	# has same length (axis 0) as the dist arrays above
+	all_dist_type = np.array(
+		['ON', 'ON', 'ON', 'ON', 'ON', 'ON', 'ON', 'ON', 'ON',
+		'OFF', 'OFF', 'OFF', 'OFF', 'OFF', 'OFF', 'OFF', 'OFF', 'OFF'],
+		dtype=object)
+	# sort all together
+	sort_args = dist_vals_all[:,0].argsort()
+	dist_vals_all = dist_vals_all[sort_args]
+	all_dist_type = all_dist_type[sort_args]
+
+	jin_data = _JinData(
+		dist_vals_on=dist_vals_on,
+		dist_vals_off=dist_vals_off,
+		dist_vals_all=dist_vals_all,
+		all_dist_type=all_dist_type
+		)
+	return jin_data
+# -
+# +
+# set module variable
+jin_data = _make_jin_data_object()
 # -
 # check that indexing by `all_dist_type` works
 # +
-all(
-	(
-	np.all(dist_vals_all[all_dist_type == 'OFF'] == dist_vals_off),
-	np.all(dist_vals_all[all_dist_type == 'ON'] == dist_vals_on)
-	)
-)
-# -
-# +
-fig = (
-	px
-	.line(
-		x=dist_vals_all[:,0], y=dist_vals_all[:,1],
-		color=all_dist_type,
-		labels={
-			'x': 'distance (largest RF diameter)',
-			'y': 'norm freq',
-			'color': 'type'},
-		color_discrete_map = {'ON': 'red', 'OFF': 'blue'}
+assert (
+		all(
+		(
+		np.all(jin_data.dist_vals_all[jin_data.all_dist_type == 'OFF'] == jin_data.dist_vals_off),
+		np.all(jin_data.dist_vals_all[jin_data.all_dist_type == 'ON' ] == jin_data.dist_vals_on)
 		)
-	.update_traces(mode='markers+lines')
 	)
-fig.show()
+), 'Jin data is not composed correctly'
 # -
+# +
+def plot_jin_data_probabilities():
+	"Plot jin data from this module"
+	fig = (
+		px
+		.line(
+			x=jin_data.dist_vals_all[:,0], y=jin_data.dist_vals_all[:,1],
+			color=jin_data.all_dist_type,
+			labels={
+				'x': 'distance (largest RF diameter)',
+				'y': 'norm freq as probability',
+				'color': 'type'},
+			color_discrete_map = {'ON': 'red', 'OFF': 'blue'}
+			)
+		.update_traces(mode='markers+lines')
+		)
 
-# >>> Profiling and optimising functions (?)
-# +
-import cProfile
-# -
-# +
-dist_data = dist_vals_off
-dist_data = dist_data[dist_data[:,0].argsort()]
-distances = np.r_[0, dist_data[:, 0]]
-# probabilities of distances from dist_data given provided sigma vals
-probabilities = bivariate_guass_radius_probability_array(
-				distances[0:-1], distances[1:],
-				1, 2
-				)
-probabilities
-# -
-# +
-cProfile.run('bivariate_guass_radius_probability_array(distances[0:-1], distances[1:], 1, 2 )')
-# -
-# +
-%%timeit
-bivariate_guass_radius_probability_array(
-				distances[0:-1], distances[1:],
-				1, 2
-				)
+	return fig
 # -
 
 
@@ -244,13 +292,37 @@ bivariate_guass_radius_probability_array(
 # must take data and make a difference
 # use sigma_x with a ratio (to calculate sigma_y) provided as an argument
 # +
-def pwd_fit_wrapper(
-		x: Union[np.ndarray, List], ratio: float, dist_data: np.ndarray
+def bivariate_gauss_pairwise_distance_probability_residuals(
+		x: Union[np.ndarray, List], ratio: float,
+		data_bins: np.ndarray, data_prob: np.ndarray
 		) -> np.ndarray:
-	"""
-	sigma_x: the sigma of the bivariate gaussian for the positions of RFs
-	ratio: the ratio between sigma_y nad sigma_x (`y/x = ratio`, `y = x*ratio`)
-	dist_data: data the gaussian is to be fit to.
+	"""Differences between the provided data distribution defined by given `sigma_x` value
+
+	Args:
+		x:
+			* Iterable with only the x axis std dev of the bivariate gaussian
+			for the positions of RFs.
+			* From this value, `(2^0.5)*sigma` is used to represent the distribution
+			of cartesian distances given the provided location `sigma` value.  See notes.
+		ratio: the ratio between sigma_y and sigma_x (`y/x = ratio`, `y = x*ratio`)
+		data_bins:
+			* boundaries between which probabilities will be calculated
+			* Must be sorted
+		prob_data:
+			* Probability data the gaussian is to be fit to.
+			* Must have size of `data_bins.size - 1` as will have the probabilities for each
+			bin, not each bound of each bin.
+			Must also be aligned with the order of `data_bins`.
+
+	Returns:
+		residuals: `analytical probabilities - prob_data[:,1]`
+
+	Notes:
+		* Variances are linear for gaussian variables under addition/subtraction.
+		* Thus, the variance of the gaussian distribution of distances/differences
+		along an axis (`x`/`y`) for an initial distribution with **variance** `s^2`
+		will be `2s^s`.
+		* The standard deviation will then be `(2^0.5)s`.
 	"""
 	sigma_x = x[0]  # only one argument
 	sigma_y = sigma_x * ratio
@@ -259,160 +331,352 @@ def pwd_fit_wrapper(
 									for s in (sigma_x, sigma_y)
 									)
 	# start from zero for distances
-	distances = np.r_[0, dist_data[:, 0]]
-	# probabilities of distances from dist_data given provided sigma vals
+	# distances = np.r_[0, prob_data[:, 0]]
+
+	lower_bounds, upper_bounds = data_bins[0:-1], data_bins[1:]
+	# probabilities of distances from prob_data given provided sigma vals
 	probabilities = bivariate_guass_radius_probability_array(
-					distances[0:-1], distances[1:],
-					sigma_x_dist, sigma_y_dist
+						lower_bounds, upper_bounds,
+						sigma_x_dist, sigma_y_dist
 					)
 
 	# pair wise distances for current sigma values
 	# pair_wise_dists = bivariate_gauss_radius_pdf(
-	# 					dist_data[:,0],  # for all distance data
+	# 					prob_data[:,0],  # for all distance data
 	# 					sigma_x=sigma_x_dist, sigma_y=sigma_y_dist)
 
 
 	# normalise to ensure integral is 1
 	# pair_wise_dists /= pair_wise_dists.sum()
-	residuals = probabilities - dist_data[:, 1]
+	residuals = probabilities - data_prob  # type: ignore
 
 	return residuals
 # -
 
+# >>> Fit Values
+# +
+def mk_optimasation_sigma_x_for_ratio(
+		ratio: float,
+		data_bins:np.ndarray, data_prob:np.ndarray) -> opt.OptimizeResult:
+
+	res: opt.OptimizeResult = opt.least_squares(
+		bivariate_gauss_pairwise_distance_probability_residuals, x0=[1],
+		bounds=([0], [np.inf]),
+		args = (ratio, data_bins, data_prob))
+
+	return res
+
+	# if res.success:
+	# 	return res.x[0]
+	# else:
+	# 	raise exc.LGNError(
+	# 		f'Failed to find optimal sigma_x for ratio {ratio} and data {data_bins,data_prob}')
+# -
+
+## record optimal and cost (note 0.5 of sum of squares) ... use additional function
+## make appropriate data object and save and load methods ...
+# +
+data_bins = jin_data.distance_vals_zero_insert('off')
+data_prob = jin_data.dist_vals_off[:,1]
+# -
+# +
+def mk_sigma_x_ratio_lookup(
+		ratios: np.ndarray,
+		data_bins: np.ndarray, data_prob: np.ndarray
+		) -> pd.DataFrame:
+	# sigma values and cost
+	sigma_x_values_with_cost = np.empty(shape=(ratios.size, 2), dtype=np.floating)
+
+	for i,r in enumerate(ratios):
+		sigma_x: float = np.NaN
+		cost: float = np.NaN
+		if i % (len(ratios)//20) == 0:
+			print(f'{i/len(ratios):<10.2%}', end='\r')
+
+		try:
+			res = mk_optimasation_sigma_x_for_ratio(r, data_bins, data_prob)
+			sigma_x, cost = res.x[0], res.cost
+		except exc.LGNError as e:
+			print(f'Failed to optimise for ratio {r}')
+		finally:
+			sigma_x_values_with_cost[i] = sigma_x, cost
+
+	df = pd.DataFrame({
+		'ratios': ratios,
+		'sigma_x': sigma_x_values_with_cost[:, 0],
+		'error': sigma_x_values_with_cost[:, 1],
+		})
+
+	return df
+# -
+
+# >>>> Demo with OFF data
+# +
+# >>>>> !Important ... presume jin al have the first bin start at 0
+# which makes an irregular first bin ... but see their comments in the
+# supplementary materials
+data_bins = jin_data.distance_vals_zero_insert('off')
+data_prob = jin_data.dist_vals_off[:,1]
+ratios = np.linspace(1, 20, 100)
+sigma_x_ratio_lookup = mk_sigma_x_ratio_lookup(ratios, data_bins, data_prob)
+# -
+# +
+def plot_sigma_x_ratio_lookup(lookup_vals: pd.DataFrame):
+	fig = (
+		px
+		.line(
+			lookup_vals,
+			x='ratios', y=['sigma_x', 'error'],
+			facet_row='variable')
+		.update_layout(
+			title='Optimal sigma_x for various sigma ratios',
+			showlegend=False,
+			xaxis_dtick=2, xaxis2_dtick=2,
+			yaxis_title='Error (half sum of squares)',
+			yaxis2_title='Sigma_x',
+			yaxis2_matches=None)
+		)
+	fig.layout.annotations = None
+	return fig
+# -
+
+# >>>> Demo with ON data
+
+# slightly different fitting ...
+# best ratio is slightly bigger (closer to 3), and the error is less with this as well
+# seems to be the result of differences in noise between them however
+# +
+data_bins = jin_data.distance_vals_zero_insert('on')
+data_prob = jin_data.dist_vals_on[:,1]
+ratios = np.linspace(1, 20, 100)
+sigma_x_ratio_lookup = mk_sigma_x_ratio_lookup(ratios, data_bins, data_prob)
+# -
+# +
+plot_sigma_x_ratio_lookup(sigma_x_ratio_lookup).show()
+# -
+
 # >>> Characterise Error function
 # +
-# dist_data_to_use = dist_vals_all
-dist_data_to_use = dist_vals_off
-dist_data_to_use = dist_data_to_use[dist_data_to_use[:,0].argsort()]
-error_data = [
-	{
-		'error': np.sum(
-			pwd_fit_wrapper(
-				[sigma_x], ratio=ratio, dist_data=dist_data_to_use)
-			**2),
-		'sigma_x': sigma_x,
-		'ratio': ratio
-	}
-	for ratio in np.linspace(2.2, 2.6, 8)
-	# for ratio in range(1, 10)
-	for sigma_x in np.linspace(0.2, 0.24, 500)
-]
-error_df = pd.DataFrame(error_data)
+def characterise_pairwise_distance_distribution_residuals(
+		data_bins: np.ndarray, data_prob: np.ndarray,
+		ratios: np.ndarray=np.arange(1,10), sigma_x_vals: np.ndarray=np.linspace(0.01,1,200)
+		) -> pd.DataFrame:
+
+	n_residuals = ratios.size * sigma_x_vals.size
+	if n_residuals > 1000:
+		warnings.warn(dedent(f'''
+			Number of values to be calculated ({n_residuals})
+			is estimated to take ~{n_residuals*0.007:.2f} seconds (~7ms per calculation).
+			'''))
+
+
+	error_data = [
+		{
+			'error': np.sum(
+				bivariate_gauss_pairwise_distance_probability_residuals(
+					[sigma_x], ratio=ratio, data_bins=data_bins, data_prob=data_prob)
+				**2),
+			'sigma_x': sigma_x,
+			'ratio': ratio
+		}
+		for ratio in ratios
+		for sigma_x in sigma_x_vals
+	]
+	error_df = pd.DataFrame(error_data)
+
+	return error_df
 # -
 # +
-fig = (
-	px.line(
-		error_df,
-		y='error', x='sigma_x',
-		color='ratio'
-		# facet_col = 'ratio', facet_col_wrap=3
-		)
-	.update_layout(yaxis_rangemode='tozero')
+pw_errors = characterise_pairwise_distance_distribution_residuals(
+	data_bins=jin_data.distance_vals_zero_insert('off'),
+	data_prob=jin_data.dist_vals_off[:,1],
 	)
-fig.show()
 # -
+# +
+def plot_characterisation_pairwise_distance_residuals(pw_errors: pd.DataFrame):
+	fig = (
+		px.line(
+			pw_errors,
+			y='error', x='sigma_x',
+			color='ratio'
+			# facet_col = 'ratio', facet_col_wrap=3
+			)
+		.update_layout(yaxis_rangemode='tozero')
+		)
+
+	return fig
+# -
+
 
 # >>> Manual Check
 # +
-sigma_x = 0.218
-ratio = 2.42
-sigma_y = sigma_x*ratio
+def plot_profile_rf_locations_pairwise_distances(
+		sigma_x: float, ratio: float,
+		data_bins: np.ndarray, data_prob: np.ndarray,
+		n_simulated_locs: int = 5000, simulated_pw_dists_n_bins: int = 100):
+	"""Visualise how well a bivariate gaussian has pairwise distances well fit to data
+
+	data arguments are intended to be the data to which a distribution will be fit
+
+	The data_bins are presumed to start at zero.
+
+	Examples:
+		>>> fig = plot_profile_rf_locations_pairwise_distances(
+		>>> 		sigma_x=0.178,ratio=2.92,
+		>>> 		data_bins=jin_data.distance_vals_zero_insert('on'),
+		>>> 		data_prob=jin_data.dist_vals_on[:, 1])
+		>>> fig.show()
+
+	"""
+	sigma_y = sigma_x*ratio
+
+	# Simulate rf locations and their pairwise distances
+	# size = 5000
+	x_locs = np.random.normal(size=n_simulated_locs, scale=sigma_x)
+	y_locs = np.random.normal(size=n_simulated_locs, scale=sigma_y)
+	emp_pwdists = pdist(X=np.vstack((x_locs, y_locs)).T, metric='euclidean')
+
+	# pairwise distance histogram bins
+	hist_bins = np.linspace(data_bins.min(), data_bins.max(), simulated_pw_dists_n_bins)
+	hist_bin_values = (hist_bins[0:-1] + hist_bins[1:])/2  # central values of bins
+
+	# histogram
+	counts, _ = np.histogram(emp_pwdists, bins=hist_bins)
+	# normalise to max value so we can plot against the data
+	counts_norm = counts / counts.max()
+
+	# histogram with same bins as data
+	counts_data_binned, _ = np.histogram(emp_pwdists, bins=data_bins)
+	# normalise to sum so that integral is 1
+	counts_data_binned_norm = counts_data_binned / counts_data_binned.sum()
+
+	theoretical_pw_dists_data_binned = (
+		bivariate_guass_radius_probability_array(
+			lower=data_bins[:-1], upper=data_bins[1:],
+			sigma_x=(2**0.5)*sigma_x, sigma_y=(2**0.5)*sigma_y)
+		)
+
+	dists: np.ndarray = data_bins[1:]  # PRESUMES first value is zero, so take all after
+	# dists_pdf = bivariate_gauss_radius_pdf(
+	# 	dists, sigma_x=(2**0.5)*sigma_x, sigma_y=(2**0.5)*sigma_y)
+	# # scale probabilities so that they sum to 1
+	# # as only a PDF (not Prob Mass Function), then these values are not probabilities
+	# # only an integral is a probability
+	# dists_pdf /= dists_pdf.sum()
+
+	# prep data for plotting
+	# normalise to max so can plot data with simulated histogram
+	dists_freq_norm = data_prob / data_prob.max()
+
+	fig = (
+		spl.make_subplots(
+			rows=2, cols=2,
+			subplot_titles=[
+			"Simulated RF Locations",
+			"Theoretical Probability v Data v Simulation",
+			"Simulated Pair-wise distances (with Data)",
+			"Residuals of Theoretical v Data v Simulation"]
+			)
+
+		.add_trace(
+			go.Scatter(
+				x=x_locs,y=y_locs,
+				mode='markers',
+				name='RF Locations',
+				marker=go.scatter.Marker(
+					size=2,
+					# opacity=0.3
+					)
+				),
+			row=1, col=1
+			)
+		.update_xaxes(
+			range=[4*max((sigma_x, sigma_y)) * l for l in (-1, 1)], constrain='domain',
+			row=1, col=1)
+		.update_yaxes(
+			range=[4*max((sigma_x, sigma_y)) * l for l in (-1, 1)], constrain='domain',
+			row=1, col=1)
+
+		.add_trace(
+			go.Scatter(
+				x=dists, y=theoretical_pw_dists_data_binned,
+				mode='lines',
+				line=go.scatter.Line(width=5),
+				name='Theoretical probability'
+				),
+			row=1, col=2
+			)
+
+		.add_trace(
+			go.Scatter(
+				x=dists, y=data_prob,
+				mode='markers',
+				marker=go.scatter.Marker(size=12, opacity=0.7),
+				name='Data (probability)'
+				),
+			row=1, col=2
+			)
+
+		.add_trace(
+			go.Scatter(
+				x=dists, y=counts_data_binned_norm,
+				mode='markers',
+				marker=go.scatter.Marker(size=12, opacity=0.7),
+				name='Simulated pw (binned like data)'
+				),
+			row=1, col=2
+			)
+
+		.add_trace(
+			go.Scatter(
+				x=hist_bin_values, y= counts_norm,
+				name='Empirical pw dists normalised',
+				mode='lines'
+				),
+			row=2, col=1
+			)
+
+		.add_trace(
+			go.Scatter(
+				x=dists, y=dists_freq_norm,
+				mode='markers',
+				name='Dist Data Normalised'
+				),
+			row=2, col=1
+			)
+
+		.add_trace(
+			go.Scatter(
+				x=dists, y=theoretical_pw_dists_data_binned-data_prob,  # type: ignore
+				mode='lines+markers',
+				name='Residuals (theory - data)'
+				),
+			row=2, col=2
+			)
+
+		.add_trace(
+			go.Scatter(
+				x=dists, y=theoretical_pw_dists_data_binned-counts_data_binned_norm,
+				mode='lines+markers',
+				name='Residuals (theory - simulated)'
+				),
+			row=2, col=2
+			)
+
+
+		.update_yaxes(scaleanchor = "x", scaleratio = 1, row=1, col=1)
+		.update_layout(title=f'{sigma_x=} {sigma_y=} ({ratio=} )')
+	)
+
+	return fig
 # -
 # +
-size = 5000
-x_locs = np.random.normal(size=size, scale=sigma_x)
-y_locs = np.random.normal(size=size, scale=sigma_y)
-
-emp_pwdists = pdist(X=np.vstack((x_locs, y_locs)).T, metric='euclidean')
-hist_bins = np.linspace(0, dist_data_to_use[:,0].max(), 100)
-hist_bin_values = (hist_bins[0:-1] + hist_bins[1:])/2
-
-counts, bins = np.histogram(emp_pwdists, bins=hist_bins)
-counts_norm = counts / counts.max()
-
-dists: np.ndarray = dist_data_to_use[:, 0]
-dists_freq_norm = dist_data_to_use[:, 1] / dist_data_to_use[:, 1].max()
-
-dists_pdf = bivariate_gauss_radius_pdf(dists, sigma_x=(2**0.5)*sigma_x, sigma_y=(2**0.5)*sigma_y)
-dists_pdf /= dists_pdf.sum()
-# -
-# +
-fig = (
-	spl.make_subplots(
-		rows=2, cols=2,
-		subplot_titles=["Simulated RF Locations", "Analytical Probability v Data",
-						"Simulated Pair-wise distances (with Data)", "Residuals of Analytical v Data"] )
-
-	.add_trace(
-		go.Scatter(
-			x=x_locs,y=y_locs,
-			mode='markers',
-			name='RF Locations',
-			marker=go.scatter.Marker(
-				size=2,
-				# opacity=0.3
-				)
-			),
-		row=1, col=1
-		)
-	.update_xaxes(
-		range=[4*max((sigma_x, sigma_y)) * l for l in (-1, 1)], constrain='domain',
-		row=1, col=1)
-	.update_yaxes(
-		range=[4*max((sigma_x, sigma_y)) * l for l in (-1, 1)], constrain='domain',
-		row=1, col=1)
-
-	.add_trace(
-		go.Scatter(
-			x=dists, y=dists_pdf,
-			mode='lines+markers',
-			name='Probability (theoretical)'
-			),
-		row=1, col=2
-		)
-
-	.add_trace(
-		go.Scatter(
-			x=dist_data_to_use[:, 0], y=dist_data_to_use[:, 1],
-			mode='markers',
-			name='Dist Data (prob)'
-			),
-		row=1, col=2
-		)
-
-	.add_trace(
-		go.Scatter(
-			x=dists, y=dists_pdf - dist_data_to_use[:, 1],
-			mode='lines+markers',
-			name='Residuals'
-			),
-		row=2, col=2
-		)
-
-	.add_trace(
-		go.Scatter(
-			x=hist_bin_values, y= counts_norm,
-			name='Empirical pw dists normalised',
-			mode='lines'
-			),
-		row=2, col=1
-		)
-
-	.add_trace(
-		go.Scatter(
-			x=dists, y=dists_freq_norm,
-			mode='markers',
-			name='Dist Data Normalised'
-			),
-		row=2, col=1
-		)
-
-	.update_yaxes(scaleanchor = "x", scaleratio = 1, row=1, col=1)
-	.update_layout(title=f'{sigma_x=} {sigma_y=} ({ratio=} )')
-)
+fig = plot_profile_rf_locations_pairwise_distances(
+	sigma_x=0.178,ratio=2.92,
+	data_bins=jin_data.distance_vals_zero_insert('on'),
+	data_prob=jin_data.dist_vals_on[:, 1])
 fig.show()
 # -
-# +
 
 # +
 # opt_result = opt.least_squares()

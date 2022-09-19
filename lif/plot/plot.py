@@ -542,8 +542,8 @@ def circ_var_sd_ratio_method_comparison(
 # old code ... hopefully still works!
 # need to install pyqtgraph ... which should be trivial
 
-import pyqtgraph as pg
-from pyqtgraph.Qt import QtGui
+# import pyqtgraph as pg
+# from pyqtgraph.Qt import QtGui, 'rad'
 
 def view_stim(stim, axes={'y': 0, 'x': 1, 't': 2}, xvals=None):
     #     if time_axis == 2:

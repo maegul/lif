@@ -33,7 +33,9 @@ def circ_var(r: np.ndarray, theta: ArcLength[np.ndarray]) -> float:
 
 def von_mises(
         x: ArcLength[val_gen],
-        a: float = 1, k: float = 0.5, phi: float = np.pi / 2) -> val_gen:
+        a: float = 1,
+        k: float = 0.5,
+        phi: ArcLength[float] = ArcLength(np.pi/2, 'rad')) -> val_gen:
     """von mises distribution values for `x` for given params `a`,`k` and `phi`
 
     Args:
@@ -54,7 +56,7 @@ def von_mises(
         array([0.61574451, 0.61574451])
 
     """
-    curve = a * (np.exp(k * (np.cos(phi - x.rad)**2 - 1)))
+    curve = a * (np.exp(k * (np.cos(phi.rad - x.rad)**2 - 1)))
     curve = cast(val_gen, curve)  # np functions don't pick up on generic, must cast
 
     return curve
