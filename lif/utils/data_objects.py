@@ -4,8 +4,9 @@ Classes for handling and grouping basic data objects
 
 from __future__ import annotations
 from functools import partial
-from typing import Union, Optional, Iterable, Dict, Any, Tuple, List
+from typing import Union, Optional, Iterable, Dict, Any, Tuple, List, Literal, overload, cast, Callable
 from dataclasses import dataclass, astuple, asdict, field
+from textwrap import dedent
 import datetime as dt
 from pathlib import Path
 import pickle as pkl
@@ -14,13 +15,18 @@ import copy
 import numpy as np
 from scipy.optimize import OptimizeResult
 from scipy.interpolate import interp1d
+import pandas as pd
 
 from . import settings
 from .units.units import (
     val_gen, scalar,
     ArcLength, TempFrequency, SpatFrequency, Time
     )
-from ..receptive_field.filters import filter_functions as ff
+from ..receptive_field.filters import (
+    filter_functions as ff,
+    cv_von_mises as cvvm
+    )
+from . import exceptions as exc
 
 
 # numerical_iter = Union[np.ndarray, Iterable[float]]
@@ -637,6 +643,217 @@ class RFStimSpatIndices(ConversionABC):
             )
 
 
+# >> Location Distributions
+
+# +
+class BivariateGaussParams(ConversionABC):
+
+    @overload
+    def __init__(self, sigma_x: scalar, sigma_y: scalar, ratio: None = None, ): ...
+    @overload
+    def __init__(self, sigma_x: scalar, sigma_y: None = None, *, ratio: scalar): ...
+    def __init__(self,
+            sigma_x: scalar,
+            sigma_y: Optional[scalar] = None,
+            ratio: Optional[scalar] = None,
+            ):
+        """Bivariate Guassian for 2D cartesion coordinates of LGN inputs
+
+        Unitless ... sigma values are unitless
+
+        Examples:
+            >>> t = BivariateGaussParams(sigma_x = 1.25, ratio=3)
+            >>> t.sigma_y
+            ... 3.75
+        """
+
+        if (
+                (sigma_y is None) and (ratio is None)
+                or
+                (sigma_y and ratio)
+            ):
+                raise exc.LGNError('Must have only one of `sigma_y` or `ratio` value')
+        if ratio:
+            self.sigma_y = sigma_x * ratio
+        elif isinstance(sigma_y, (int, float)):
+            self.sigma_y = sigma_y
+
+        self.sigma_y = cast(scalar, self.sigma_y)
+        self.sigma_x: scalar = sigma_x
+        self.ratio = ratio
+
+    def axial_difference_sigma_vals(self) -> BivariateGaussParams:
+        """Sigma values for the distribution of distances along x and y axes
+
+        Uses the fact that gaussian variances sum linearly.
+        Thus, variance for differences along the X axis is `2*sigma_x^2`.
+        The std deviation (ie sq-root) is therefore `(2^0.5)*sigma_x`.
+        Here a new object is returned with the sigma values scaled by root-2 to
+        represent the distribution of axial differences.
+        """
+        return self.__class__(
+                    sigma_x = (2**0.5)*self.sigma_x,
+                    sigma_y = (2**0.5)*self.sigma_y
+                    )
+
+    def __repr__(self):
+        return f'BivariateGaussParams(sigma_x={self.sigma_x}, sigma_y={self.sigma_y}{", ratio="+str(self.ratio) if self.ratio else ""})'
+
+# -
+
+# +
+@dataclass
+class RatioSigmaXOptLookUpVals(ConversionABC):
+    ratios: np.ndarray
+    sigma_x: np.ndarray
+    errors: np.ndarray
+
+    def to_df(self):
+        df = pd.DataFrame({
+            'ratios': self.ratios,
+            'sigma_x': self.sigma_x,
+            'error': self.errors
+            })
+
+        return df
+
+@dataclass
+class RFLocMetaData:
+    source: str
+    "Major source such as a paper"
+    specific_src: str
+    "Figure or table"
+    comment: Optional[str] = None
+    "If desired ... won't be part of file name"
+
+    def mk_key(self):
+        key = f'{self.source}-{self.specific_src}'
+        return key
+
+@dataclass
+class RFLocationSigmaRatio2SigmaVals:
+    """Optimum sigma values for bivariate gaussian rf locatios with pairwise distances like data
+
+    Use `ratio2gauss_params` to convert a ratio (of x and y sigma values)
+    to a `BivariateGaussParams` object
+
+    For saving an object or loading from file use:
+    * `save()`
+    * `load()`
+    * `get_saved_rf_loc_generators()` (lists files already saved with an object of this type)
+    """
+    lookup_vals: RatioSigmaXOptLookUpVals
+    "Raw table of data used to lookup an optimal sigma value"
+    meta_data: RFLocMetaData
+    "Information on source of data the bivariate gaussian is fit to"
+    data_bins: np.ndarray
+    "Bins of the histogram of data that was optimised to"
+    data_prob: np.ndarray
+    "Values, as probabilities, of the data that was fit to"
+
+    def ratio2gauss_params(self, ratio: float) -> BivariateGaussParams:
+        """Provide bivariate sigma values optimised to provided ratio
+        """
+        if not hasattr(self, '_sigma_x'):
+            self._mk_interpolated()
+
+        sigma_x_val = self._sigma_x(ratio)
+        gauss_params = BivariateGaussParams(sigma_x=sigma_x_val, ratio=ratio)
+        return gauss_params
+
+    def _mk_interpolated(self):
+        """Add methods for interpolation"""
+        self._sigma_x = interp1d(x=self.lookup_vals.ratios, y=self.lookup_vals.sigma_x)
+
+    @classmethod
+    @property
+    def _filename_template(cls) -> Callable:
+        """Returns format function of `"RfLoc_Generator_{}.pkl"`"""
+        return 'RfLoc_Generator_{}.pkl'.format
+
+    def _mk_filename(self) -> Path:
+        "Filename for this object to be saved to and identifiable from"
+
+        file_name = Path(self._filename_template(self.meta_data.mk_key()))
+        return file_name
+
+    def _mk_data_path(self) -> Path:
+        "Use settings to retrieve the path for saving/loading data"
+        data_dir = settings.get_data_dir()
+        if not data_dir.exists():
+            data_dir.mkdir()
+
+        file_name = self._mk_filename()
+        data_file = data_dir / file_name
+
+        return data_file
+
+    def save(self, overwrite: bool = False):
+        "Save this object to file"
+
+        data_file = self._mk_data_path()
+
+        if data_file.exists():
+            if not overwrite:
+                raise FileExistsError('Must passe overwrite=True to overwrite')
+
+        with open(data_file, 'wb') as f:
+            try:
+                pkl.dump(self, f, protocol=4)
+            except Exception as e:
+                # don't want bad file floating around
+                # if overwrite ... well bad luck
+                data_file.unlink()
+                raise e
+
+    def __getstate__(self):
+        '''Don't want to save the interpolation functions, they are created automatically
+
+        This dunder method interfaces with the pickle library.
+        The object returned is what actually gets pickled
+        '''
+        interp_func_name = '_sigma_x'
+        state = self.__dict__.copy()
+        if interp_func_name in state:
+            del state[interp_func_name]
+        return state
+
+    def __setstate__(self, state):
+        '''How loading from pickle works ... here lets just recreate the interpolation'''
+        self.__dict__.update(state)
+        self._mk_interpolated()
+
+
+    @classmethod
+    def get_saved_rf_loc_generators(cls) -> List[Path]:
+        """Return list of location generator objects saved in data directory"""
+
+        data_dir = settings.get_data_dir()
+        pattern = cls._filename_template('*')  # glob what is supposed to be the key
+        saved_filters = list(data_dir.glob(pattern))
+
+        return saved_filters
+
+    @staticmethod
+    def load(path: Union[str, Path]) -> RFLocationSigmaRatio2SigmaVals:
+        "Load pickle from path"
+        data_dir = settings.get_data_dir()
+        data_path = data_dir / path
+
+        if not (data_path.exists() and data_path.is_file()):
+            raise FileNotFoundError(
+                f'File {path} is not found in data dir {data_dir}')
+
+        with open(data_path, 'rb') as f:
+            rf_loc_generator = pkl.load(f)
+
+        if not isinstance(rf_loc_generator, RFLocationSigmaRatio2SigmaVals):
+            raise ValueError(
+                f'Provided path ({path}) does not contain a RF Locations object of type {RFLocationSigmaRatio2SigmaVals}')
+
+        return rf_loc_generator
+# -
+
 
 @dataclass
 class LGNCell(ConversionABC):
@@ -767,3 +984,6 @@ class ConvRespAdjParams(ConversionABC):
 
     amplitude: float
     DC: float
+
+
+# >> LGN
