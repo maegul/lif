@@ -16,6 +16,8 @@ nav:
     - 'Circular Variance': 'receptive_fields/circular_variance.md'
     - 'Filters (making)': 'receptive_fields/filters.md'
   - 'Stimulus': 'stimulus.md'
+  - 'LGN Layer':
+    - 'Receptive Field Locations': 'lgn/receptive_field_locations.md'
   - 'Spiking & Convolution':
     - 'Demos': 'convolution_and_spiking/demo.md'
     - 'convolution_and_spiking/convolution_and_spiking.md'

@@ -742,10 +742,10 @@ class RFLocationSigmaRatio2SigmaVals:
     * `load()`
     * `get_saved_rf_loc_generators()` (lists files already saved with an object of this type)
     """
-    lookup_vals: RatioSigmaXOptLookUpVals
-    "Raw table of data used to lookup an optimal sigma value"
     meta_data: RFLocMetaData
     "Information on source of data the bivariate gaussian is fit to"
+    lookup_vals: RatioSigmaXOptLookUpVals = field(repr=False)
+    "Raw table of data used to lookup an optimal sigma value"
     data_bins: np.ndarray
     "Bins of the histogram of data that was optimised to"
     data_prob: np.ndarray
@@ -854,6 +854,16 @@ class RFLocationSigmaRatio2SigmaVals:
         return rf_loc_generator
 # -
 
+# >> Orientations
+
+@dataclass
+class VonMisesParams(ConversionABC):
+    phi: ArcLength[scalar]
+    k: float
+    a: float = field(default=1, repr=False)
+
+
+# >> Full LGN Cell
 
 @dataclass
 class LGNCell(ConversionABC):
@@ -880,6 +890,19 @@ class LGNCell(ConversionABC):
         # ensure stimulus generated with appropriate extent
             # maybe just make huge so no need to worry!
 
+# >> Full LGN Layer
+
+#
+
+class LGN(ConversionABC):
+    n_cells: int
+    "number of cells for this LGN layer"
+    spread: str
+    orientation: str
+    sf: str
+    tf: str
+
+# methods and parameters for the generation of LGN cells
 
 # > Stimuli and Coords
 

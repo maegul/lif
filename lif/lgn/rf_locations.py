@@ -1,10 +1,11 @@
 
 # > Imports
 # +
-from typing import Union, List
+from typing import Union, List, Tuple
 from dataclasses import dataclass
 import warnings
 from textwrap import dedent
+from matplotlib.patches import Arc
 
 import numpy as np
 import pandas as pd
@@ -61,6 +62,22 @@ def jin_pdf_adj(x):
 
 # >> Statistical Functions
 
+# >>> Exponential (?)
+
+# Take the exponential curves from Jin et al as distributions and fit to these
+
+# def exponential_pdf(lambda: float): ...
+# def exponential_cdf(lambda, upper, lower): ...
+
+# objective function for residuals between bivariate gaussian and exponential
+# (rather than raw histogram data)
+# ... as we're sticking with bivariate gaussian because it is easy to manipulate the ratio of
+# ... this is much like what was done for FENS2018, but this time we have an analytical
+# ... equation for the pairwise distances between locations drawn from a bivariate dist.
+
+
+# >>> Bivariate Gaussian
+
 # +
 def bivariate_gauss_radius_pdf(r: val_gen, gauss_params: do.BivariateGaussParams, ) -> val_gen:
     """Analytic PDF of radius magnitude of points drawn from a bivariate Gaussian.
@@ -70,8 +87,7 @@ def bivariate_gauss_radius_pdf(r: val_gen, gauss_params: do.BivariateGaussParams
             Radius for which probability is sought.
             Number is "unitless", as the Jin et al data is in dynamic
             units of "Largest RF Diameter".
-        sigma_x: standard deviation of source gaussian along the x axis
-        sigma_y: standard deviation of source gaussian along the y axis
+        gauss_params: Std Dev for bivariate gaussian
 
     Notes:
         Derived from a Bivariate Gaussian in the complex plane.
@@ -79,7 +95,6 @@ def bivariate_gauss_radius_pdf(r: val_gen, gauss_params: do.BivariateGaussParams
             > Schreier, P. J., & Scharf, L. L. (2010).
             > Statistical signal processing of complex-valued data: The theory of improper and noncircular signals.
             > Cambridge University Press.
-
     """
 
     # Rayleigh x Bessel
@@ -307,7 +322,7 @@ def bivariate_gauss_pairwise_distance_probability_residuals(
         data_bins:
             * boundaries between which probabilities will be calculated
             * Must be sorted
-        prob_data:
+        data_prob:
             * Probability data the gaussian is to be fit to.
             * Must have size of `data_bins.size - 1` as will have the probabilities for each
             bin, not each bound of each bin.
@@ -553,6 +568,7 @@ def plot_profile_rf_locations_pairwise_distances(
             range=[4*max((gauss_params.sigma_x, gauss_params.sigma_y)) * l for l in (-1, 1)],
             constrain='domain',
             row=1, col=1)
+        .update_yaxes(scaleanchor = "x", scaleratio = 1, row=1, col=1)
 
         .add_trace(
             go.Scatter(
@@ -622,7 +638,6 @@ def plot_profile_rf_locations_pairwise_distances(
             row=2, col=2
             )
 
-        .update_yaxes(scaleanchor = "x", scaleratio = 1, row=1, col=1)
         .update_layout(
             title=f'sigma_x={gauss_params.sigma_x} sigma_y={gauss_params.sigma_y} (ratio={gauss_params.ratio})'
             )
@@ -652,8 +667,6 @@ def plot_profile_rf_locations_object(
 
 # > Rf Loc objects
 
-# * code for scaling to a particular ArcLength (according to RF size)
-# * ... then, return random sample of RfLocations from sigma values
 
 # +
 def mk_rf_ratio_loc_sigma_lookup_tables(
@@ -748,12 +761,128 @@ def mk_all_ratio_loc_objects(overwrite: bool = False):
         print(f"File {rf_locs._mk_filename()} already exists, must set overwrite to True overwirite")
 # -
 
-# +
-mk_all_ratio_loc_objects()
-# -
+# > Converting to arclength units
 
-# >> Profile
 # +
-# fig = plot_profile_rf_locations_object(rf_locs=rf_loc_OFF, ratio=2.6)
-# fig.show()
+def mk_unitless_rf_locations(
+        n: int,
+        ratio: float,
+        rf_loc_gen: do.RFLocationSigmaRatio2SigmaVals,
+        ):
+
+    gauss_params = rf_loc_gen.ratio2gauss_params(ratio)
+    x_locs, y_locs = (
+        np.random.normal(scale=s, size=n)
+        for s in
+            (gauss_params.sigma_x, gauss_params.sigma_y)
+        )
+
+    return (x_locs, y_locs)
+# -
+# +
+def mk_rf_locations(
+        n: int,
+        ratio: float,
+        distance_scale: ArcLength,
+        rf_loc_gen: do.RFLocationSigmaRatio2SigmaVals
+        ) -> Tuple[Tuple[ArcLength, ArcLength]]:
+
+    x_locs, y_locs = mk_unitless_rf_locations(n, ratio, rf_loc_gen)
+
+    rf_locations = tuple(
+        (
+            ArcLength(x_locs[i] * distance_scale.value, distance_scale.unit),
+            ArcLength(y_locs[i] * distance_scale.value, distance_scale.unit)
+        )
+        for i in range(len(x_locs))
+    )
+
+    return rf_locations
+
+# -
+# +
+def plot_unitless_rf_locations(locs: tuple):
+    x_locs = locs[0]
+    y_locs = locs[1]
+
+    fig = go.Figure()
+
+    for i in range(len(x_locs)):
+        # locations are in units of rf diameter
+        x0, x1 = x_locs[i]-0.5, x_locs[i]+0.5
+        y0, y1 = y_locs[i]-0.5, y_locs[i]+0.5
+        fig.add_shape(
+            type="circle",
+            xref="x", yref="y",
+            x0=x0, y0=y0, x1=x1, y1=y1,
+            line_color="#DDD",
+            fillcolor="rgba(140, 40, 40, 0.2)",
+            # opacity=0.1
+        )
+
+    fig = (
+        fig
+        .update_layout(
+            xaxis_range=(x_locs.min()-0.5, x_locs.max()+0.5),
+            yaxis_range=(y_locs.min()-0.5, y_locs.max()+0.5),
+            template='plotly_dark'
+            )
+        .update_yaxes(
+            constrain='domain',
+            scaleanchor = "x", scaleratio = 1
+            )
+        )
+
+    return fig
+# -
+# +
+def plot_rf_locations(
+        rf_locations: Tuple[Tuple[ArcLength, ArcLength]],
+        distance_scale: ArcLength,
+        unit: str = 'mnt'
+        ):
+    """Rudimentary view of RF locations as circles ... needs improvement
+
+
+    """
+
+    fig = go.Figure()
+    putative_rf_radius = distance_scale[unit] / 2
+
+    xmins, xmaxs, ymins, ymaxs = [], [], [], []
+    for x_loc, y_loc in rf_locations:
+        # locations are in units of rf diameter
+        x0, x1 = x_loc[unit]-putative_rf_radius, x_loc[unit]+putative_rf_radius
+        y0, y1 = y_loc[unit]-putative_rf_radius, y_loc[unit]+putative_rf_radius
+
+        xmins.append(x0)
+        ymins.append(y0)
+        xmaxs.append(x1)
+        ymaxs.append(y1)
+
+        fig.add_shape(
+            type="circle",
+            xref="x", yref="y",
+            x0=x0, y0=y0, x1=x1, y1=y1,
+            line_color="#DDD",
+            fillcolor="rgba(140, 40, 40, 0.2)",
+            # opacity=0.1
+        )
+
+    fig = (
+        fig
+        .update_layout(
+            xaxis_range=(min(xmins)-putative_rf_radius, max(xmaxs)+putative_rf_radius),
+            yaxis_range=(min(ymins)-putative_rf_radius, max(ymaxs)+putative_rf_radius),
+            xaxis_title=f'ArcLength {unit}',
+            yaxis_title=f'ArcLength {unit}',
+            template='plotly_dark'
+            )
+        .update_yaxes(
+            constrain='domain',
+            scaleanchor = "x", scaleratio = 1
+            )
+        )
+
+    return fig
 # -

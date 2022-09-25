@@ -3,7 +3,9 @@
 	// "venv": "comp_neuro"
 	"venv": "hws_lif",
 	"exclude": [
+		"./nb_archive",
 		"**/.pytest_cache", "**/.hypothesis", "**/.ipynb_checkpoints", "./docs",
-		"**/*.ipynb"
+		"**/*.ipynb",
+		"./htmlcov", "./build"
 	]
 }

@@ -70,7 +70,7 @@ def generate_von_mises_k_to_circ_var_vals(
     the other.
 
     Returns:
-        k values
+        k values, circ_var values
 
     n_angles default is 8, as at this value the estimation of circ_var becomes stable
     16 would be better, but provides more accuracy only at finely tuned circ var values
