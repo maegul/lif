@@ -4,7 +4,10 @@ Classes for handling and grouping basic data objects
 
 from __future__ import annotations
 from functools import partial
-from typing import Union, Optional, Iterable, Dict, Any, Tuple, List, Literal, overload, cast, Callable
+from typing import (
+    Union, Optional, Iterable, Dict, Any, Tuple, List, Literal, overload, cast, Callable,
+    Protocol
+    )
 from dataclasses import dataclass, astuple, asdict, field
 from textwrap import dedent
 import datetime as dt
@@ -229,7 +232,7 @@ class TQTempFilter(ConversionABC):
             raise FileNotFoundError(
                 f'File {path} is not found in data dir {data_dir}')
 
-        with open(path, 'rb') as f:
+        with open(data_path, 'rb') as f:
             temp_filt = pkl.load(f)
 
         return temp_filt
@@ -564,7 +567,7 @@ class DOGSpatialFilter(ConversionABC):
             raise FileNotFoundError(
                 f'File {path} is not found in data dir {data_dir}')
 
-        with open(path, 'rb') as f:
+        with open(data_path, 'rb') as f:
             spat_filt = pkl.load(f)
 
         return spat_filt
@@ -854,13 +857,87 @@ class RFLocationSigmaRatio2SigmaVals:
         return rf_loc_generator
 # -
 
-# >> Orientations
+# >> Orientations and Circular Variance
 
 @dataclass
 class VonMisesParams(ConversionABC):
     phi: ArcLength[scalar]
     k: float
     a: float = field(default=1, repr=False)
+
+    @classmethod
+    def from_circ_var(cls, cv: float, phi: ArcLength[scalar], a: float=1) -> VonMisesParams:
+        return cls(
+            k=cvvm.cv_k(cv),
+            phi=phi,
+            a=a)
+
+
+# >>> Circ Var distributions
+
+@dataclass
+class CircVarHistData:
+    hist_mp: np.ndarray
+    "mid point values of bins"
+    count: np.ndarray
+    _bins: Optional[np.ndarray] = None
+
+    @property
+    def hist_bins(self, width: Optional[float]=None, overwrite: bool = False) -> np.ndarray:
+        "Bin boundaries from mid points"
+
+        if (self._bins is not None) and (not overwrite):
+            return self._bins
+
+        if width is None:
+            bin_diffs = np.diff(self.hist_mp)
+            if not np.allclose(bin_diffs, bin_diffs[0]):
+                raise ValueError('Width of Bin widths cannot be inferred as irregular')
+            width = bin_diffs[0]
+            width = cast(float, width)
+
+        self._bins = np.r_[0, (self.hist_mp + (width/2))]
+        return self._bins
+
+    @property
+    def probs(self) -> np.ndarray:
+        return self.count / self.count.sum()
+
+
+class DistProtocol(Protocol):
+    """Basic type intended to represent a frozen rv from `scipy.stats`
+
+    Just the basic methods used here
+    """
+    def pdf(self, x: val_gen) -> val_gen: ...
+    def cdf(self, x: val_gen) -> val_gen: ...
+    @overload
+    def rvs(self, size: None = None) -> float: ...
+    @overload
+    def rvs(self, size: int) -> np.ndarray: ...
+    def rvs(self, size: Optional[int] = None) -> Union[float, np.ndarray]: ...
+
+
+@dataclass
+class CircVarianceDistribution:
+    """A single distribution instantiated form a single dataset
+    """
+    name: str
+    source: str
+    "Data from which distribution derived or fit to"
+    specific: str
+    "Specific reference within source such as figure number"
+    distribution: DistProtocol
+    "`scipy.stats` object that has been fit to the data"
+    raw_data: CircVarHistData
+
+
+@dataclass
+class AllCircVarianceDistributions:
+    "All distribution objects created in this module"
+    naito_lg_highsf: CircVarianceDistribution
+    naito_opt_highsf: CircVarianceDistribution
+    shou_xcells: CircVarianceDistribution
 
 
 # >> Full LGN Cell
@@ -892,15 +969,47 @@ class LGNCell(ConversionABC):
 
 # >> Full LGN Layer
 
-#
 
-class LGN(ConversionABC):
+@dataclass
+class LGNOrientationParams(ConversionABC):
+    "Distribution for orientations of LGN cells"
+    mean_orientation: ArcLength[scalar]
+    circ_var: float
+    "variance in preferred orientation"
+
+    @property
+    def von_mises(self) -> VonMisesParams:
+        return VonMisesParams.from_circ_var(
+            cv=self.circ_var,
+            phi=self.mean_orientation)
+
+
+@dataclass
+class LGNCircVarParams(ConversionABC):
+    distribution: str
+
+@dataclass
+class LGNLocationParams(ConversionABC):
+    distribution: str
+
+@dataclass
+class LGNFilterParams(ConversionABC):
+    "pick and pair randomly (?)"
+    spat_filters: List
+    temp_filters: List
+
+@dataclass
+class LGNParams(ConversionABC):
     n_cells: int
     "number of cells for this LGN layer"
+    orientation: LGNOrientationParams
     spread: str
-    orientation: str
     sf: str
     tf: str
+
+@dataclass
+class LGNLayer(ConversionABC):
+    cells: List
 
 # methods and parameters for the generation of LGN cells
 

@@ -98,10 +98,36 @@ def generate_von_mises_k_to_circ_var_vals(
 def mk_von_mises_k_circ_var_interp_funcs(
         k_vals: np.ndarray, cv_vals: np.ndarray
         ) -> Tuple[interp1d, interp1d]:
-    "Make interpolation objects for k to cv and cv to k"
+    """Make interpolation objects for k to cv and cv to k
 
-    k_cv = interp1d(k_vals, cv_vals)
-    cv_k = interp1d(cv_vals, k_vals)
+    Notes:
+
+        Allowing extrapolation in the interpolation as near zero values
+        floating point error definitely creeps in ...
+        but, the von_mises function is happy
+        with negative k values so it's all fine so long as the values
+        are accurate enough with extrapolation.
+
+        With 8 angles, the `circ_var` function returns `2.92208987e-17` for
+        a k value of `0` ... floating point error clealy.
+        Because of this interpolating from a `circ_var` of `0` is not possible
+        With extrapolation enabled, interpolating from `circ_var=0` to a k value
+        yields `-1.17218684e-16` ... only floating point error again.
+        Passing this k value to the `von_mises` function yields uniform values.
+
+        ```python
+        >>> angles = ArcLength(np.linspace(0, np.pi, 8, False), 'rad')
+        >>> von_mises(angles, k=-1.7e-16)
+        array([1., 1., 1., 1., 1., 1., 1., 1.])
+        ```
+    """
+
+    k_cv = interp1d(k_vals, cv_vals,
+        fill_value='extrapolate'  # type: ignore
+        )
+    cv_k = interp1d(cv_vals, k_vals,
+        fill_value='extrapolate'  # type: ignore
+        )
 
     return k_cv, cv_k
 
