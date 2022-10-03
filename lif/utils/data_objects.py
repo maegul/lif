@@ -735,7 +735,7 @@ class RFLocMetaData:
 
 @dataclass
 class RFLocationSigmaRatio2SigmaVals:
-    """Optimum sigma values for bivariate gaussian rf locatios with pairwise distances like data
+    """Optimum sigma values for bivariate gaussian rf loc with pairwise dists matching data
 
     Use `ratio2gauss_params` to convert a ratio (of x and y sigma values)
     to a `BivariateGaussParams` object
@@ -983,14 +983,20 @@ class LGNOrientationParams(ConversionABC):
             cv=self.circ_var,
             phi=self.mean_orientation)
 
-
 @dataclass
 class LGNCircVarParams(ConversionABC):
-    distribution: str
+    distribution_alias: str
+    "attribute name of distribution defined in `orientation_preferences.circ_var_distributions`"
 
 @dataclass
 class LGNLocationParams(ConversionABC):
-    distribution: str
+    ratio: float
+    "desired ratio between sigma_x and sigma_y"
+    distribution_alias: str
+    "key used in rfloc_dist_index file"
+    orientation: ArcLength[scalar] = ArcLength(90,'deg')
+    # distribution_file_name: Optional[str] = None
+    # "direct file name ... if preferred"
 
 @dataclass
 class LGNFilterParams(ConversionABC):
@@ -1003,7 +1009,7 @@ class LGNParams(ConversionABC):
     n_cells: int
     "number of cells for this LGN layer"
     orientation: LGNOrientationParams
-    spread: str
+    spread: LGNLocationParams
     sf: str
     tf: str
 

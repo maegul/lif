@@ -1,7 +1,8 @@
 
 # > Imports
 # +
-from typing import Union, List, Tuple
+from typing import Union, List, Tuple, Iterable
+from itertools import combinations_with_replacement
 from dataclasses import dataclass
 import warnings
 from textwrap import dedent
@@ -21,10 +22,12 @@ import plotly.graph_objects as go
 import plotly.subplots as spl
 # -
 # +
-from lif.utils.units.units import val_gen, ArcLength
+from lif.utils.units.units import val_gen, scalar, ArcLength
 
-from ..utils import data_objects as do
-from ..utils import exceptions as exc
+from ..utils import (
+    data_objects as do,
+    settings,
+    exceptions as exc)
 # -
 # > Core Distributions (Jin et al)
 
@@ -197,15 +200,17 @@ class _JinData:
     """
     dist_vals_on: np.ndarray
     dist_vals_off: np.ndarray
-    dist_vals_all: np.ndarray
-    all_dist_type: np.ndarray
+    dist_vals_on_raw: np.ndarray
+    "from raw data from Alonso himself"
+    dist_vals_off_raw: np.ndarray
+    "from raw data from Alonso himself"
 
-    def distance_vals_insert_lower(self, type:str, value: float = 0) -> np.ndarray:
-        '''Just distances with provided value (default 0r at the beginning
+    def distance_vals_insert_lower(self, type:str , value: float = 0) -> np.ndarray:
+        """Just distances with provided value (default 0r at the beginning
 
-        type must be either "ON" of "OFF"
+        type must match the suffix of one of the attributes ... "on" / "off" / "on/off_raw"
         Distances presumed to be first column of data
-        '''
+        """
 
         return np.r_[value, self.__getattribute__(f'dist_vals_{type}')[:,0]]
 
@@ -247,59 +252,72 @@ def _make_jin_data_object():
     dist_vals_on[:,0] = dist_vals_on[:,0].round(2)
     dist_vals_off[:,0] = dist_vals_off[:,0].round(2)
 
-    # join all together
-    dist_vals_all = np.vstack((dist_vals_on, dist_vals_off))
-    # has same length (axis 0) as the dist arrays above
-    all_dist_type = np.array(
-        ['ON', 'ON', 'ON', 'ON', 'ON', 'ON', 'ON', 'ON', 'ON',
-        'OFF', 'OFF', 'OFF', 'OFF', 'OFF', 'OFF', 'OFF', 'OFF', 'OFF'],
-        dtype=object)
-    # sort all together
-    sort_args = dist_vals_all[:,0].argsort()
-    dist_vals_all = dist_vals_all[sort_args]
-    all_dist_type = all_dist_type[sort_args]
+    # >> Raw Jin data from Alonso!
+    # +
+    raw_dist_vals = np.array([0.4,0.6,0.8,1,1.2,1.4,1.6,1.8,2,2.2,2.4,2.6,2.8])
+    raw_off_count = np.array([320,192,204,126,80,61,18,6,10,3,1,4,2])
+    raw_off_norm_freq = np.array([1,0.6,0.6375,0.39375,0.25,0.190625,0.05625,
+                                    0.01875,0.03125,0.009375,0.003125,0.0125,0.00625])
+
+    raw_on_counts = np.array([193,156,96,56,51,26,19,12,7,2,2,2,0])
+    raw_on_norm_freq = np.array([1,0.808290155440414,0.49740932642487,0.290155440414508,
+                                0.264248704663212,0.134715025906736,0.0984455958549223,
+                                0.0621761658031088,0.0362694300518135,0.0103626943005181,
+                                0.0103626943005181,0.0103626943005181,0])
+
+
+    # make columns and normalise freqs to probabilities
+    dist_vals_off_raw = np.vstack(
+        (raw_dist_vals, raw_off_norm_freq/raw_off_norm_freq.sum())).T
+    dist_vals_on_raw = np.vstack(
+        (raw_dist_vals, raw_on_norm_freq/raw_on_norm_freq.sum())).T
+    # -
 
     jin_data = _JinData(
         dist_vals_on=dist_vals_on,
         dist_vals_off=dist_vals_off,
-        dist_vals_all=dist_vals_all,
-        all_dist_type=all_dist_type
+        dist_vals_off_raw=dist_vals_off_raw,
+        dist_vals_on_raw=dist_vals_on_raw,
         )
     return jin_data
 # -
 # +
-# set module variable
+# > set as MODULE VARIABLE
 jin_data = _make_jin_data_object()
 # -
-# check that indexing by `all_dist_type` works
+
 # +
-assert (
-        all(
-        (
-        np.all(jin_data.dist_vals_all[jin_data.all_dist_type == 'OFF'] == jin_data.dist_vals_off),
-        np.all(jin_data.dist_vals_all[jin_data.all_dist_type == 'ON' ] == jin_data.dist_vals_on)
-        )
-    )
-), 'Jin data is not composed correctly'
-# -
-# +
-def plot_jin_data_probabilities():
-    "Plot jin data from this module"
-    fig = (
-        px
-        .line(
-            x=jin_data.dist_vals_all[:,0], y=jin_data.dist_vals_all[:,1],
-            color=jin_data.all_dist_type,
-            labels={
-                'x': 'distance (largest RF diameter)',
-                'y': 'norm freq as probability',
-                'color': 'type'},
-            color_discrete_map = {'ON': 'red', 'OFF': 'blue'}
+def plot_jin_data_with_raw_data(jin_data: _JinData):
+    distance_bins = jin_data.dist_vals_off_raw[:,0]
+    fig = (go.Figure()
+        .add_scatter(
+            x=distance_bins, y=jin_data.dist_vals_off_raw[:,1],
+            name='raw alonso', line=go.scatter.Line(color='blue'),
+            legendgroup='off', legendgrouptitle_text='OFF')
+        .add_scatter(
+            x=distance_bins, y=jin_data.dist_vals_off[:,1],
+            name='paper', line=go.scatter.Line(color='blue', dash='1 3'),
+            legendgroup='off')
+        .add_scatter(
+            x=distance_bins, y=jin_data.dist_vals_on_raw[:,1],
+            name='raw alonso', line=go.scatter.Line(color='red'),
+            legendgroup='on', legendgrouptitle_text='ON')
+        .add_scatter(
+            x=distance_bins, y=jin_data.dist_vals_on[:,1],
+            name='paper', line=go.scatter.Line(color='red', dash='1 3'),
+            legendgroup='on')
+        .update_layout(
+            title='Data from paper and raw data from personal email from Alonso',
+            xaxis_title='Distance (largest rf diameter)',
+            yaxis_title='Probability (per bin)',
+            xaxis_tick0='0', xaxis_dtick=0.2
             )
-        .update_traces(mode='markers+lines')
         )
 
     return fig
+# -
+# +
+# plot_jin_data_with_raw_data(jin_data).show()
 # -
 
 
@@ -433,7 +451,8 @@ def plot_sigma_x_ratio_lookup(lookup_vals: do.RatioSigmaXOptLookUpVals):
 # +
 def characterise_pairwise_distance_distribution_residuals(
         data_bins: np.ndarray, data_prob: np.ndarray,
-        ratios: np.ndarray=np.arange(1,10), sigma_x_vals: np.ndarray=np.linspace(0.01,1,200)
+        ratios: np.ndarray=np.arange(1,10),
+        sigma_x_vals: np.ndarray=np.linspace(0.01,1,200)
         ) -> pd.DataFrame:
     """Produce error values for array of ratio and sigma_x values to visualise object function
 
@@ -695,45 +714,138 @@ def mk_rf_ratio_loc_sigma_lookup_tables(
 
 # -
 
-# >> Generic make all necessary objects
+# >> Demo
 # +
-def mk_all_ratio_loc_objects(overwrite: bool = False):
+# off_raw_luv = mk_rf_ratio_loc_sigma_lookup_tables(
+#     metadata = do.RFLocMetaData('personal_email_from_alonso', 'regarding jin_et_al'),
+#     data_bins=jin_data.distance_vals_insert_lower('off_raw'),
+#     data_prob=jin_data.dist_vals_off_raw[:,1]
+#     )
+# on_raw_luv = mk_rf_ratio_loc_sigma_lookup_tables(
+#     metadata = do.RFLocMetaData('personal_email_from_alonso', 'regarding jin_et_al'),
+#     data_bins=jin_data.distance_vals_insert_lower('on_raw'),
+#     data_prob=jin_data.dist_vals_on_raw[:,1]
+#     )
+# -
+
+# >> comparing raw with paper data
+# +
+# off_luv = do.RFLocationSigmaRatio2SigmaVals.load('RfLoc_Generator_jin_etal-fig_5C_OFF.pkl')
+# on_luv = do.RFLocationSigmaRatio2SigmaVals.load('RfLoc_Generator_jin_etal-fig_5C_ON.pkl')
+# -
+# +
+# plot_sigma_x_ratio_lookup(off_raw_luv.lookup_vals).update_layout(title='raw_off').show()
+# plot_sigma_x_ratio_lookup(off_luv.lookup_vals).update_layout(title='paper_off').show()
+# -
+# +
+# ratio = 2.5
+
+# fig = plot_profile_rf_locations_object(off_raw_luv, ratio=ratio)
+# fig.layout.title = f'{fig.layout.title.text} with raw data'
+# fig.show()
+# fig = plot_profile_rf_locations_object(off_luv, ratio=ratio)
+# fig.layout.title = f'{fig.layout.title.text} with paper data'
+# fig.show()
+# -
+
+# >> Generic make all necessary objects
+
+# +
+def mk_all_ratio_rf_loc_objects(jin_data: _JinData, overwrite: bool = False):
 
     ratios = np.linspace(1, 20, 500)
+    data_dir = settings.get_data_dir()
 
     # OFF Data
     print('Making RF location lookup object for OFF data')
     data_bins = jin_data.distance_vals_insert_lower('off')
     data_prob = jin_data.dist_vals_off[:,1]
     meta_data = do.RFLocMetaData('jin_etal', 'fig_5C_OFF')
+    putative_file_name = (
+        do.RFLocationSigmaRatio2SigmaVals._filename_template(meta_data.mk_key()))
+    if (not (data_dir / putative_file_name).exists() or overwrite):
 
-    rf_locs = mk_rf_ratio_loc_sigma_lookup_tables(
-        metadata=meta_data,
-        data_bins=data_bins, data_prob=data_prob, ratios=ratios
-        )
+        rf_locs = mk_rf_ratio_loc_sigma_lookup_tables(
+            metadata=meta_data,
+            data_bins=data_bins, data_prob=data_prob, ratios=ratios
+            )
 
-    try:
-        rf_locs.save(overwrite=overwrite)
-        print(f'Saved file: {rf_locs._mk_filename()}')
-    except FileExistsError:
-        print(f"File {rf_locs._mk_filename()} already exists, must set overwrite to True overwirite")
+        try:
+            rf_locs.save(overwrite=overwrite)
+            print(f'Saved file: {rf_locs._mk_filename()}')
+        except FileExistsError:
+            print(f"File {rf_locs._mk_filename()} already exists, must set overwrite to True")
+    else:
+        print(f'{putative_file_name} exists and overwrite not set')
+
+    # OFF Data Raw from Email
+    print('Making RF location lookup object for raw (Alonso email) OFF data')
+    data_bins = jin_data.distance_vals_insert_lower('off_raw')
+    data_prob = jin_data.dist_vals_off_raw[:,1]
+    meta_data = do.RFLocMetaData('jin_etal', 'alonso_email_raw_data_off')
+
+    putative_file_name = (
+        do.RFLocationSigmaRatio2SigmaVals._filename_template(meta_data.mk_key()))
+    if (not (data_dir / putative_file_name).exists() or overwrite):
+        rf_locs = mk_rf_ratio_loc_sigma_lookup_tables(
+            metadata=meta_data,
+            data_bins=data_bins, data_prob=data_prob, ratios=ratios
+            )
+
+        try:
+            rf_locs.save(overwrite=overwrite)
+            print(f'Saved file: {rf_locs._mk_filename()}')
+        except FileExistsError:
+            print(f"File {rf_locs._mk_filename()} already exists, must set overwrite to True overwirite")
+
+    else:
+        print(f'{putative_file_name} already exists and overwrite not set')
 
     # ON
     print('Making RF location lookup object for ON data')
     data_bins = jin_data.distance_vals_insert_lower('on')
     data_prob = jin_data.dist_vals_on[:,1]
     meta_data = do.RFLocMetaData('jin_etal', 'fig_5C_ON')
+    putative_file_name = (
+        do.RFLocationSigmaRatio2SigmaVals._filename_template(meta_data.mk_key()))
+    if (not (data_dir / putative_file_name).exists() or overwrite):
 
-    rf_locs = mk_rf_ratio_loc_sigma_lookup_tables(
-        metadata=meta_data,
-        data_bins=data_bins, data_prob=data_prob, ratios=ratios
-        )
+        rf_locs = mk_rf_ratio_loc_sigma_lookup_tables(
+            metadata=meta_data,
+            data_bins=data_bins, data_prob=data_prob, ratios=ratios
+            )
 
-    try:
-        rf_locs.save(overwrite=overwrite)
-        print(f'Saved file: {rf_locs._mk_filename()}')
-    except FileExistsError:
-        print(f"File {rf_locs._mk_filename()} already exists, must set overwrite to True overwirite")
+        try:
+            rf_locs.save(overwrite=overwrite)
+            print(f'Saved file: {rf_locs._mk_filename()}')
+        except FileExistsError:
+            print(f"File {rf_locs._mk_filename()} already exists, must set overwrite to True overwirite")
+
+    else:
+        print(f'{putative_file_name} exists and overwrite not set')
+
+    # ON Raw data from email
+    print('Making RF location lookup object for raw ON data from Alonso email')
+    data_bins = jin_data.distance_vals_insert_lower('on_raw')
+    data_prob = jin_data.dist_vals_on_raw[:,1]
+    meta_data = do.RFLocMetaData('jin_etal', 'alonso_email_raw_data_on')
+    putative_file_name = (
+        do.RFLocationSigmaRatio2SigmaVals._filename_template(meta_data.mk_key()))
+    if (not (data_dir / putative_file_name).exists() or overwrite):
+
+        rf_locs = mk_rf_ratio_loc_sigma_lookup_tables(
+            metadata=meta_data,
+            data_bins=data_bins, data_prob=data_prob, ratios=ratios
+            )
+
+        try:
+            rf_locs.save(overwrite=overwrite)
+            print(f'Saved file: {rf_locs._mk_filename()}')
+        except FileExistsError:
+            print(f"File {rf_locs._mk_filename()} already exists, must set overwrite to True overwirite")
+
+    else:
+        print(f'{putative_file_name} exists and overwrite not set')
 
     # AVG of ON and OFF data
     print('Making RF location lookup object for average of ON and OFF data')
@@ -749,57 +861,142 @@ def mk_all_ratio_loc_objects(overwrite: bool = False):
     data_bins = jin_data.distance_vals_insert_lower('on')
     meta_data = do.RFLocMetaData('jin_etal', 'fig_5C_avg_ON_and_OFF')
 
-    rf_locs = mk_rf_ratio_loc_sigma_lookup_tables(
-        metadata=meta_data,
-        data_bins=data_bins, data_prob=data_prob, ratios=ratios
+    putative_file_name = (
+        do.RFLocationSigmaRatio2SigmaVals._filename_template(meta_data.mk_key()))
+    if (not (data_dir / putative_file_name).exists() or overwrite):
+
+
+        rf_locs = mk_rf_ratio_loc_sigma_lookup_tables(
+            metadata=meta_data,
+            data_bins=data_bins, data_prob=data_prob, ratios=ratios
+            )
+
+        try:
+            rf_locs.save(overwrite=overwrite)
+            print(f'Saved file: {rf_locs._mk_filename()}')
+        except FileExistsError:
+            print(f"File {rf_locs._mk_filename()} already exists, must set overwrite to True overwirite")
+
+    else:
+        print(f'{putative_file_name} alread exists and overwrite not set')
+
+    # AVG of raw ON and OFF data from Alonso's email
+    print('Making RF location lookup object for average of raw (from email) ON and OFF data')
+    data_prob = (
+        np
+        .vstack(
+            (jin_data.dist_vals_on_raw[:,1], jin_data.dist_vals_off_raw[:,1])
+            )
+        .mean(axis=0)
         )
 
-    try:
-        rf_locs.save(overwrite=overwrite)
-        print(f'Saved file: {rf_locs._mk_filename()}')
-    except FileExistsError:
-        print(f"File {rf_locs._mk_filename()} already exists, must set overwrite to True overwirite")
+    # either would work as they're the same bins
+    data_bins = jin_data.distance_vals_insert_lower('on_raw')
+    meta_data = do.RFLocMetaData('jin_etal', 'alonso_email_raw_data_avg_ON_and_OFF')
+
+    putative_file_name = (
+        do.RFLocationSigmaRatio2SigmaVals._filename_template(meta_data.mk_key()))
+    if (not (data_dir / putative_file_name).exists() or overwrite):
+
+
+        rf_locs = mk_rf_ratio_loc_sigma_lookup_tables(
+            metadata=meta_data,
+            data_bins=data_bins, data_prob=data_prob, ratios=ratios
+            )
+
+        try:
+            rf_locs.save(overwrite=overwrite)
+            print(f'Saved file: {rf_locs._mk_filename()}')
+        except FileExistsError:
+            print(f"File {rf_locs._mk_filename()} already exists, must set overwrite to True overwirite")
+
+    else:
+        print(f'{putative_file_name} alread exists and overwrite not set')
 # -
 
-# > Converting to arclength units
+# >>! Making and Saving the objects
+# +
+mk_all_ratio_rf_loc_objects(jin_data=jin_data)
+# -
+
+# > RF Loc tools
+# +
+def rotate_rf_locations(
+        locations_array: np.ndarray,
+        orientation: ArcLength[scalar]
+        ) -> np.ndarray:
+    """Rotate unitless location coordinates to be oriented to `orientation`
+
+    Args:
+        locations_array: columnar array with X as first and Y as second column
+        orientation:
+            THe orientation that the rf location elongation will be oriented along.
+            As the default is 90 deg, and the rotation matrix operation is counter-clockwise,
+            the rotation matrix will rotate by an angle different from the provided `orientation`
+            so as to have the desired result.
+
+    Examples:
+        >>> x,y = mk_unitless_rf_locations(
+        ...     1000,
+        ...     do.LGNLocationParams(3, 'jin_etal_on')
+        ...     )
+        >>> coords = np.vstack((x,y)).T
+        >>> px.scatter(x=x, y=y).update_yaxes(scaleanchor = "x", scaleratio = 1).show()
+        >>> rot_coords = rotate_rf_locations(coords, ArcLength(0))
+        >>> px.scatter(x=rot_coords[:,0], y=rot_coords[:,1]).update_yaxes(scaleanchor = "x", scaleratio = 1).show()
+    """
+
+    # only needs to be betwee 0 and 90
+    if not (0 <= orientation.deg <= 90):
+        raise exc.LGNError(f'RF Location orientation parameter ({orientation.deg}) is out of bounds')
+    if not ((locations_array.shape[1] == 2) and len(locations_array.shape)==2):
+        raise ValueError(f'locations array must be columnar (shape: (x,2)), instead {locations_array.shape}')
+
+    default_ori = ArcLength(90,'deg')
+    difference = default_ori.rad - orientation.rad  # convert to rad now for numpy functions
+    # as rotation is counter-clockwise, can just directly use `difference`.
+    theta = ArcLength(difference,'rad')
+    s,c = np.sin(theta.rad), np.cos(theta.rad)
+    R = np.array(((c, -s), (s, c)))
+
+    rotated_locations_array = locations_array @ R
+
+    return rotated_locations_array
+# -
+
+# >> Scaling Pairwise distance unit
+
+# >>> RD SD as a diameter
 
 # +
-def mk_unitless_rf_locations(
-        n: int,
-        ratio: float,
-        rf_loc_gen: do.RFLocationSigmaRatio2SigmaVals,
-        ):
-
-    gauss_params = rf_loc_gen.ratio2gauss_params(ratio)
-    x_locs, y_locs = (
-        np.random.normal(scale=s, size=n)
-        for s in
-            (gauss_params.sigma_x, gauss_params.sigma_y)
-        )
-
-    return (x_locs, y_locs)
+# test with actual 2D gaussian where >20% of RF is
 # -
 # +
-def mk_rf_locations(
-        n: int,
-        ratio: float,
-        distance_scale: ArcLength,
-        rf_loc_gen: do.RFLocationSigmaRatio2SigmaVals
-        ) -> Tuple[Tuple[ArcLength, ArcLength]]:
-
-    x_locs, y_locs = mk_unitless_rf_locations(n, ratio, rf_loc_gen)
-
-    rf_locations = tuple(
-        (
-            ArcLength(x_locs[i] * distance_scale.value, distance_scale.unit),
-            ArcLength(y_locs[i] * distance_scale.value, distance_scale.unit)
-        )
-        for i in range(len(x_locs))
-    )
-
-    return rf_locations
-
+# find analytically ... yes sigma * sqrt(2 * ln(5))
 # -
+# +
+def gauss_width_at_magnitude(): ...
+# -
+
+# +
+def avg_largest_pairwise_value(values: Iterable) -> float:
+    """For set of values, average largest value of all pairings
+
+    Uses only unique pairings, which is consistent with an equal probability of
+    selecting any value.
+    Also presumes selection with replacement
+    """
+    pairings = combinations_with_replacement(values, r=2)
+    largest_value_of_each_pair = list(max(p) for p in pairings)
+    mean_largest_value: float = np.mean(largest_value_of_each_pair)
+
+    return mean_largest_value
+# -
+
+
+
+# > Plot RF Locations
+# ... prototypes here
 # +
 def plot_unitless_rf_locations(locs: tuple):
     x_locs = locs[0]

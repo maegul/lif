@@ -34,19 +34,6 @@ def _mk_angle_probs(vm_params: do.VonMisesParams, n_angle_increments: int = 1000
 
     return angles, probs
 
-def mk_orientations(
-        n: int,
-        ori_params: do.LGNOrientationParams,
-        ) -> List[ArcLength[scalar]]:
-
-    angles, probs = _mk_angle_probs(ori_params.von_mises)
-    random_angles = np.random.choice(angles.deg, p=probs, size=n)
-    orientations = [
-        ArcLength(a, 'deg')
-        for a in random_angles
-    ]
-
-    return orientations
 # -
 
 # >>> Demo
@@ -179,6 +166,8 @@ circ_var_distributions = do.AllCircVarianceDistributions(
         )
     )
 # -
+
+
 
 # >> Plotting
 # +
