@@ -291,21 +291,25 @@ jin_data = _make_jin_data_object()
 def plot_jin_data_with_raw_data(jin_data: _JinData):
     distance_bins = jin_data.dist_vals_off_raw[:,0]
     fig = (go.Figure()
-        .add_scatter(
+        .add_scatter(  # type: ignore
             x=distance_bins, y=jin_data.dist_vals_off_raw[:,1],
-            name='raw alonso', line=go.scatter.Line(color='blue'),
+            name='raw alonso',
+            line=go.scatter.Line(color='blue'),  # type: ignore
             legendgroup='off', legendgrouptitle_text='OFF')
         .add_scatter(
             x=distance_bins, y=jin_data.dist_vals_off[:,1],
-            name='paper', line=go.scatter.Line(color='blue', dash='1 3'),
+            name='paper',
+            line=go.scatter.Line(color='blue', dash='1 3'),  # type: ignore
             legendgroup='off')
         .add_scatter(
             x=distance_bins, y=jin_data.dist_vals_on_raw[:,1],
-            name='raw alonso', line=go.scatter.Line(color='red'),
+            name='raw alonso',
+            line=go.scatter.Line(color='red'),  # type: ignore
             legendgroup='on', legendgrouptitle_text='ON')
         .add_scatter(
             x=distance_bins, y=jin_data.dist_vals_on[:,1],
-            name='paper', line=go.scatter.Line(color='red', dash='1 3'),
+            name='paper',
+            line=go.scatter.Line(color='red', dash='1 3'),  # type: ignore
             legendgroup='on')
         .update_layout(
             title='Data from paper and raw data from personal email from Alonso',
@@ -1030,6 +1034,7 @@ def avg_largest_pairwise_value(values: Iterable[float]) -> float:
     Also presumes selection with replacement which implies that a particular spat_filt
     can occur more than once in an LGN layer ... which is true
     """
+
     pairings = combinations_with_replacement(values, r=2)
     largest_value_of_each_pair = list(max(p) for p in pairings)
     mean_largest_value: float = np.mean(largest_value_of_each_pair)
@@ -1183,7 +1188,7 @@ def plot_unitless_rf_locations(locs: tuple):
         # locations are in units of rf diameter
         x0, x1 = x_locs[i]-0.5, x_locs[i]+0.5
         y0, y1 = y_locs[i]-0.5, y_locs[i]+0.5
-        fig.add_shape(
+        fig.add_shape(  # type: ignore
             type="circle",
             xref="x", yref="y",
             x0=x0, y0=y0, x1=x1, y1=y1,
@@ -1199,7 +1204,7 @@ def plot_unitless_rf_locations(locs: tuple):
             yaxis_range=(y_locs.min()-0.5, y_locs.max()+0.5),
             template='plotly_dark'
             )
-        .update_yaxes(
+        .update_yaxes(  # type: ignore
             constrain='domain',
             scaleanchor = "x", scaleratio = 1
             )
@@ -1232,7 +1237,7 @@ def plot_rf_locations(
         xmaxs.append(x1)
         ymaxs.append(y1)
 
-        fig.add_shape(
+        fig.add_shape(  # type: ignore
             type="circle",
             xref="x", yref="y",
             x0=x0, y0=y0, x1=x1, y1=y1,
@@ -1250,7 +1255,7 @@ def plot_rf_locations(
             yaxis_title=f'ArcLength {unit}',
             template='plotly_dark'
             )
-        .update_yaxes(
+        .update_yaxes(  # type: ignore
             constrain='domain',
             scaleanchor = "x", scaleratio = 1
             )

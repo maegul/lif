@@ -1,3 +1,39 @@
+"""Create the cells for an LGN layer
+
+Examples:
+    # +
+    stparams = do.SpaceTimeParams(
+        spat_ext=ArcLength(5), spat_res=ArcLength(1, 'mnt'), temp_ext=Time(1),
+        temp_res=Time(1, 'ms'))
+
+    lgnparams = do.LGNParams(
+        n_cells=10,
+        orientation = do.LGNOrientationParams(ArcLength(30), 0.5),
+        circ_var = do.LGNCircVarParams('naito_lg_highsf'),
+        spread = do.LGNLocationParams(2, 'jin_etal_on'),
+        filters = do.LGNFilterParams(spat_filters='all', temp_filters='all')
+        )
+    # -
+    # +
+    lgn = mk_lgn_layer(lgnparams, stparams)
+    # -
+    # +
+    len(lgn.cells)
+    # -
+    # +
+    for i in range(len(lgn.cells)):
+        print(
+            lgn.cells[i].location
+            )
+    # -
+    # +
+    for i in range(len(lgn.cells)):
+        print(
+            lgn.cells[i].location.round_to_spat_res(stparams.spat_res)
+            )
+    # -
+"""
+
 # > Imports
 import random
 from textwrap import dedent
@@ -15,7 +51,7 @@ from scipy.spatial.distance import pdist
 from ..utils import data_objects as do, settings, exceptions as exc
 from ..utils.units.units import (
     scalar,
-    ArcLength
+    ArcLength, Time
     )
 from ..receptive_field.filters import cv_von_mises as cvvm
 from . import (
@@ -189,8 +225,10 @@ def mk_filters(
     sfparams = filter_params.spat_filters
     tfparams = filter_params.temp_filters
 
+    # just use all keys
     if sfparams == 'all':
-        sfs = tuple(spatial_filters.values())
+        sfparams = tuple(spatial_filters.keys())
+    # make sure all keys are valid, only need to check if not just taking all
     else:
         all_valid_keys = all(
             sf_key in spatial_filters
@@ -202,11 +240,12 @@ def mk_filters(
                 Invalid: {(sfk for sfk in sfparams if sfk not in spatial_filters)}.
                 Availabile options are {spatial_filters.keys()}
                 '''))
-        sf_keys = random.choices(sfparams, k=n)
-        sfs = tuple(spatial_filters[sfk] for sfk in sf_keys)
+
+    sf_keys = random.choices(sfparams, k=n)
+    sfs = tuple(spatial_filters[sfk] for sfk in sf_keys)
 
     if tfparams == 'all':
-        tfs = tuple(temporal_filters.values())
+        tfparams = tuple(temporal_filters.keys())
     else:
         all_valid_keys = all(
             tf_key in temporal_filters
@@ -218,8 +257,9 @@ def mk_filters(
                 Invalid: {(tfk for tfk in tfparams if tfk not in temporal_filters)}.
                 Availabile options are {temporal_filters.keys()}
                 '''))
-        tf_keys = random.choices(tfparams, k=n)
-        tfs = tuple(temporal_filters[tfk] for tfk in tf_keys)
+
+    tf_keys = random.choices(tfparams, k=n)
+    tfs = tuple(temporal_filters[tfk] for tfk in tf_keys)
 
     return sfs, tfs
 
@@ -275,9 +315,3 @@ def mk_lgn_layer(
 
     return lgn_layer
 
-
-# functions for generating random values
-# what parameters to set (which distributions to use)
-
-# list all sf and tf files (by string) and hard code variables for quick lookup
-# which to use are parameters

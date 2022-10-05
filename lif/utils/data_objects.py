@@ -1137,7 +1137,6 @@ class SpaceTimeParams(ConversionABC):
         temp_res:
 
     """
-
     spat_ext: ArcLength[scalar]
     spat_res: ArcLength[int]
     """Must have int value.

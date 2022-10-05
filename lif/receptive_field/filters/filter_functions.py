@@ -1,11 +1,9 @@
 """Functions and classes for the generation of spatial and temporal filters
 """
 
-from dataclasses import dataclass
-from typing import Optional, Union, Tuple, overload, Callable, cast, NoReturn
+from typing import Optional, Union, Tuple, overload, cast
 from textwrap import dedent
 
-from brian2.core.variables import Variable
 import numpy as np
 from scipy.ndimage import interpolation
 
@@ -259,7 +257,7 @@ def mk_spat_ext_from_sd_limit(
 # Main behaviour is require only one of a spat_ext or std dev arg
 # and return the appropriate output or raise an error ... thus
 # the overloads
-@overload  # only one: good
+@overload
 def mk_sd_limited_spat_coords(
         spat_res: ArcLength[int],
         # default value needed for this particular overload,
@@ -267,7 +265,7 @@ def mk_sd_limited_spat_coords(
         spat_ext: None = None, *,
         sd: ArcLength[scalar],
         sd_limit: Optional[float] = None) -> ArcLength[np.ndarray]: ...
-@overload  # only one: good
+@overload
 def mk_sd_limited_spat_coords(
         spat_res: ArcLength[int],
         spat_ext: ArcLength[scalar],
@@ -308,7 +306,9 @@ def mk_sd_limited_spat_coords(
             sd_limit = SPAT_FILT_SD_LIMIT
         final_spat_ext = mk_spat_ext_from_sd_limit(sd, sd_limit)
     # remove "possibly unbound" typing issue
-    final_spat_ext: ArcLength[scalar] = cast(ArcLength[scalar], final_spat_ext)
+    final_spat_ext: ArcLength[scalar] = cast(
+        ArcLength[scalar],
+        final_spat_ext)  # type: ignore (should be find as either spat_ext or sd is required)
 
     coords = mk_spat_coords_1d(spat_res=spat_res, spat_ext=final_spat_ext)
 
@@ -371,13 +371,28 @@ def spatial_extent_in_res_units(
     return n_res_units
 
 
+@overload
+def mk_spat_coords(
+        spat_res: ArcLength[int],
+        # default value needed for this particular overload,
+        # "*" allows default value arg before non-default-value arg (as now keyword only anyway)
+        spat_ext: None = None, *,
+        sd: ArcLength[scalar],
+        sd_limit: float = SPAT_FILT_SD_LIMIT
+        ) -> Tuple[ArcLength[np.ndarray], ArcLength[np.ndarray]]: ...
+@overload
+def mk_spat_coords(
+        spat_res: ArcLength[int],
+        spat_ext: ArcLength[scalar],
+        sd: None = None,
+        sd_limit: float = SPAT_FILT_SD_LIMIT
+        ) -> Tuple[ArcLength[np.ndarray], ArcLength[np.ndarray]]: ...
 def mk_spat_coords(
         spat_res: ArcLength[int] = ArcLength(1, 'mnt'),
         spat_ext: Optional[ArcLength[scalar]] = None,
         sd: Optional[ArcLength[float]] = None,
         sd_limit: float = SPAT_FILT_SD_LIMIT
         ) -> Tuple[ArcLength[np.ndarray], ArcLength[np.ndarray]]:
-
     '''
     Produces spatial (ie meshgrid) for
     generating RFs and stimuli
@@ -416,8 +431,9 @@ def mk_spat_coords(
 
     # mk_sd_limited_spat_coords responds to arguments appropriately
     x_coords = mk_sd_limited_spat_coords(
-        spat_ext=spat_ext, spat_res=spat_res,
-        sd=sd, sd_limit=sd_limit)
+        spat_ext=spat_ext, sd=sd,  # type: ignore (as overloaded typing ensures fine)
+        spat_res=spat_res,
+        sd_limit=sd_limit)
 
     # treat as image (with origin at top left or upper)
     # y_cords positive at top and negative at bottom
@@ -610,8 +626,10 @@ def mk_spat_temp_coords(
 
     # mk_sd_limited_spat_coords responds to arguments appropriately
     x_coords = mk_sd_limited_spat_coords(
-        spat_ext=spat_ext, spat_res=spat_res,
-        sd=sd, sd_limit=sd_limit)
+        # (not typed here but lower functions will catch issues)
+        spat_ext=spat_ext, sd=sd,  # type: ignore
+        spat_res=spat_res,
+        sd_limit=sd_limit)
 
     # treat as image (with origin at top left or upper)
     # y_cords positive at top and negative at bottom
@@ -619,7 +637,10 @@ def mk_spat_temp_coords(
     y_coords = ArcLength(x_coords.value[::-1], x_coords.unit)
 
     t_coords = mk_temp_coords(
-        temp_res=temp_res, temp_ext=temp_ext, tau=tau, temp_ext_n_tau=temp_ext_n_tau)
+        temp_res=temp_res,
+        # not typed here but lower functions will catch issues if necessary
+        temp_ext=temp_ext, tau=tau, # type: ignore
+        temp_ext_n_tau=temp_ext_n_tau)
 
     _xc: np.ndarray
     _yc: np.ndarray
@@ -1403,10 +1424,12 @@ def joint_dc(tf: do.TQTempFilter, sf: do.DOGSpatialFilter) -> float:
             sf.source_data.meta_data.make_key()
             if sf.source_data.meta_data is not None
             else sf.parameters)
-        raise ValueError(
-            f'DC amplitudes of Temp Filt and Spat Filt are too differente\n'
-            f'filters: {tf_desc}, {sf_desc}'
-            f'DC amps: TF: {tf_dc}, SF: {sf_dc}'
+        raise ValueError(dedent(f'''
+            DC amplitudes of Temp Filt and Spat Filt are too differente\n
+            filters: {tf_desc}, {sf_desc}
+            DC amps: TF: {tf_dc}, SF: {sf_dc}
+            '''
+            )
             )
     # Just take the average
     joint_dc = (tf_dc + sf_dc) / 2
