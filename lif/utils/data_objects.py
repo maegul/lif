@@ -5,8 +5,10 @@ Classes for handling and grouping basic data objects
 from __future__ import annotations
 from functools import partial
 from typing import (
-    Union, Optional, Iterable, Dict, Any, Tuple, List, Literal, overload, cast, Callable,
-    Protocol
+    Union, Optional,
+    Iterable, Dict, Any, Tuple, List, Literal, Set,
+    overload, cast,
+    Callable, Protocol
     )
 from dataclasses import dataclass, astuple, asdict, field
 from textwrap import dedent
@@ -614,6 +616,17 @@ class RFLocation(ConversionABC):
 
         return self.__class__(x=x, y=y)
 
+    @property
+    def arclength_unit(self) -> str:
+        """Get the unit that the coords are in
+
+        If inconsistent, raise an exception (CoordsValueError)
+        """
+        if self.x.unit != self.y.unit:
+            raise exc.CoordsValueError(
+                f'X and Y do not have the same unit: ({self.x.unit, self.y.unit})')
+        else:
+            return self.x.unit
 
 @dataclass
 class RFStimSpatIndices(ConversionABC):
@@ -939,6 +952,22 @@ class AllCircVarianceDistributions:
     naito_opt_highsf: CircVarianceDistribution
     shou_xcells: CircVarianceDistribution
 
+    def get_distribution(self, alias: str) -> CircVarianceDistribution:
+
+        try:
+            distribution = self.__getattribute__(alias)
+        except AttributeError as e:
+            raise exc.LGNError(dedent(f'''
+                Circular Variance Distribution {alias} not available.
+                Available options from {self.__class__.__name__}:
+                {self.__dataclass_fields__.keys()}
+                '''
+                )) from e
+
+        distribution = cast(CircVarianceDistribution, distribution)
+
+        return distribution
+
 
 # >> Full LGN Cell
 
@@ -948,7 +977,7 @@ class LGNCell(ConversionABC):
 
     spat_filt: DOGSpatialFilter
     temp_filt: TQTempFilter
-    orientation: ArcLength[float]
+    orientation: ArcLength[scalar]
     circ_var: float
     location: RFLocation
 
@@ -988,34 +1017,109 @@ class LGNCircVarParams(ConversionABC):
     distribution_alias: str
     "attribute name of distribution defined in `orientation_preferences.circ_var_distributions`"
 
+    def __post_init__(self):
+        alias_available = (
+            self.distribution_alias in
+            AllCircVarianceDistributions.__dataclass_fields__
+            )
+
+        if not alias_available:
+            raise exc.LGNError(dedent(f'''
+                Circular variance distribution alias {self.distribution_alias}
+                is not available.
+                Options: {AllCircVarianceDistributions.__dataclass_fields__.keys()}
+                ''')
+                )
+
 @dataclass
 class LGNLocationParams(ConversionABC):
     ratio: float
     "desired ratio between sigma_x and sigma_y"
     distribution_alias: str
     "key used in rfloc_dist_index file"
+    rotate_locations: bool = False
+    "Whether to rotate rf locations to `orientation` angle"
     orientation: ArcLength[scalar] = ArcLength(90,'deg')
+    "Rotation angle to be applied to locations for HW orientation to be non-vertical"
     # distribution_file_name: Optional[str] = None
     # "direct file name ... if preferred"
 
+# +
+@dataclass
+class LGNRFLocations:
+    """Locations for all cells of an LGN layer"""
+    locations: Tuple[RFLocation]
+
+    @property
+    def arclength_unit(self) -> str:
+
+        try:
+            units: Set[str] = set((
+                    l.arclength_unit
+                    for l in self.locations
+                ))
+        except exc.CoordsValueError as e:
+            raise exc.CoordsValueError(
+                f'At least one rf location coords have inconsistent units') from e
+
+        # not all the same unit
+        if not (len(units) == 1):
+            raise exc.CoordsValueError(
+                f'Locations have different units: {units}')
+
+        return units.pop()
+
+    def array_of_coords(self) -> Tuple[np.ndarray, np.ndarray]:
+        # 2 col array (x,y)
+        x_coords = np.zeros(shape=(len(self.locations)))
+        y_coords = np.zeros(shape=(len(self.locations)))
+        for i, loc in enumerate(self.locations):
+            x_coords[i] = loc.x.value
+            y_coords[i] = loc.y.value
+
+        return x_coords, y_coords
+
+    @classmethod
+    def from_array_of_coords(
+            cls, x_coords: np.ndarray, y_coords: np.ndarray,
+            arclength_unit: str) -> LGNRFLocations:
+
+        # check:              2 cols           2 dimensions
+        if not (x_coords.size == y_coords.size):
+            raise exc.LGNError(
+                f'coords arrays are wrong shape: ({x_coords.size, y_coords.size})')
+
+        locations = tuple(
+                RFLocation(
+                    x = ArcLength(x_coords[i], arclength_unit),
+                    y = ArcLength(y_coords[i], arclength_unit)
+                    )
+                for i in range(x_coords.shape[0])
+            )
+
+        return cls(locations = locations)
+# -
+
+
 @dataclass
 class LGNFilterParams(ConversionABC):
-    "pick and pair randomly (?)"
-    spat_filters: List
-    temp_filters: List
+    spat_filters: Union[Literal['all'], List[str]]
+    "pick randomly from set or take 'all' if specified"
+    temp_filters: Union[Literal['all'], List[str]]
+    "pick randomly from set or take 'all' if specified"
 
 @dataclass
 class LGNParams(ConversionABC):
     n_cells: int
     "number of cells for this LGN layer"
     orientation: LGNOrientationParams
+    circ_var: LGNCircVarParams
     spread: LGNLocationParams
-    sf: str
-    tf: str
+    filters: LGNFilterParams
 
 @dataclass
 class LGNLayer(ConversionABC):
-    cells: List
+    cells: Tuple[LGNCell]
 
 # methods and parameters for the generation of LGN cells
 

@@ -689,8 +689,8 @@ def mk_blank_coords(
 # > Spatial
 
 def mk_gauss_1d(
-        coords: ArcLength[np.ndarray],
-        mag: float = 1, sd: ArcLength[float] = ArcLength(10, 'mnt')) -> np.ndarray:
+        coords: ArcLength[val_gen],
+        mag: float = 1, sd: ArcLength[float] = ArcLength(10, 'mnt')) -> val_gen:
     """Simple 1d gauss
 
 
@@ -771,8 +771,8 @@ def mk_gauss_1d_ft(
 
 
 def mk_gauss_2d(
-        x_coords: ArcLength, y_coords: ArcLength,
-        gauss_params: do.Gauss2DSpatFiltParams) -> np.ndarray:
+        x_coords: ArcLength[val_gen], y_coords: ArcLength[val_gen],
+        gauss_params: do.Gauss2DSpatFiltParams) -> val_gen:
 
     gauss_x = mk_gauss_1d(x_coords, sd=gauss_params.arguments.h_sd)
     gauss_y = mk_gauss_1d(y_coords, sd=gauss_params.arguments.v_sd)
@@ -822,8 +822,8 @@ def mk_gauss_2d_ft(
 
 # sf = spatial filter
 def mk_dog_sf(
-        x_coords: ArcLength[np.ndarray], y_coords: ArcLength[np.ndarray],
-        dog_args: do.DOGSpatFiltArgs) -> np.ndarray:
+        x_coords: ArcLength[val_gen], y_coords: ArcLength[val_gen],
+        dog_args: do.DOGSpatFiltArgs) -> val_gen:
 
     cent_gauss_2d = mk_gauss_2d(x_coords, y_coords, gauss_params=dog_args.cent)
     surr_gauss_2d = mk_gauss_2d(x_coords, y_coords, gauss_params=dog_args.surr)

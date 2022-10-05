@@ -1,5 +1,6 @@
 # > Imports
-import statistics
+import random
+from textwrap import dedent
 from typing import List, cast, Dict, Tuple, Iterable
 from itertools import combinations, combinations_with_replacement
 import json
@@ -9,6 +10,7 @@ import numpy as np
 from pandas.core.indexes.base import default_index
 
 import plotly.express as px
+from scipy.spatial.distance import pdist
 
 from ..utils import data_objects as do, settings, exceptions as exc
 from ..utils.units.units import (
@@ -16,7 +18,9 @@ from ..utils.units.units import (
     ArcLength
     )
 from ..receptive_field.filters import cv_von_mises as cvvm
-from . import rf_locations, orientation_preferences as oris
+from . import (
+    rf_locations as rflocs,
+    orientation_preferences as rforis)
 
 # > Shortcuts to spatial and temporal filters
 
@@ -107,7 +111,7 @@ def mk_orientations(
         ori_params: do.LGNOrientationParams,
         ) -> List[ArcLength[scalar]]:
 
-    angles, probs = oris._mk_angle_probs(ori_params.von_mises)
+    angles, probs = rforis._mk_angle_probs(ori_params.von_mises)
     random_angles = np.random.choice(angles.deg, p=probs, size=n)
     orientations = [
         ArcLength(a, 'deg')
@@ -119,8 +123,14 @@ def mk_orientations(
 # >> Make Circular Variance Values
 
 def mk_circ_var_values(
-        n: int, cv_dist: do.CircVarianceDistribution
+        n: int, cv_params: do.LGNCircVarParams
         ) -> List[float]:
+
+    cv_dist = (
+              rforis
+              .circ_var_distributions
+              .get_distribution(cv_params.distribution_alias)
+              )
 
     cvvals = [cv for cv in cv_dist.distribution.rvs(size=n)]
     return cvvals
@@ -128,94 +138,142 @@ def mk_circ_var_values(
 
 
 # >> Make RF Locations
-# +
-def mk_unitless_rf_locations(
-        n: int,
-        rf_loc_params: do.LGNLocationParams,
-        ):
 
-    rf_loc_gen = rf_dists.get(rf_loc_params.distribution_alias)
-    if not rf_loc_gen:
-        raise exc.LGNError(f'bad rf loc dist alias ({rf_loc_params.distribution_alias})')
-
-    gauss_params = rf_loc_gen.ratio2gauss_params(rf_loc_params.ratio)
-    x_locs, y_locs = (
-        np.random.normal(scale=s, size=n)
-        for s in
-            (gauss_params.sigma_x, gauss_params.sigma_y)
-        )
-    rotated_coords = rf_locations.rotate_rf_locations(
-            np.vstack((x_locs, y_locs)).T,  # stacking into two columns (x,y)
-            rf_loc_params.orientation)
-
-    return (rotated_coords[:,0], rotated_coords[:,1])
-# -
 # +
 def mk_rf_locations(
         n: int,
         rf_loc_params: do.LGNLocationParams,
         distance_scale: ArcLength[scalar],
-        ) -> Tuple[Tuple[ArcLength, ArcLength]]:
+        ) -> do.LGNRFLocations:
+    """Generate x,y coordinates for RF Locations
 
-    x_locs, y_locs = mk_unitless_rf_locations(n, rf_loc_params)
+    """
 
-    rf_locations = tuple(
+    rf_loc_gen = rf_dists.get(rf_loc_params.distribution_alias)
+    if not rf_loc_gen:
+        raise exc.LGNError(f'bad rf loc dist alias ({rf_loc_params.distribution_alias})')
+
+    x_locs, y_locs = rflocs.mk_unitless_rf_locations(
+                        n=n, rf_loc_gen=rf_loc_gen,
+                        ratio = rf_loc_params.ratio
+                        )
+    if rf_loc_params.rotate_locations:
+        x_locs, y_locs = rflocs.rotate_rf_locations(
+            x_locs, y_locs, orientation=rf_loc_params.orientation)
+
+    if not (x_locs.shape == y_locs.shape):
+        raise exc.LGNError(
+            f'X and Y location coordinates are not of the same size ({x_locs.shape, y_locs.shape})')
+
+    location_coords = tuple(
         (
-            ArcLength(x_locs[i] * distance_scale.value, distance_scale.unit),
-            ArcLength(y_locs[i] * distance_scale.value, distance_scale.unit)
+            do.RFLocation(
+                x=ArcLength(x_locs[i] * distance_scale.value, distance_scale.unit),
+                y=ArcLength(y_locs[i] * distance_scale.value, distance_scale.unit)
+                )
         )
         for i in range(len(x_locs))
     )
+    rf_locations = do.LGNRFLocations(locations = location_coords)
 
     return rf_locations
 
 # -
 
+def mk_filters(
+        n: int, filter_params: do.LGNFilterParams
+        ) -> Tuple[Tuple[do.DOGSpatialFilter, ...], Tuple[do.TQTempFilter, ...]]:
+    """For each cell spat and temp filters randomly sampled from provided candidates
+    """
 
-# >> Avg Biggest size of pair??
-# seems to approach a ratio of ~2/3 as the set of values gets bigger
-# ... probably best to just calculate from all available diameters
-# +
-max_diam = range(10, 100, 10)
-avg_max_val_ratios = []
-for n in max_diam:
-    # n = 10
-    diams = np.arange(1, n, 1)
-    diam_combs = list(combinations_with_replacement(diams,r=2))
-    pair_max_diams = [max(p) for p in diam_combs]
+    sfparams = filter_params.spat_filters
+    tfparams = filter_params.temp_filters
 
-    max_val = max(diams)
-    avg_pair_max, median_pair_max = np.mean(pair_max_diams), np.median(pair_max_diams)
-    n_pairs = len(diam_combs)
-    avg_max_ratio = avg_pair_max/max_val
-    avg_max_val_ratios.append(avg_max_ratio)
+    if sfparams == 'all':
+        sfs = tuple(spatial_filters.values())
+    else:
+        all_valid_keys = all(
+            sf_key in spatial_filters
+                for sf_key in sfparams
+            )
+        if not all_valid_keys:
+            raise exc.LGNError(dedent(f'''
+                Invalid spatial filter alias provided.
+                Invalid: {(sfk for sfk in sfparams if sfk not in spatial_filters)}.
+                Availabile options are {spatial_filters.keys()}
+                '''))
+        sf_keys = random.choices(sfparams, k=n)
+        sfs = tuple(spatial_filters[sfk] for sfk in sf_keys)
 
-    print(f'''
-        {n=}, {n_pairs=}
-        {avg_pair_max=}, {median_pair_max=}
-        {avg_max_ratio=}
-        ''')
+    if tfparams == 'all':
+        tfs = tuple(temporal_filters.values())
+    else:
+        all_valid_keys = all(
+            tf_key in temporal_filters
+                for tf_key in tfparams
+            )
+        if not all_valid_keys:
+            raise exc.LGNError(dedent(f'''
+                Invalid temporal filter alias provided.
+                Invalid: {(tfk for tfk in tfparams if tfk not in temporal_filters)}.
+                Availabile options are {temporal_filters.keys()}
+                '''))
+        tf_keys = random.choices(tfparams, k=n)
+        tfs = tuple(temporal_filters[tfk] for tfk in tf_keys)
 
-# -
-# +
-px.line(x=max_diam, y=avg_max_val_ratios).show()
-# -
+    return sfs, tfs
+
+
 
 # >> Make Cells
 
-def mk_cells(params: do.LGNParams) -> do.LGNLayer:
+def mk_lgn_layer(
+        lgn_params: do.LGNParams,
+        space_time_params: do.SpaceTimeParams
+        ) -> do.LGNLayer:
 
-    n_cells = params.n_cells
+    n_cells = lgn_params.n_cells
+    spat_res = space_time_params.spat_res
 
+    # orientations
     orientations = mk_orientations(
-        n = n_cells, ori_params = params.orientation)
+        n = n_cells, ori_params = lgn_params.orientation)
 
-    # >>! need to do spatial filters before RF locs for the spatial scale!
-    # get all spatial filters
-    # get max_sd values for each
-    # find avg of biggest half (to correspond to jin et al methodology of biggest of pair)
+    # circular variance (of spat filt orientation bias)
+    circ_var_vals = mk_circ_var_values(n_cells, lgn_params.circ_var)
 
-    return do.LGNLayer(cells=[])
+    # spat_filters
+    spat_filts, temp_filts = mk_filters(n_cells, lgn_params.filters)
+
+    # locations
+    rf_distance_scale = rflocs.mk_rf_locations_distance_scale(
+        spat_filters=spat_filts, spat_res=spat_res,
+        # >>>! should be in settings?
+        magnitude_ratio_for_diameter=0.2
+        )
+    rf_locations = mk_rf_locations(
+        n=n_cells, rf_loc_params=lgn_params.spread,
+        distance_scale=rf_distance_scale
+        )
+
+
+    lgn_layer = do.LGNLayer(
+        cells = tuple(
+            do.LGNCell(
+                orientation=ori, circ_var=cv,
+                spat_filt=sf, temp_filt=tf,
+                location=loc
+                )
+            for ori, cv, sf, tf, loc
+                in zip(
+                    orientations,
+                    circ_var_vals,
+                    spat_filts, temp_filts,
+                    rf_locations.locations)
+        )
+    )
+
+    return lgn_layer
 
 
 # functions for generating random values

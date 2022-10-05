@@ -1,7 +1,7 @@
 
 # > Imports
 # +
-from typing import Union, List, Tuple, Iterable
+from typing import Union, List, Tuple, Iterable, Literal
 from itertools import combinations_with_replacement
 from dataclasses import dataclass
 import warnings
@@ -22,7 +22,8 @@ import plotly.graph_objects as go
 import plotly.subplots as spl
 # -
 # +
-from lif.utils.units.units import val_gen, scalar, ArcLength
+from ..utils.units.units import val_gen, scalar, ArcLength
+from ..receptive_field.filters import filter_functions as ff
 
 from ..utils import (
     data_objects as do,
@@ -920,11 +921,170 @@ mk_all_ratio_rf_loc_objects(jin_data=jin_data)
 # -
 
 # > RF Loc tools
+
+# >> Scaling Pairwise distance unit
+
+# >>> Diameter of RF (according to jin et al protocol)
+
+# +
+def spat_filt_max_magnitude(spat_filt: do.DOGSpatFiltArgs) -> float:
+
+    return ff.mk_dog_sf(ArcLength(0), ArcLength(0), spat_filt)
+
+
+def spat_filt_magnitude_residual_at_coord(
+        x: np.ndarray,
+        spat_filt: do.DOGSpatFiltArgs,
+        target_mag: float,
+        arclength_unit: str = 'mnt',
+        ) -> float:
+    """Presume circular/radially symmetrical, return mag of DOG at coord
+    """
+    coord = ArcLength(x[0], arclength_unit)
+    mag = ff.mk_dog_sf(coord, ArcLength(0), dog_args=spat_filt)
+    return mag - target_mag
+
+
+def spat_filt_coord_at_magnitude_ratio(
+        spat_filt: do.DOGSpatFiltArgs,
+        target_ratio: float,
+        spat_res: ArcLength[scalar],
+        round: bool = True
+        ) -> ArcLength[scalar]:
+    """Coordinate (1D) where spat_filt has a magnitude with `target_ratio` to maximum
+
+    Uses `spat_filt_max_magnitude` for determining the maximum magnitude of the spatial
+    filter, which is presumed to be at the "center" or coords `0,0`.
+    Uses optimisation over `spat_filt_magnitude_residual_at_coord`.
+
+    Returned value is the coordinate from the origin `(0,0)` and represents a "radius".
+    To get the `diameter` of the spatial filter, must double.
+
+    Though this uses optimisation, it is a trivial example and should run in milliseconds.
+
+    Args:
+        spat_filt: The spatial filter in question
+        target_ratio: magnitude optimised for is `maximum * target_ratio`
+        spat_res:
+            spatial resolution of the simulation to ensure correct units are used
+            and for rounding the resultant coordinate to the resolution "grid".
+
+    Examples:
+        >>> spat_res = ArcLength(30, 'sec')
+        >>> r = spat_filt_coord_at_magnitude_ratio(
+        ...     spat_filt=sf.parameters, target_ratio=0.2, spat_res=spat_res)
+        >>> print(r)
+        ArcLength(value=150, unit='sec')
+
+        >>> (
+        ...     ff.mk_dog_sf(r, ArcLength(0), sf.parameters)  # target coord and mag
+        ...     /
+        ...     ff.mk_dog_sf(ArcLength(0), ArcLength(0), sf.parameters)  # max mag
+        ...     )
+        0.21684611562815662
+    """
+
+    arclength_unit = spat_res.unit
+    max_mag = spat_filt_max_magnitude(spat_filt)
+    # magnitude of spatial filter (ON or OFF) should be encoded in the `max_mag`
+    # ... target_magnitude should have the same polarity has `max_mag` and spat filt
+    target_magnitude = target_ratio * max_mag
+    try:
+        res: opt.OptimizeResult = opt.least_squares(
+            spat_filt_magnitude_residual_at_coord,
+            bounds=[0, np.inf], x0=[1],
+            args=(spat_filt, target_magnitude, arclength_unit)
+            )
+    except Exception as e:
+        raise exc.LGNError(
+            f'Could not find coords for magnitude with target ratio {target_ratio}'
+            ) from e
+
+    if not res.success:
+        raise exc.LGNError(
+            f'Optimisation to target magnitude with ratio to max of {target_ratio} unseccessful with cost {res.cost}')
+
+    # Idea of rounding to the low is to emulate process in Jin et al:
+    # ... 1) took all pixels with magnitude GREATER than the target
+    # ... 2) used smoothed binary white noise rev correlation with smallest pixels being
+    #        0.1 degrees (6 minutes), often bigger ... which is very likely to be bigger
+    #        than the spatial resolution being rounded to here.  So hopefully the rounding
+    #        is similar to their process in terms of courseness of granularity.
+    target_coord = ArcLength(res.x[0], arclength_unit)
+    if round:
+        rounded_coord = ff.round_coord_to_res(
+            target_coord,
+            res=spat_res, low=True
+            )
+        return rounded_coord
+    else:
+        return target_coord
+# -
+
+# +
+def avg_largest_pairwise_value(values: Iterable[float]) -> float:
+    """For set of values, average largest value of all pairings
+
+    Uses only unique pairings, which is consistent with an equal probability of
+    selecting any value.
+    Also presumes selection with replacement which implies that a particular spat_filt
+    can occur more than once in an LGN layer ... which is true
+    """
+    pairings = combinations_with_replacement(values, r=2)
+    largest_value_of_each_pair = list(max(p) for p in pairings)
+    mean_largest_value: float = np.mean(largest_value_of_each_pair)
+
+    return mean_largest_value
+# -
+# +
+def mk_rf_locations_distance_scale(
+        spat_filters: Iterable[do.DOGSpatialFilter],
+        spat_res: ArcLength[scalar],
+        magnitude_ratio_for_diameter: float = 0.2
+        ) -> ArcLength[scalar]:
+    """For a list of spatial filters, find average largest pairwise diameter
+
+    First uses `spat_filt_coord_at_magnitude_ratio` to find protocol specific RF diameter
+    for each spatial filter.
+    Then finds all pairwise combinations (including double-ups with same-same), the largest
+    of each pair and the average of these largest values.
+    Returns as an ArcLength in the same units as `spat_res` (and snapped to the resolution
+    grid too) as a `diameter`.
+    """
+
+    coords_for_target_magnitude = [
+        spat_filt_coord_at_magnitude_ratio(
+            spat_filt=sf.parameters, target_ratio=magnitude_ratio_for_diameter,
+            spat_res=spat_res, round=True)
+        for sf in spat_filters
+    ]
+
+    spat_filt_diameters = [
+        # double for diameter
+        ArcLength(2*r.value, r.unit)
+        for r in coords_for_target_magnitude
+    ]
+
+    # use same unit as spat res for easy conversion back to an arclength
+    avg_biggest_diameter_value = avg_largest_pairwise_value(
+        [d[spat_res.unit] for d in spat_filt_diameters] )
+    avg_biggest_diameter = ArcLength(avg_biggest_diameter_value, spat_res.unit )
+
+    return avg_biggest_diameter
+# -
+def mk_coords_2d(x_locs: np.ndarray, y_locs: np.ndarray) -> np.ndarray:
+    return np.vstack((x_locs, y_locs)).T
+
+def mk_coords_xy(coords_array: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    if not ((coords_array.shape[1] == 2) and len(coords_array.shape)==2):
+        raise ValueError(f'locations array must be columnar (shape: (x,2)), instead {coords_array.shape}')
+
+    return coords_array[:,0], coords_array[:,1]
 # +
 def rotate_rf_locations(
-        locations_array: np.ndarray,
+        x_locs: np.ndarray, y_locs: np.ndarray,
         orientation: ArcLength[scalar]
-        ) -> np.ndarray:
+        ) -> Tuple[np.ndarray, np.ndarray]:
     """Rotate unitless location coordinates to be oriented to `orientation`
 
     Args:
@@ -949,8 +1109,8 @@ def rotate_rf_locations(
     # only needs to be betwee 0 and 90
     if not (0 <= orientation.deg <= 90):
         raise exc.LGNError(f'RF Location orientation parameter ({orientation.deg}) is out of bounds')
-    if not ((locations_array.shape[1] == 2) and len(locations_array.shape)==2):
-        raise ValueError(f'locations array must be columnar (shape: (x,2)), instead {locations_array.shape}')
+
+    locations_array = mk_coords_2d(x_locs, y_locs)
 
     default_ori = ArcLength(90,'deg')
     difference = default_ori.rad - orientation.rad  # convert to rad now for numpy functions
@@ -961,36 +1121,51 @@ def rotate_rf_locations(
 
     rotated_locations_array = locations_array @ R
 
-    return rotated_locations_array
-# -
-
-# >> Scaling Pairwise distance unit
-
-# >>> RD SD as a diameter
-
-# +
-# test with actual 2D gaussian where >20% of RF is
+    #                     x                             y
+    return mk_coords_xy(rotated_locations_array)
 # -
 # +
-# find analytically ... yes sigma * sqrt(2 * ln(5))
-# -
-# +
-def gauss_width_at_magnitude(): ...
-# -
+def mk_unitless_rf_locations(
+        n: int,
+        rf_loc_gen: do.RFLocationSigmaRatio2SigmaVals,
+        ratio: float,
+        ) -> Tuple[np.ndarray, np.ndarray]:
+    """Generate `X,Y` coords (unitless)
 
-# +
-def avg_largest_pairwise_value(values: Iterable) -> float:
-    """For set of values, average largest value of all pairings
 
-    Uses only unique pairings, which is consistent with an equal probability of
-    selecting any value.
-    Also presumes selection with replacement
     """
-    pairings = combinations_with_replacement(values, r=2)
-    largest_value_of_each_pair = list(max(p) for p in pairings)
-    mean_largest_value: float = np.mean(largest_value_of_each_pair)
+    gauss_params = rf_loc_gen.ratio2gauss_params(ratio)
+    x_locs, y_locs = (
+        np.random.normal(scale=s, size=n)
+        for s in
+            (gauss_params.sigma_x, gauss_params.sigma_y)
+        )
 
-    return mean_largest_value
+    return x_locs, y_locs
+
+
+def apply_distance_scale_to_rf_locations(
+        x_locs: np.ndarray, y_locs: np.ndarray,
+        distance_scale: ArcLength[scalar],
+        ) -> do.LGNRFLocations:
+
+    if not (x_locs.shape == y_locs.shape):
+        raise exc.LGNError(
+            f'X and Y location coordinates are not of the same size ({x_locs.shape, y_locs.shape})')
+
+    location_coords = tuple(
+        (
+            do.RFLocation(
+                x=ArcLength(x_locs[i] * distance_scale.value, distance_scale.unit),
+                y=ArcLength(y_locs[i] * distance_scale.value, distance_scale.unit)
+                )
+        )
+        for i in range(len(x_locs))
+    )
+
+    rf_locations = do.LGNRFLocations(locations=location_coords)
+
+    return rf_locations
 # -
 
 
