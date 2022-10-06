@@ -124,11 +124,12 @@ def make_tq_temp_filt(parameters: do.TempFiltParams) -> do.TQTempFilter:
     assert optimised_result.success is True, 'optimisation is not successful'
 
     params = do.TQTempFiltParams.from_iter(data=optimised_result.x, tau_time_unit=TIME_UNIT)
+    basic_opt_res = do.BasicOptimisationData.from_optimisation_result(optimised_result)
 
     temp_filt = do.TQTempFilter(
         source_data=parameters,
         parameters=params,
-        optimisation_result=optimised_result
+        optimisation_result=basic_opt_res
         )
 
     return temp_filt
@@ -396,11 +397,12 @@ def make_dog_spat_filt(parameters: do.SpatFiltParams) -> do.DOGSpatialFilter:
     # ori_bias_params = _make_ori_biased_lookup_vals(params)
     ori_bias_params = _make_ori_biased_lookup_vals_for_all_methods(
                         sf_args=sf_args, sf_params=parameters)
+    basic_opt_res = do.BasicOptimisationData.from_optimisation_result(opt_res)
 
     spat_filt = do.DOGSpatialFilter(
         source_data=parameters,
         parameters=sf_args,
-        optimisation_result=opt_res,
+        optimisation_result=basic_opt_res,
         ori_bias_params=ori_bias_params
         )
 

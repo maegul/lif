@@ -319,6 +319,12 @@ sf.parameters.asdict_()
 Same saving and loading and "*getter*" as with temp filters above.
 
 ```python
+sf.save()
+# sf.save(overwrite=True)
+```
+
+
+```python
 # do.DOGSpatialFilter.load()
 # do.DOGSpatialFilter.save()
 # do.DOGSpatialFilter.get_saved_filters()

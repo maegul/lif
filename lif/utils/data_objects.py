@@ -83,6 +83,37 @@ class CitationMetaData(ConversionABC):
         return key
 
 
+# > Basic Optimisation Data object
+
+# full optimisation result object is too much
+# instead just capture the core data if I happen to want to need it later
+
+@dataclass
+class BasicOptimisationData(ConversionABC):
+    """Simple stand in for a full OptimizeResult object with just the basic data
+    """
+    success: Optional[bool]
+    cost: Optional[float]
+    "Half the sum of squares of residuals (fun data)"
+    x: Optional[np.ndarray]
+    fun: Optional[np.ndarray]
+
+    @classmethod
+    def from_optimisation_result(
+            cls, opt_result: OptimizeResult
+            ) -> BasicOptimisationData:
+
+        object_args = {
+            # don't care too much about this data, Nones are fine if absent
+            attribute: opt_result.get(attribute)
+            for attribute in ("success", "cost", "x", "fun")
+        }
+        new_obj = cls(**object_args)
+
+        return new_obj
+
+
+
 # > Temp Filter
 
 @dataclass
@@ -186,7 +217,7 @@ class TQTempFilter(ConversionABC):
     source_data: TempFiltParams
     """Data from which derived"""
     parameters: TQTempFiltParams
-    optimisation_result: OptimizeResult
+    optimisation_result: BasicOptimisationData
 
     def save(self, overwrite: bool = False):
         """Save this filter object to file as in pickle format.
@@ -523,7 +554,7 @@ class DOGSpatialFilter(ConversionABC):
     source_data: SpatFiltParams
     parameters: DOGSpatFiltArgs
     """Arguments needed to generate the spatial filter in this code base"""
-    optimisation_result: OptimizeResult
+    optimisation_result: BasicOptimisationData
     """Output of the optimisation process/function"""
     # ori_bias_params: CircularVarianceSDRatioVals
     ori_bias_params: CircularVarianceParams
