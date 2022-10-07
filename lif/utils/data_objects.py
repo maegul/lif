@@ -536,6 +536,7 @@ class CircularVarianceParams(ConversionABC):
 
     @classmethod
     def all_methods(cls) -> List[str]:
+        "List of all avialble methods"
         return list(cls.__dataclass_fields__.keys())
 
     def ratio2circ_var(self, ratio: val_gen, method = 'naito') -> val_gen:
@@ -1007,10 +1008,17 @@ class LGNCell(ConversionABC):
     """Single LGN Cell that provides input to a V1 Cell"""
 
     spat_filt: DOGSpatialFilter
+    "the base spatial filter parameters to create a rendered image"
+    oriented_spat_filt_params: DOGSpatFiltArgs
+    "spat filt params with gauss params adjusted to have anisotropy to circ_var"
     temp_filt: TQTempFilter
+    "The temporal filter to convolve with the time course of the stimulus"
     orientation: ArcLength[scalar]
+    "orientation for the spatial filter when made anisotropic"
     circ_var: float
+    "circular variance of the degree of orientation bias"
     location: RFLocation
+    "location coordinates for the center of the spatial filter from the center"
 
     # need to rotate to orientation and get spatial_filter at specified circ_var
     # best (?):
@@ -1047,8 +1055,11 @@ class LGNOrientationParams(ConversionABC):
 class LGNCircVarParams(ConversionABC):
     distribution_alias: str
     "attribute name of distribution defined in `orientation_preferences.circ_var_distributions`"
+    circ_var_definition_method: str
+    "method to be used for defining how a circular variance is converted to spat filt params"
 
     def __post_init__(self):
+        # check distribution alias
         alias_available = (
             self.distribution_alias in
             AllCircVarianceDistributions.__dataclass_fields__
@@ -1061,6 +1072,23 @@ class LGNCircVarParams(ConversionABC):
                 Options: {AllCircVarianceDistributions.__dataclass_fields__.keys()}
                 ''')
                 )
+        # check circ_var_distribution method
+        all_methods = set(CircularVarianceParams.all_methods())
+        all_methods2 = set(cvvm._CircVarSDRatioMethods._all_methods())
+        if all_methods.symmetric_difference(all_methods2):
+            raise exc.LGNError(dedent(f'''
+                circular variance method lists are inconsistent!
+                data object `CircularVarianceParams` lists: {all_methods}.
+                cv_von_mises lists: {all_methods2}.
+                Likely issue with spatial filters and parameters for simulation!
+                '''))
+
+        if not self.circ_var_definition_method in all_methods:
+            raise exc.LGNError(dedent(f'''
+                circ var method ('{self.circ_var_definition_method}') not one of
+                available methods ({all_methods})
+                '''))
+
 
 @dataclass
 class LGNLocationParams(ConversionABC):
@@ -1151,6 +1179,7 @@ class LGNParams(ConversionABC):
 @dataclass
 class LGNLayer(ConversionABC):
     cells: Tuple[LGNCell]
+    params: LGNParams
 
 # methods and parameters for the generation of LGN cells
 
