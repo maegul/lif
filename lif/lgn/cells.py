@@ -1,4 +1,4 @@
-"""Create the cells for an LGN layer
+"""Create the cells for an LGN layer to make an lgn layer object
 
 Examples:
     # +
@@ -57,6 +57,9 @@ from ..receptive_field.filters import cv_von_mises as cvvm
 from . import (
     rf_locations as rflocs,
     orientation_preferences as rforis)
+
+from ..receptive_field.filters import filter_functions as ff
+
 
 # > Shortcuts to spatial and temporal filters
 
@@ -284,6 +287,13 @@ def mk_lgn_layer(
 
     # spat_filters
     spat_filts, temp_filts = mk_filters(n_cells, lgn_params.filters)
+    oriented_spat_filts = tuple(
+        ff.mk_ori_biased_spatfilt_params_from_spat_filt(
+                spat_filt, circ_var,
+                method=lgn_params.circ_var.circ_var_definition_method
+                )
+            for spat_filt, circ_var in zip(spat_filts, circ_var_vals)
+        )
 
     # locations
     rf_distance_scale = rflocs.mk_rf_locations_distance_scale(
@@ -301,17 +311,19 @@ def mk_lgn_layer(
         cells = tuple(
             do.LGNCell(
                 orientation=ori, circ_var=cv,
-                spat_filt=sf, temp_filt=tf,
+                spat_filt=sf, oriented_spat_filt_params=ori_sf,
+                temp_filt=tf,
                 location=loc
                 )
-            for ori, cv, sf, tf, loc
+            for ori, cv, sf, ori_sf, tf, loc
                 in zip(
                     orientations,
                     circ_var_vals,
-                    spat_filts, temp_filts,
+                    spat_filts, oriented_spat_filts,
+                    temp_filts,
                     rf_locations.locations)
-        )
+            ),
+        params = lgn_params
     )
 
     return lgn_layer
-
