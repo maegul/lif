@@ -93,7 +93,8 @@ class Time(_UnitBC[val_gen]):
     @property
     def base(self) -> val_gen:
         "Base unit: seconds (s)"
-        return self.s
+        return self._convert(self._base_unit)
+        # return self.s
 
     @property
     def s(self) -> val_gen:
@@ -132,7 +133,8 @@ class ArcLength(_UnitBC[val_gen]):
         """Base unit: degrees (deg)
         Use when in doubt (de facto conventional unit)
         """
-        return self.deg
+        return self._convert(self._base_unit)
+        # return self.deg
 
     @property
     def deg(self) -> val_gen:
@@ -212,7 +214,8 @@ class SpatFrequency(_UnitBC[val_gen]):
     @property
     def base(self) -> val_gen:
         "Base unit: cycles per degree (cpd)"
-        return self.cpd
+        return self._convert(self._base_unit)
+        # return self.cpd
 
     @property
     def cpd(self) -> val_gen:
