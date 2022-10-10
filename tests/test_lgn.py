@@ -24,6 +24,8 @@ from lif.lgn import (
     cells
     )
 
+from lif.stimulus import stimulus as stim
+
 
 # > RF Locations
 try:
@@ -34,7 +36,6 @@ except Exception as e:
 rf_loc_gen = cast(do.RFLocationSigmaRatio2SigmaVals, rf_loc_gen)
 
 # >> Rotation and Pairwise distance constancy
-@mark.proto
 @mark.integration
 @given(
     rotation_angle_value=st.floats(0, 90, allow_infinity=False, allow_nan=False),
@@ -94,19 +95,48 @@ def test_pairwise_dists_constant_under_rotation(
                                 rotated_scaled_x_locs, rotated_scaled_y_locs)))
         )
 
-    # # Rotate then apply distance scale
-    # x_locs, y_locs = rflocs.mk_unitless_rf_locations(
-    #     10, rf_loc_gen, ratio=2)
 
-    # rot_x_locs, rot_y_locs = rflocs.rotate_rf_locations(
-    #     x_locs, y_locs, rotation_angle)
+# > Stimulus
+fltst = st.floats(min_value=0, max_value=10_000, allow_nan=False, allow_infinity=False)
+intst = st.integers(min_value=0, max_value=10_000)
+arc_units = st.sampled_from(('deg', 'mnt', 'sec', 'rad'))
+tim_units = st.sampled_from(('s', 'ms', 'us'))
+sfreq_units = st.sampled_from(('cpd', 'cpm', 'cpd_w'))
+tfreq_units = st.sampled_from(('hz', 'w'))
 
-    # distance_scale = ArcLength(5.333, 'deg')
+@mark.proto
+@given(
+    spat_ext=fltst, spat_res=intst, temp_ext=fltst, temp_res=intst,
+    spat_ext_unit=arc_units, spat_res_unit=arc_units, temp_ext_unit=tim_units,
+    temp_res_unit=tim_units,
+    spat_freq=fltst, temp_freq=fltst, orientation=fltst, amplitude=fltst, DC=fltst,
+    spat_freq_unit=sfreq_units, temp_freq_unit=tfreq_units, orientation_unit=arc_units
+    )
+def test_stimulus_signature(
+    spat_ext, spat_res, temp_ext, temp_res,
+    spat_ext_unit, spat_res_unit, temp_ext_unit, temp_res_unit,
+    spat_freq, temp_freq, orientation, amplitude, DC,
+    spat_freq_unit, temp_freq_unit, orientation_unit
+    ):
 
-    # scaled_locs = rflocs.apply_distance_scale_to_rf_locations(x_locs, y_locs, distance_scale)
+    stparams = do.SpaceTimeParams(
+        spat_ext=ArcLength(spat_ext, spat_ext_unit),
+        spat_res=ArcLength(spat_res, spat_res_unit),
+        temp_ext=Time(temp_ext, temp_ext_unit),
+        temp_res=Time(temp_res, temp_res_unit)
+        )
+    stimparams = do.GratingStimulusParams(
+        spat_freq=SpatFrequency(spat_freq, spat_freq_unit),
+        temp_freq=TempFrequency(temp_freq, temp_freq_unit),
+        orientation=ArcLength(orientation, orientation_unit),
+        amplitude=amplitude, DC=DC
+        )
 
-    # assert np.allclose(
-    #     np.sort(rflocs.pdist(rflocs.mk_coords_2d(x_locs, y_locs))),
-    #     np.sort(rflocs.pdist(rflocs.mk_coords_2d(rot_x_locs, rot_y_locs)))
-    #     )
+    signature = stim.mk_stim_signature(stparams, stimparams)
+    new_stparams, new_stimparams = stim.mk_params_from_stim_signature(signature)
+    new_signature = stim.mk_stim_signature(new_stparams, new_stimparams)
+
+    assert new_stparams == stparams
+    assert new_stimparams == stimparams
+    assert signature == new_signature
 
