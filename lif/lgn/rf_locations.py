@@ -1,3 +1,12 @@
+"""Manage the spatial locations of Receptive Fields according to data constraints
+
+Main data constraint is of course `Jin et al 2013`.
+
+This module is more or less like a notebook ... data is hard coded here and functions
+are commented out to be run manually whenever needed.
+
+Not great design but I was just trying to be quick and convenient here.
+"""
 
 # > Imports
 # +
@@ -704,8 +713,7 @@ def mk_rf_ratio_loc_sigma_lookup_tables(
     """
 
     # >>>>> !Important ... presume jin al have the first bin start at 0
-    # which makes an irregular first bin ... but see their comments in the
-    # supplementary materials
+    # now affirmed by Alonso through personal communication
     sigma_x_ratio_lookup = mk_sigma_x_ratio_lookup(ratios, data_bins, data_prob)
 
     rf_locs = do.RFLocationSigmaRatio2SigmaVals(
@@ -920,8 +928,9 @@ def mk_all_ratio_rf_loc_objects(jin_data: _JinData, overwrite: bool = False):
 # -
 
 # >>! Making and Saving the objects
+# run this to create the necessary objects whenever a change is made to the data
 # +
-mk_all_ratio_rf_loc_objects(jin_data=jin_data)
+# mk_all_ratio_rf_loc_objects(jin_data=jin_data)
 # -
 
 # > RF Loc tools
@@ -1095,7 +1104,7 @@ def rotate_rf_locations(
     Args:
         locations_array: columnar array with X as first and Y as second column
         orientation:
-            THe orientation that the rf location elongation will be oriented along.
+            The orientation that the rf location elongation will be oriented along.
             As the default is 90 deg, and the rotation matrix operation is counter-clockwise,
             the rotation matrix will rotate by an angle different from the provided `orientation`
             so as to have the desired result.

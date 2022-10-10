@@ -10,7 +10,7 @@ from typing import (
     overload, cast,
     Callable, Protocol
     )
-from dataclasses import dataclass, astuple, asdict, field
+from dataclasses import dataclass, astuple, asdict, field, replace
 from textwrap import dedent
 import datetime as dt
 from pathlib import Path
@@ -1185,7 +1185,7 @@ class LGNLayer(ConversionABC):
 
 # > Stimuli and Coords
 
-@dataclass
+@dataclass(frozen=True)
 class SpaceTimeParams(ConversionABC):
     """Define size and resolution of the Spatial and Temporal Canvas
 
@@ -1222,7 +1222,7 @@ class SpaceTimeParams(ConversionABC):
                 is an {type(self.spat_res.value)}''')
 
 
-@dataclass
+@dataclass(frozen=True)
 class GratingStimulusParams(ConversionABC):
     """Definition of grating stimulus"""
 

@@ -15,7 +15,7 @@ Examples:
         )
     # -
     # +
-    lgn = mk_lgn_layer(lgnparams, stparams)
+    lgn = mk_lgn_layer(lgnparams, spat_res=stparams.spat_res)
     # -
     # +
     len(lgn.cells)
@@ -272,11 +272,10 @@ def mk_filters(
 
 def mk_lgn_layer(
         lgn_params: do.LGNParams,
-        space_time_params: do.SpaceTimeParams
+        spat_res: ArcLength[scalar],
         ) -> do.LGNLayer:
 
     n_cells = lgn_params.n_cells
-    spat_res = space_time_params.spat_res
 
     # orientations
     orientations = mk_orientations(
@@ -287,6 +286,10 @@ def mk_lgn_layer(
 
     # spat_filters
     spat_filts, temp_filts = mk_filters(n_cells, lgn_params.filters)
+
+    # oriented spat filters
+    # let's pre-compute them and have both available
+    # ... only a few params and objects more
     oriented_spat_filts = tuple(
         ff.mk_ori_biased_spatfilt_params_from_spat_filt(
                 spat_filt, circ_var,
