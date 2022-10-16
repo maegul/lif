@@ -165,7 +165,9 @@ def mk_estimate_sf_tf_conv_params(
                 )
     tf_dc = mk_tq_tf_conv_amp(TempFrequency(0), tf.parameters, spacetime_params.temp_res)
 
-    estimated_dc = grating_stim_params.amplitude * sf_dc * tf_dc
+    # >>> DC is the amplitude at frequency `0` ... so multiply by this,
+    # ... not amplitude, which is the amplitude at frequency `F1`.
+    estimated_dc = grating_stim_params.DC * sf_dc * tf_dc
 
     conv_params = do.EstSpatTempConvResp(
         amplitude=convolution_amp,
