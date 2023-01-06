@@ -122,7 +122,8 @@ class TFRespMetaData(ConversionABC):
     dc: float
     sf: SpatFrequency[float]
     mean_lum: float
-    contrast: Optional[float] = None
+    contrast: float
+    # Ideally would be ContrastValue, but that would break older data files
 
 
 @dataclass
@@ -286,7 +287,8 @@ class SFRespMetaData(ConversionABC):
     dc: float
     tf: TempFrequency[float]  # temp frequency
     mean_lum: float
-    contrast: Optional[float] = None
+    # Ideally would be ContrastValue, but that'd break older saved data
+    contrast: float
 
 
 @dataclass
@@ -1002,6 +1004,16 @@ class AllCircVarianceDistributions:
 
 
 # ## Contrast Parameters
+
+@dataclass
+class ContrastValue:
+    contrast: scalar
+
+    def __post_init__(self):
+
+        if (0 >= self.contrast) or (self.contrast >= 1):
+            raise ValueError(f'contrast must be between 0 and 1')
+
 
 @dataclass(frozen=True)
 class ContrastParams:
