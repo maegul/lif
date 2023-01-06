@@ -1,3 +1,6 @@
+""" Scale response amplitudes to accomodate differences in contrast
+"""
+
 from dataclasses import replace
 
 import plotly.graph_objects as go
@@ -7,15 +10,15 @@ import numpy as np
 
 from scipy.optimize import least_squares
 
-from ..utils.units.units import val_gen, scalar, ArcLength
+from ...utils.units.units import val_gen, scalar, ArcLength
 
-from ..utils import (
+from ...utils import (
     data_objects as do,
     settings,
     exceptions as exc)
 
 
-# > Contrast params
+# # Contrast params
 
 # Taken from Troyer 1998
 # +
@@ -25,7 +28,7 @@ OFF = do.ContrastParams(
     max_resp=48.6, exponent=1.29, contrast_50=0.0718)
 # -
 
-# > Functions
+# # Functions
 
 def contrast_response(
         contrast: val_gen,
@@ -47,7 +50,7 @@ def contrast_response(
     """
 
     # ensure contrasts are fractions not percentages
-    if np.any(0 > contrast > 1):
+    if np.any((0 > contrast) & (contrast > 1)):
         raise ValueError('Contrast must be between 0 and 1')
 
     response = (
