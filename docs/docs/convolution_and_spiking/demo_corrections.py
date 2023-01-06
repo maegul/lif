@@ -3,12 +3,49 @@
 
 # +
 from lif import *
-from lif.convolution import correction
+from lif.convolution import correction, convolve
+from lif.receptive_field.filters import contrast_correction as cont_corr
+from lif.utils import data_objects as do
 
 import plotly.express as px
 import plotly.graph_objects as go
 # -
 
+# ## Boilerplate for NBs
+
+# +
+import os
+
+GLOBAL_ENV_VARS = {
+    'WRITE_FIG': True,  # whether to write new figures
+    'SHOW_FIG': False,  # whether to show new figures
+    'RUN_LONG': False,  # whether to run long tasks
+}
+
+print('***\nSetting Env Variables\n***\n')
+for GEV, DEFAULT_VALUE in GLOBAL_ENV_VARS.items():
+    runtime_value = os.environ.get(GEV)  # defaults to None
+    # parse strings into booleans, but only if actual value provided
+    if runtime_value:
+        new_value = (
+                True
+                    if runtime_value == "True"
+                    else False
+                )
+    # if none provided, just take default value
+    else:
+        new_value = DEFAULT_VALUE
+    print(f'Setting {GEV:<10} ... from {str(DEFAULT_VALUE):<5} to {str(new_value):<5} (runtime value: {runtime_value})')
+    GLOBAL_ENV_VARS[GEV] = new_value
+
+def show_fig(fig):
+    if GLOBAL_ENV_VARS['SHOW_FIG']:
+        fig.show()
+
+def write_fig(fig, file_name: str, **kwargs):
+    if GLOBAL_ENV_VARS['WRITE_FIG']:
+        fig.write_image(file_name, **kwargs)
+# -
 # ## Load filters
 
 # * These are loaded from file, having been previously fit to data
@@ -41,6 +78,7 @@ stim_params = do.GratingStimulusParams(
     amplitude=stim_amp, DC=stim_DC
 )
 # -
+
 # ## Process of Correcting convolution amplitude
 #
 # ### The Problem
@@ -235,4 +273,97 @@ joint_amp = norm_amp * sf_factor * tf_factor
 # * rescale the F1 values that the filter should prescribes before correcting for rectification
 # * which contrast to target?
 
-# ##
+# ## Contrast Correction
+
+# * For any filter (spatial or temporal), bring the response up to what it *should*
+#   be for a given contrast and given the contrast that filter was originally recorded at.
+# * Basically, scale the response up/down according to a conventional contrast curve.
+
+# ### Contrast Module Basics
+
+# +
+cont_corr.ON
+print(f'{cont_corr.ON}')
+# -
+
+# `ContrastParams(max_resp=53, contrast_50=0.133, exponent=1.2)`
+
+# +
+contrasts = np.linspace(0, 1, 50)
+resp = cont_corr.contrast_response(contrasts, cont_corr.ON)
+fig = (
+    px
+    .line(x=contrasts, y=resp)
+    .update_layout(
+        title=f'Contrast curve ({cont_corr.ON=})',
+        xaxis_title='Contrast (0-1)',
+        yaxis_title='Response'
+        )
+    )
+# -
+# +
+show_fig(fig)
+write_fig(
+    fig.update_layout(template='plotly_dark'),
+    'contrast_curve_basic.svg')
+# -
+
+# ![see plot here](./contrast_curve_basic.svg)
+
+
+# +
+base, target = do.ContrastValue(0.3), do.ContrastValue(0.8)
+scaling_factor = cont_corr.mk_contrast_resp_amplitude_adjustment_factor(
+    base_contrast=base, target_contrast=target, params=cont_corr.ON)
+print(f'{scaling_factor=}')
+# -
+
+# ```python
+# scaling_factor=1.233530295968726
+# ```
+
+# +
+if scaling_factor == (
+        cont_corr.contrast_response(target.contrast, cont_corr.ON)
+        /
+        cont_corr.contrast_response(base.contrast, cont_corr.ON)
+    ):
+    print('True')
+
+if np.isclose(
+            cont_corr.contrast_response(target.contrast, cont_corr.ON),
+            scaling_factor * cont_corr.contrast_response(base.contrast, cont_corr.ON)
+        ):
+    print("True")
+# -
+
+
+# ### Correcting Contrast in Joint Responses
+
+# +
+base_response = 45
+base_contrast, target_contrast = do.ContrastValue(0.3), do.ContrastValue(0.8)
+
+new_response = cont_corr.correct_contrast_response_amplitude(
+    base_response, base_contrast, target_contrast, cont_corr.ON)
+print(base_response, new_response)
+# -
+
+# `45 55.50886331859267`
+
+# +
+print(sf.source_data.resp_params.contrast, tf.source_data.resp_params.contrast, )
+# -
+
+# `0.5 0.4`
+
+# +
+correction.joint_spat_temp_f1_magnitude(
+    temp_freq,
+    spat_freq_x, spat_freq_y,
+    tf, sf,
+    contrast=do.ContrastValue(0.2),
+    contrast_params=cont_corr.OFF)
+# -
+
+

@@ -5,7 +5,8 @@
 
 ```python
 from lif import *
-from lif.convolution import correction
+from lif.convolution import correction, convolve
+from lif.receptive_field.filters import contrast
 
 import plotly.express as px
 import plotly.graph_objects as go
@@ -89,21 +90,28 @@ signal = est_amp.gen_sin(
     freq=stim_params.temp_freq
     )
 temp_filter = mk_tq_tf(time_coords, tf.parameters)
+signal_conv = convolve(signal, temp_filter)[:time_coords.value.size]
 ```
 
-```python
-# Plotting if desired
-```
+Plotting if desired
+
 ```python
 px.line(x=time_coords.ms, y=signal).show()
 # px.line(x=time_coords.ms, y=temp_filter).show()
-```
-```python
-signal_conv = convolve(signal, temp_filter)[:time_coords.value.size]
-```
-```python
 px.line(signal_conv).show()
 ```
+
+Make estimations to test amplitude of convolution can be estimated
+Essential processes are
+
+
+* obtain fourier values at the frequency of the signal
+* to divide by the resolution used for the filter and stimuli
+    * Using the same unit used in the fourier calculation is important here (unfortunately not made into a clean interface in this code base)
+* Multiply by the *amplitude of the stimulus at the frequency for which the fourier value has been obtained.*
+    * This is *crucial* to getting the `DC` value correct.
+    * Even for a pure sinusoid, there are two frequencies present in the signal with potentially non-zero amplitudes: the primary or `F1` frequency, and the `DC` or `0` frequency.
+
 ```python
 estimated_amplitude = (
                       stim_params.amplitude *
@@ -111,25 +119,26 @@ estimated_amplitude = (
                       st_params.temp_res.s
                       )
 estimated_dc = (
-    ### ! Multiply by the DC ... not amplitude
+               ### ! Multiply by the DC ... not the `F1` amplitude
                stim_params.DC *
                mk_tq_tf_ft(TempFrequency(0), tf.parameters) /
                st_params.temp_res.s
                )
 
+# remove artefacts from the time constant and "ramping-up" at the beginning of convolution
 stable_conv = signal_conv[signal_conv.size//2:]
 
+# amplitude is half of total min to maximum
 actual_amplitude = (stable_conv.max()-stable_conv.min())/2
+# DC is halfway point between min and max ... or max minus amplitude
 actual_DC = stable_conv.max() - actual_amplitude
 
-# estimated_max = estimated_amplitude + estimated_dc
-# estimated_min = (-1*estimated_amplitude) + estimated_dc
-
+print('~~~~~\nActual values and estimated values with percentage errors ...\n')
 print(f'est_amp: {estimated_amplitude:.3f}, actual: {actual_amplitude:.3f}')
-print(f'Error: {(abs(estimated_amplitude- actual_amplitude)/actual_amplitude):.3%}')
+print(f'Error amplitude: {(abs(estimated_amplitude- actual_amplitude)/actual_amplitude):.3%}')
 
-print(f'est_amp: {estimated_dc:.3f}, actual: {actual_DC:.3f}')
-print(f'Error: {(abs(estimated_dc- actual_DC)/actual_DC):.3%}')
+print(f'est_DC: {estimated_dc:.3f}, actual: {actual_DC:.3f}')
+print(f'Error DC: {(abs(estimated_dc- actual_DC)/actual_DC):.3%}')
 ```
 
 est_amp: 920658.219, actual: 919911.616
@@ -231,12 +240,40 @@ tf_factor = mk_tq_tf_ft(temp_freq, tf.parameters) / norm_tf
 joint_amp = norm_amp * sf_factor * tf_factor
 ```
 
-
-#### But how account for differences in contrast?
-
-
-Scale temporal filter to same contrast as spatial filter?
+### Joint DC
 
 
+* The DC of a spatial or temporal filter is the response of the cell to a uniform stimulus of the same average luminance (or DC luminance) as as the sinusoidal stimuli.
+* To fuse two filters, their DCs can just be averaged.
+* There is a potential issue around mean luminance being too difference between stimuli
+* Just find average of the two?  Raise error if they're too different?
 
-##
+
+### Correcting actual amplitude and DC convolution to produce appropriate F1 when rectified
+
+
+* explain what estimate_real... does
+* how fits into process of correction
+
+
+### But how account for differences in contrast?
+
+
+* rescale the F1 values that the filter should prescribes before correcting for rectification
+* which contrast to target?
+
+
+## Contrast Correction
+
+
+* For any filter (spatial or temporal), bring the response up to what it *should*
+  be for a given contrast and given the contrast that filter was originally recorded at.
+* Basically, scale the response up/down according to a conventional contrast curve.
+
+
+### Contrast Module Basics
+
+```python
+contrast.ON
+```
+`ContrastParams(max_resp=53, contrast_50=0.133, exponent=1.2)`
