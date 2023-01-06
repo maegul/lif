@@ -21,10 +21,13 @@ from . import estimate_real_amp_from_f1 as est_amp
 # >> Joining Separable Spat and Temp
 
 def joint_spat_temp_f1_magnitude(
-        temp_freqs: TempFrequency[val_gen],
-        spat_freqs_x: SpatFrequency[val_gen], spat_freqs_y: SpatFrequency[val_gen],
-        tf: do.TQTempFilter, sf: do.DOGSpatialFilter, collapse_symmetry: bool = False
-        ) -> val_gen:
+        temp_freqs: TempFrequency[scalar],
+        spat_freqs_x: SpatFrequency[scalar], spat_freqs_y: SpatFrequency[scalar],
+        tf: do.TQTempFilter, sf: do.DOGSpatialFilter,
+        contrast: Optional[do.ContrastValue]=None,
+        contrast_params: Optional[do.ContrastParams]=None,
+        collapse_symmetry: bool = False
+        ) -> scalar:
     """Joint amplitude of separate TF and SF treated as separable
 
     Presumes TF and SF are sparable components of a single Spatia-Temporal
@@ -32,14 +35,23 @@ def joint_spat_temp_f1_magnitude(
 
     temp_res and spat_res represent the stimulus used for convolution.
 
-    Parameters
-    ----
-
-
-    Returns
-    ----
+    contrast controls contrast correction.  If not provided, temporal filter is adjusted
+    to spatial filter's contrast (if they're different).
+    If a value is provided, both filters are adjusted to this contrast.
+    This correcting for contrast will affect the targetted F1 amplitude of the responses
+    of the filters.
 
     """
+
+    # create default contrast value if necessary
+    # default to using spatial filter's contrast
+    if not contrast:
+        contrast = do.ContrastValue(contrast=sf.source_data.resp_params.contrast)
+    if not contrast_params:
+        contrast_params = cont_corr.ON
+
+    tf_contrast = do.ContrastValue(tf.source_data.resp_params.contrast)
+    sf_contrast = do.ContrastValue(sf.source_data.resp_params.contrast)
 
     # static spat freq at which temp_filt measured
     tf_sf = tf.source_data.resp_params.sf
@@ -51,25 +63,47 @@ def joint_spat_temp_f1_magnitude(
     norm_tf = mk_tq_tf_ft(sf_tf, tf.parameters)
     norm_sf = mk_dog_sf_ft(tf_sf, SpatFrequency(0), sf.parameters)
 
+    # contrast corrected norm responses
+    norm_tf_cc = cont_corr.correct_contrast_response_amplitude(
+        response_amplitude=norm_tf,
+        base_contrast=tf_contrast, target_contrast=contrast,
+        contrast_params=contrast_params
+        )
+    norm_sf_cc = cont_corr.correct_contrast_response_amplitude(
+        response_amplitude=norm_sf,
+        base_contrast=sf_contrast, target_contrast=contrast,
+        contrast_params=contrast_params
+        )
+
     # norm amplitude ... average of the two intersection responses
     # The amplitude that is what all amps are normlised to: the mid-point or average
-    norm_amp = (norm_tf + norm_sf) / 2
+    norm_amp = (norm_tf_cc + norm_sf_cc) / 2
 
     # factors (filters' responses relative to their norm response)
     # these factors represent how much the actual response (in each domain, time/space)
     # varies from the intersection or norm response
-    sf_factor = (
-        mk_dog_sf_ft(
+
+    # responses
+    actual_sf_conv_amp = mk_dog_sf_ft(
             spat_freqs_x, spat_freqs_y, sf.parameters,
-            collapse_symmetry=False)
-        /
-        norm_sf
-    )
-    tf_factor = (
-        mk_tq_tf_ft(temp_freqs, tf.parameters)
-        /
-        norm_tf
-    )
+            collapse_symmetry=collapse_symmetry)
+    actual_tf_conv_amp = mk_tq_tf_ft(temp_freqs, tf.parameters)
+
+    # contrast corrected responses
+    actual_sf_conv_amp_cc = cont_corr.correct_contrast_response_amplitude(
+        response_amplitude=actual_sf_conv_amp,
+        base_contrast=sf_contrast, target_contrast=contrast,
+        contrast_params=contrast_params
+        )
+    actual_tf_conv_amp_cc = cont_corr.correct_contrast_response_amplitude(
+        response_amplitude=actual_tf_conv_amp,
+        base_contrast=tf_contrast, target_contrast=contrast,
+        contrast_params=contrast_params
+        )
+
+    # factors
+    sf_factor = actual_sf_conv_amp_cc / norm_sf
+    tf_factor = actual_tf_conv_amp_cc / norm_tf
 
     # Now use both factor multiplicatively, as presuming that both filters are linearly separable
     # Each factor "moves" the norm amplitude by however much the actual spatial or temporal freq
