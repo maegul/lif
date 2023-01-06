@@ -1297,6 +1297,8 @@ class GratingStimulusParams(ConversionABC):
     orientation: ArcLength[float]
     amplitude: float = 1
     DC: float = 1
+    contrast: ContrastValue = ContrastValue(0.3)
+    "An artifical parameter not represented in actual stimulus but simulated through correction"
 
     @property
     def direction(self) -> ArcLength[float]:
