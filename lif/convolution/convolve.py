@@ -1,7 +1,7 @@
 """
 Using receptive fields and stimuli to create firing rates through convolution
 """
-from typing import Tuple
+from typing import Tuple, Union, Dict
 
 from brian2.monitors.ratemonitor import PopulationRateMonitor
 from brian2.monitors.spikemonitor import SpikeMonitor
@@ -14,6 +14,8 @@ from ..stimulus import stimulus as stim
 from ..receptive_field.filters import filter_functions as ff
 
 from ..utils import data_objects as do
+
+from . import correction
 
 
 def mk_single_sf_tf_response(
@@ -28,6 +30,9 @@ def mk_single_sf_tf_response(
     stim grating presumed to be 3D (temporal)
 
     Stimulus and filters are created to the same extent as defined in st_params
+
+    Corrections for F1 and rectification are performed so that the rectified response
+    will have an F1 and DC (from fourier analysis) as the filters dictate.
     """
 
     xc, yc = ff.mk_spat_coords(st_params.spat_res, st_params.spat_ext)
@@ -36,16 +41,21 @@ def mk_single_sf_tf_response(
     spat_filt = ff.mk_dog_sf(xc, yc, sf.parameters)
     temp_filt = ff.mk_tq_tf(tc, tf.parameters)
 
+    # make stimulus!
     grating = stim.mk_sinstim(st_params, stim_params)
 
+    # spatial convolution
     spatial_product = (spat_filt[..., np.newaxis] * grating).sum(axis=(0, 1))
 
+    # temporal convolution
     resp: np.ndarray = convolve(spatial_product, temp_filt)[:tc.value.size]
 
-    adj_params = ff.mk_conv_resp_adjustment_params(
+    # adjustment parameters for going from F1 SF and TF to convolution to accurate
+    # sinusoidal response
+    adj_params = correction.mk_conv_resp_adjustment_params(
         st_params, stim_params, sf, tf)
 
-    true_resp = ff.adjust_conv_resp(resp, adj_params)
+    true_resp = correction.adjust_conv_resp(resp, adj_params)
 
     if rectified:
         true_resp[true_resp < 0] = 0
@@ -76,14 +86,33 @@ def mk_sf_tf_poisson(
     return spikes, pop_spikes
 
 
-def aggregate_poisson_trials(spikes_record: bn.SpikeMonitor) -> np.ndarray:
+def aggregate_poisson_trials(
+        spikes_record: Union[bn.SpikeMonitor, Dict, np.ndarray]
+        ) -> np.ndarray:
+    """Transform spike data into form appropriate for plotting
+
+    2 Cols: [[number, spike_time], [number, spike_time], [...], ...]
+    """
 
     cells, spike_times = [], []
 
-    for cell, spikes in spikes_record.spike_trains().items():
+    if isinstance(spikes_record, np.ndarray):
+        spike_train_dict = {
+            i: spikes_record[i,:]
+                # presume each cell or trial is a row
+                for i in range(spikes_record.shape[0])
+            }
+    elif isinstance(spikes_record, bn.SpikeMonitor):
+            spike_train_dict = spikes_record.spike_trains()
+    else:
+        spike_train_dict = spikes_record
+
+
+    for cell, spikes in spike_train_dict.items():
         # conversion to array necessary to take away brian cruft
         cells.append(np.ones_like(np.array(spikes)) * cell)
         spike_times.append(np.array(spikes))
+
 
     cells = np.concatenate(cells)
     spikes = np.concatenate(spike_times)

@@ -1035,7 +1035,10 @@ def spat_filt_coord_at_magnitude_ratio(
 # -
 
 # +
-def avg_largest_pairwise_value(values: Iterable[float]) -> float:
+def avg_largest_pairwise_value(
+        values: Iterable[float],
+        use_median: bool = True
+        ) -> float:
     """For set of values, average largest value of all pairings
 
     Uses only unique pairings, which is consistent with an equal probability of
@@ -1046,9 +1049,14 @@ def avg_largest_pairwise_value(values: Iterable[float]) -> float:
 
     pairings = combinations_with_replacement(values, r=2)
     largest_value_of_each_pair = list(max(p) for p in pairings)
-    mean_largest_value: float = np.mean(largest_value_of_each_pair)
+    # >>> !Use median instead of mean?
+    avg_largest_value: float = (
+        np.mean(largest_value_of_each_pair)
+            if not use_median else
+        np.median(largest_value_of_each_pair)
+        )
 
-    return mean_largest_value
+    return avg_largest_value
 # -
 # +
 def mk_rf_locations_distance_scale(

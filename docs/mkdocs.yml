@@ -19,9 +19,12 @@ nav:
   - 'LGN Layer':
     - 'Receptive Field Locations': 'lgn/receptive_field_locations.md'
   - 'Spiking & Convolution':
-    - 'Demos': 'convolution_and_spiking/demo.md'
+    - 'Demos: Convolution': 'convolution_and_spiking/demo.md'
+    - 'Demos: Correction': 'convolution_and_spiking/demo_corrections.md'
     - 'convolution_and_spiking/convolution_and_spiking.md'
     - 'Corrections': 'convolution_and_spiking/corrections.md'
+    - 'Stanley 2012 Model': 'convolution_and_spiking/stanley_2012_feedforward_lif.md'
+    - 'Stanley 2012 Model II': 'convolution_and_spiking/stanley_2012_feedforward_lif_part_2.md'
 theme:
   name: "material"
   palette:

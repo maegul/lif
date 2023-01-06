@@ -118,7 +118,7 @@ def find_real_f1(
         time: Optional[Time[np.ndarray]] = None) -> opt.OptimizeResult:
     """Find pure sin amplitude for given empirical mean resp and empirical f1
 
-    Done by minimisation.  If not successful, raises TypeError
+    Done by minimisation.  If not successful, raises ValueError
     """
 
     time = Time(np.arange(1000), 'ms') if time is None else time
@@ -129,6 +129,6 @@ def find_real_f1(
 
     # check of optimisation success
     if not opt_results.success:
-        raise TypeError('Real Unrectified amplitude could not be derived')
+        raise ValueError('Real Unrectified amplitude could not be derived')
 
     return opt_results

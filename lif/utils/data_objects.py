@@ -83,7 +83,7 @@ class CitationMetaData(ConversionABC):
         return key
 
 
-# > Basic Optimisation Data object
+# # Basic Optimisation Data object
 
 # full optimisation result object is too much
 # instead just capture the core data if I happen to want to need it later
@@ -114,7 +114,7 @@ class BasicOptimisationData(ConversionABC):
 
 
 
-# > Temp Filter
+# # Temp Filter
 
 @dataclass
 class TFRespMetaData(ConversionABC):
@@ -271,7 +271,7 @@ class TQTempFilter(ConversionABC):
         return temp_filt
 
 
-# > Spatial Filter
+# # Spatial Filter
 
 @dataclass
 class SpatFiltData(ConversionABC):
@@ -471,7 +471,7 @@ class DOGSpatFiltArgs(ConversionABC):
         """
         return self
 
-# >> Circular Variance Objects
+# ## Circular Variance Objects
 
 @dataclass
 class CircularVarianceSDRatioVals(ConversionABC):
@@ -613,7 +613,7 @@ class DOGSpatialFilter(ConversionABC):
 DOGSF = Union[DOGSpatialFilter,DOGSpatFiltArgs]
 "Convenient type so that either may be provided though only parameters to be used"
 
-# > Full LGN Model
+# # Full LGN Model
 
 @dataclass
 class RFLocation(ConversionABC):
@@ -691,7 +691,7 @@ class RFStimSpatIndices(ConversionABC):
             )
 
 
-# >> Location Distributions
+# ## Location Distributions
 
 # +
 class BivariateGaussParams(ConversionABC):
@@ -902,7 +902,7 @@ class RFLocationSigmaRatio2SigmaVals:
         return rf_loc_generator
 # -
 
-# >> Orientations and Circular Variance
+# ## Orientations and Circular Variance
 
 @dataclass
 class VonMisesParams(ConversionABC):
@@ -918,7 +918,7 @@ class VonMisesParams(ConversionABC):
             a=a)
 
 
-# >>> Circ Var distributions
+# ### Circ Var distributions
 
 @dataclass
 class CircVarHistData:
@@ -1001,7 +1001,61 @@ class AllCircVarianceDistributions:
         return distribution
 
 
-# >> Full LGN Cell
+# ## Contrast Parameters
+
+@dataclass(frozen=True)
+class ContrastParams:
+    """Parameters for a contrast response curve
+
+    Intended to work with contrast curves of form:
+
+    `R = (Rmax*C**(n))/(C_50**(n) + C**(n))`
+
+    Notes:
+        Taken from:
+
+        * Cheng, H., Chino, Y. M., Smith, E. L., Hamamoto, J., & Yoshida, K. (1995).
+        Transfer characteristics of lateral geniculate nucleus X neurons in the cat: Effects of spatial frequency and contrast.
+        Journal of Neurophysiology, 74(6), 2548–2557.
+        * Troyer, T. W., Krukowski, A. E., Priebe, N. J., & Miller, K. D. (1998).
+        Contrast-Invariant Orientation Tuning in Cat Visual Cortex: Thalamocortical Input Tuning and Correlation-Based Intracortical Connectivity.
+        Journal of Neuroscience, 18(15), 5908–5927.
+
+    """
+    max_resp: float
+    "Maximum firing rate in Hz"
+    contrast_50: float
+    "contrast which elicits a response half of maximum"
+    exponent: float
+    "characterises the curve shape"
+
+    def to_array(self) -> np.ndarray:
+        return np.array([self.max_resp, self.contrast_50, self.exponent])
+
+    @classmethod
+    def from_array(cls, array) -> ContrastParams:
+
+        return cls(max_resp=array[0], contrast_50=array[1], exponent=array[2])
+
+    def adjusted_max_resp_to_target_values(
+            self, contrast: float, resp: float
+            ) -> ContrastParams:
+        """Shift max resp so that target contrast and response value lie on curve
+
+        Shifting done by deriving the new max_resp value from the formula algebraically:
+
+        `Rmax = (R * (C_50**(n) + C**(n))) / C**(n)`
+        """
+
+        new_max_resp = (
+            resp * (self.contrast_50**(self.exponent) + contrast**(self.exponent))
+            /
+            (contrast**(self.exponent))
+            )
+
+        return replace(self, max_resp = new_max_resp)
+
+# ## Full LGN Cell
 
 @dataclass
 class LGNCell(ConversionABC):
@@ -1035,7 +1089,7 @@ class LGNCell(ConversionABC):
         # ensure stimulus generated with appropriate extent
             # maybe just make huge so no need to worry!
 
-# >> Full LGN Layer
+# ## Full LGN Layer
 
 
 @dataclass
@@ -1183,7 +1237,7 @@ class LGNLayer(ConversionABC):
 
 # methods and parameters for the generation of LGN cells
 
-# > Stimuli and Coords
+# # Stimuli and Coords
 
 @dataclass(frozen=True)
 class SpaceTimeParams(ConversionABC):
@@ -1275,8 +1329,10 @@ class EstSpatTempConvResp(ConversionABC):
 class JointSpatTempResp(ConversionABC):
     """Response of combining a Spat and a Temp Filter"""
 
-    ampitude: float
+    amplitude: float
+    "F1 Amplitude"
     DC: float
+    "Shift from 0 of mean of sinusoid"
 
 
 @dataclass
@@ -1287,4 +1343,4 @@ class ConvRespAdjParams(ConversionABC):
     DC: float
 
 
-# >> LGN
+# ## LGN

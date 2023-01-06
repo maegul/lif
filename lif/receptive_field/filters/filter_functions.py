@@ -23,15 +23,15 @@ from ...utils.units.units import (
 from ...convolution import estimate_real_amp_from_f1 as est_amp
 
 
-# > Globals and Settings
+# # Globals and Settings
 
 PI: float = np.pi
 SPAT_FILT_SD_LIMIT = settings.simulation_params.spat_filt_sd_factor
 TEMP_EXT_N_TAU = settings.simulation_params.temp_filt_n_tau
 
-# > Coordinatess
+# # Coordinatess
 
-# >> Spat Coords
+# ## Spat Coords
 
 def round_coord_to_res(
         coord: ArcLength[float], res: ArcLength[int],
@@ -106,7 +106,7 @@ def round_coord_to_res(
     # return ArcLength(rounded_val, res_unit)
 
 
-# >! Redundant?
+# #! Redundant?
 def mk_spat_radius(spat_ext: Union[ArcLength[int], ArcLength[float]]) -> ArcLength[int]:
     """Calculate a radius that is appropriate for generating spatial coords
 
@@ -252,7 +252,7 @@ def mk_spat_ext_from_sd_limit(
     return spat_ext
 
 
-# >> Standard Dev limited Spat Coords
+# ## Standard Dev limited Spat Coords
 # This function handles limiting spat coords by a Std Dev argument
 # Main behaviour is require only one of a spat_ext or std dev arg
 # and return the appropriate output or raise an error ... thus
@@ -452,7 +452,7 @@ def mk_spat_coords(
     return xc, yc
 
 
-# >> Temp Coords
+# ## Temp Coords
 
 @overload  # ext provided
 def mk_temp_coords(
@@ -532,7 +532,7 @@ def mk_temp_coords(
     return t
 
 
-# >> Spat-Temp coords
+# ## Spat-Temp coords
 
 def mk_spat_temp_coords(
         spat_res: ArcLength[int],
@@ -707,7 +707,7 @@ def mk_blank_coords(
     return space
 
 
-# > Spatial
+# # Spatial
 
 def mk_gauss_1d(
         coords: ArcLength[val_gen],
@@ -1041,7 +1041,7 @@ def mk_dog_sf_conv_amp(
     return dog_sf_amp / (spat_res.mnt**2)
 
 
-# > Orientation Biases
+# # Orientation Biases
 
 # functions for giving radially symmetric spatial filters an orientation bias
 # by adjusting their horizontal and vertical SD values according to definitions
@@ -1049,7 +1049,7 @@ def mk_dog_sf_conv_amp(
 
 
 
-# >> Create adjusted spatfilt parameters
+# ## Create adjusted spatfilt parameters
 
 def mk_ori_biased_spatfilt_params_from_spat_filt(
         spat_filt: do.DOGSpatialFilter,
@@ -1085,7 +1085,7 @@ def mk_ori_biased_spatfilt_params_from_spat_filt(
     return new_sf_params
 
 
-# >> Rotate spatial filters
+# ## Rotate spatial filters
 
 def mk_oriented_sf(sf: np.ndarray, orientation: ArcLength[scalar]) -> np.ndarray:
     """Rotate a rendered spat filter (array) to have provided orientation
@@ -1110,9 +1110,9 @@ def mk_oriented_sf(sf: np.ndarray, orientation: ArcLength[scalar]) -> np.ndarray
     rotated_sf = interpolation.rotate(sf, orientation.deg, reshape=False)
     return rotated_sf
 
-# > Temporal
+# # Temporal
 
-# >> tq temp filt
+# ## tq temp filt
 
 # this is a hidden function because temp filters are simpler than spatial
 # thus, spatial don't need hidden as simpler 1D functions are used for fitting
@@ -1328,7 +1328,6 @@ def mk_tq_tf_ft(
     return tf_ft
 
 
-# > Convolution adjustment or correction
 
 def mk_tq_tf_conv_amp(
         freqs: TempFrequency[val_gen],
@@ -1354,10 +1353,11 @@ def mk_tq_tf_conv_amp(
 
     tf_amp = mk_tq_tf_ft(freqs, tf_params)
 
-    return tf_amp / temp_res.s  # use s as this unit used by mk_tq_tf (needs to be made cleaner!!)
+    # ###! use s as this unit used by mk_tq_tf (needs to be made cleaner!!)
+    return tf_amp / temp_res.s
 
 
-# > Temp Old Gauss (worgoter & Koch)
+# # Temp Old Gauss (worgoter & Koch)
 
 def mk_tempfilt(tau=10, temp_ext=100, temp_res=1, temp_ext_n_tau=None, return_t=False):
     '''Generate a temporal filter

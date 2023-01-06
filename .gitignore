@@ -12,3 +12,6 @@ proto*
 
 .coverage
 htmlcov
+
+# ignore brian cache directories
+**/var/

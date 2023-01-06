@@ -8,7 +8,7 @@
 
 from __future__ import annotations
 import warnings
-from functools import partial
+# from functools import partial
 from typing import Optional, Tuple, Callable, cast
 from textwrap import dedent
 

@@ -1,45 +1,23 @@
 """
-Adjust and correct the results of convolving Spatial and Temporal Filters (from [the receptive field module][receptive_field.filters.filter_functions]) with a stimulus (from [the stimulus module][stimulus.stimulus]) to correct for resolution artefacts and F1 data recording issues from empirical data
+Adjust and correct the results of convolving Spatial and Temporal Filters
+(from [the receptive field module][receptive_field.filters.filter_functions])
+with a stimulus (from [the stimulus module][stimulus.stimulus])
+to correct for resolution artefacts and F1 data recording issues from empirical data
 """
 
+from textwrap import dedent
 from ..utils.units.units import (
-    SpatFrequency, TempFrequency, ArcLength, Time, val_gen, val_gen_flt)
+    SpatFrequency, TempFrequency, ArcLength, Time, val_gen)
 from ..utils import data_objects as do, settings, exceptions as exc
 from ..receptive_field.filters.filter_functions import (
     mk_tq_tf_ft, mk_dog_sf_ft, mk_dog_sf_conv_amp, mk_tq_tf_conv_amp
     )
 from . import estimate_real_amp_from_f1 as est_amp
 
-def mk_tq_tf_conv_amp(
-        freqs: TempFrequency[val_gen],
-        tf_params: do.TQTempFiltParams,
-        temp_res: Time[float]) -> val_gen:
-    """Amplitude of convolution with given filter
-
-    If convolving a sinusoid of a given frequency with this tq temp filter
-    as defined by the provided parameters, this will return the amplitude
-    of the resultant sinusoid if the input sinusoid has amplitude 1
-
-    Essentially same as mk_tq_tf_ft but divided by temp_res
-
-
-    Parameters
-    ----
-
-
-    Returns
-    ----
-
-    """
-
-    tf_amp = mk_tq_tf_ft(freqs, tf_params)
-
-    return tf_amp / temp_res.s  # use s as this unit used by mk_tq_tf (needs to be made cleaner!!)
-
 
 # >> Joining Separable Spat and Temp
 
-def joint_spat_temp_conv_amp(
+def joint_spat_temp_f1_magnitude(
         temp_freqs: TempFrequency[val_gen],
         spat_freqs_x: SpatFrequency[val_gen], spat_freqs_y: SpatFrequency[val_gen],
         tf: do.TQTempFilter, sf: do.DOGSpatialFilter, collapse_symmetry: bool = False
@@ -60,34 +38,48 @@ def joint_spat_temp_conv_amp(
 
     """
 
-    # sf of temp_filt
+    # static spat freq at which temp_filt measured
     tf_sf = tf.source_data.resp_params.sf
+    # static temp freq at which spat_filt measured
     sf_tf = sf.source_data.resp_params.tf
 
+    # find "intersection responses"
+    # response of both filters at the other filter's static frequency
     norm_tf = mk_tq_tf_ft(sf_tf, tf.parameters)
     norm_sf = mk_dog_sf_ft(tf_sf, SpatFrequency(0), sf.parameters)
-    # The amplitude that is what all amps are normlised to
-    # norm_factor will normalise all amps to 1
-    # this 1 will represent norm_amp which is the average of the spat and temp
-    # responses
-    norm_amp = (norm_tf + norm_sf) / 2
-    norm_factor = norm_tf * norm_sf
 
-    joint_amp: val_gen = (  # type: ignore
-        mk_tq_tf_ft(temp_freqs, tf.parameters) *
+    # norm amplitude ... average of the two intersection responses
+    # The amplitude that is what all amps are normlised to: the mid-point or average
+    norm_amp = (norm_tf + norm_sf) / 2
+
+    # factors (filters' responses relative to their norm response)
+    # these factors represent how much the actual response (in each domain, time/space)
+    # varies from the intersection or norm response
+    sf_factor = (
         mk_dog_sf_ft(
             spat_freqs_x, spat_freqs_y, sf.parameters,
-            collapse_symmetry=collapse_symmetry) /
-        norm_factor *  # normalise to intersection
-        norm_amp  # bring to normalised amplitude - avg of intersection
-        )
+            collapse_symmetry=False)
+        /
+        norm_sf
+    )
+    tf_factor = (
+        mk_tq_tf_ft(temp_freqs, tf.parameters)
+        /
+        norm_tf
+    )
+
+    # Now use both factor multiplicatively, as presuming that both filters are linearly separable
+    # Each factor "moves" the norm amplitude by however much the actual spatial or temporal freq
+    # elicits a response greater/lesser than that of the intersection point
+    joint_amp = norm_amp * sf_factor * tf_factor
 
     return joint_amp
 
 
 def joint_dc(tf: do.TQTempFilter, sf: do.DOGSpatialFilter) -> float:
     """Calculate joint DC of temp and spat filters by averaging
-    (must be within 30% of eachother)
+
+    The DC Values must be within 30% of eachother
 
     """
 
@@ -95,7 +87,7 @@ def joint_dc(tf: do.TQTempFilter, sf: do.DOGSpatialFilter) -> float:
     tf_dc = tf.source_data.resp_params.dc
     sf_dc = sf.source_data.resp_params.dc
 
-    if abs(tf_dc - sf_dc) > 0.3*min([tf_dc, sf_dc]):
+    if abs(tf_dc - sf_dc) > (0.3 * min([tf_dc, sf_dc])):
         tf_desc = (
             tf.source_data.meta_data.make_key()
             if tf.source_data.meta_data is not None
@@ -104,10 +96,11 @@ def joint_dc(tf: do.TQTempFilter, sf: do.DOGSpatialFilter) -> float:
             sf.source_data.meta_data.make_key()
             if sf.source_data.meta_data is not None
             else sf.parameters)
-        raise ValueError(
-            f'DC amplitudes of Temp Filt and Spat Filt are too differente\n'
-            f'filters: {tf_desc}, {sf_desc}'
-            f'DC amps: TF: {tf_dc}, SF: {sf_dc}'
+        raise ValueError(dedent(f'''
+            DC amplitudes of Temp Filt and Spat Filt are too differente\n
+            filters: {tf_desc}, {sf_desc}
+            DC amps: TF: {tf_dc}, SF: {sf_dc}
+            ''')
             )
     # Just take the average
     joint_dc = (tf_dc + sf_dc) / 2
@@ -119,8 +112,12 @@ def mk_joint_sf_tf_resp_params(
         grating_stim_params: do.GratingStimulusParams,
         sf: do.DOGSpatialFilter, tf: do.TQTempFilter
         ) -> do.JointSpatTempResp:
+    """Joint responses of the spatial and temporal filters
 
-    amplitude = joint_spat_temp_conv_amp(
+    Returns F1 amplitude and DC values of "join" or "fusion" of filters (as object).
+    """
+
+    amplitude = joint_spat_temp_f1_magnitude(
         spat_freqs_x=grating_stim_params.spat_freq_x,
         spat_freqs_y=grating_stim_params.spat_freq_y,
         temp_freqs=grating_stim_params.temp_freq,
@@ -142,7 +139,7 @@ def mk_estimate_sf_tf_conv_params(
         ) -> do.EstSpatTempConvResp:
     """Produce estimate/analytical amplitude of response after convolving stim with tf and sf
 
-    Presumes that convolving both a spatial (sf) and temporal (tf) filter with a grating
+    Presumes that convolving both a spatial (sf) and temporal (tf) filter with a
     grating stimulus defined by grating_stim_params
     """
 
@@ -215,18 +212,20 @@ def mk_conv_resp_adjustment_params(
 
     """
 
-    # should be convolution_amplitude after full sf and tf convolution with stim!!
+    # Estimate of the convolution_amplitude after full sf and tf convolution with stim!!
     conv_resp_params = mk_estimate_sf_tf_conv_params(
         spacetime_params, grating_stim_params, sf, tf)
 
-    # Joint response
+    # Target joint response of the filters (ie, theoretical, or target, response)
     joint_resp_params = mk_joint_sf_tf_resp_params(grating_stim_params, sf, tf)
 
     # derive real unrectified amplitude
+    # That is, amplitude that would produce the target F1 after rectification and FFT
+    # ... allow any exception to bubble up
     real_unrect_joint_amp_opt = est_amp.find_real_f1(
-        DC_amp=joint_resp_params.DC, f1_target=joint_resp_params.ampitude)
+        DC_amp=joint_resp_params.DC, f1_target=joint_resp_params.amplitude)
 
-    real_unrect_joint_amp = real_unrect_joint_amp_opt.x[0]
+    real_unrect_joint_amp: float = real_unrect_joint_amp_opt.x[0]
 
     # factor to adjust convolution result by to provide realistic amplitude and firing rate
     # after convolution with a stimulus

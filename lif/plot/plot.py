@@ -1,4 +1,4 @@
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple, Union, Dict
 
 import brian2
 from scipy.ndimage.filters import gaussian_filter1d
@@ -10,7 +10,7 @@ from ..receptive_field.filters.filter_functions import (
     do, ArcLength, SpatFrequency, Time, TempFrequency, scalar)
 from ..convolution import estimate_real_amp_from_f1 as est_amp
 # from lif.receptive_field.filters.data_objects import DOGSpatialFilter, TQTempFilter
-from ..convolution import convolve
+from ..convolution import convolve, correction
 from ..utils.data_objects import DOGSpatialFilter, SpaceTimeParams, TQTempFilter
 
 import plotly.express as px
@@ -620,7 +620,7 @@ def joint_sf_tf_amp(
     sf_freq_mg_y = SpatFrequency(np.zeros_like(sf_freq_mg_x.base))
     tf_freq_mg = TempFrequency(tf_freq_mg)
 
-    joint_sf_tf_amp = ff.joint_spat_temp_conv_amp(
+    joint_sf_tf_amp = correction.joint_spat_temp_f1_magnitude(
         temp_freqs=tf_freq_mg, spat_freqs_x=sf_freq_mg_x, spat_freqs_y=sf_freq_mg_y,
         sf=sf, tf=tf
         )
@@ -674,12 +674,12 @@ def joint_sf_tf_amp(
     return plot
 
 
-def poisson_trials_rug(spike_monitor: brian2.SpikeMonitor):
+def poisson_trials_rug(spike_data: Union[Dict, np.ndarray, brian2.SpikeMonitor]):
     """Plot rug plot for each spike for each trial
 
     """
 
-    all_spikes = convolve.aggregate_poisson_trials(spike_monitor)
+    all_spikes = convolve.aggregate_poisson_trials(spike_data)
 
     plot = (
         px
