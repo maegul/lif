@@ -50,7 +50,7 @@ def contrast_response(
     """
 
     # ensure contrasts are fractions not percentages
-    if np.any((0 > contrast) & (contrast > 1)):
+    if np.any((0 >= contrast) & (contrast >= 1)):
         raise ValueError('Contrast must be between 0 and 1')
 
     response = (
@@ -63,12 +63,28 @@ def contrast_response(
 
 
 def mk_contrast_resp_amplitude_adjustment_factor(
-        base_contrast: float,
-        target_contrast: float,
+        base_contrast: do.ContrastValue,
+        target_contrast: do.ContrastValue,
         params: do.ContrastParams
         ) -> float:
 
-    base_resp = contrast_response(base_contrast, params)
-    target_resp = contrast_response(target_contrast, params)
+    base_resp = contrast_response(base_contrast.contrast, params)
+    target_resp = contrast_response(target_contrast.contrast, params)
 
     return target_resp/base_resp
+
+def correct_contrast_response_amplitude(
+        response_amplitude: scalar,
+        base_contrast: do.ContrastValue,
+        target_contrast: do.ContrastValue,
+        contrast_params: do.ContrastParams
+        ) -> scalar:
+    """Provide new response amplitude by shifting along contrast response curve
+    """
+
+    correction_factor = mk_contrast_resp_amplitude_adjustment_factor(
+        base_contrast, target_contrast, contrast_params
+        )
+    corrected_response = response_amplitude * correction_factor
+
+    return corrected_response
