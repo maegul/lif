@@ -147,7 +147,9 @@ def joint_dc(tf: do.TQTempFilter, sf: do.DOGSpatialFilter) -> float:
 
 def mk_joint_sf_tf_resp_params(
         grating_stim_params: do.GratingStimulusParams,
-        sf: do.DOGSpatialFilter, tf: do.TQTempFilter
+        sf: do.DOGSpatialFilter, tf: do.TQTempFilter,
+        contrast: Optional[do.ContrastValue]=None,
+        contrast_params: Optional[do.ContrastParams]=None,
         ) -> do.JointSpatTempResp:
     """Joint responses of the spatial and temporal filters
 
@@ -158,7 +160,8 @@ def mk_joint_sf_tf_resp_params(
         spat_freqs_x=grating_stim_params.spat_freq_x,
         spat_freqs_y=grating_stim_params.spat_freq_y,
         temp_freqs=grating_stim_params.temp_freq,
-        sf=sf, tf=tf
+        sf=sf, tf=tf,
+        contrast=contrast, contrast_params=contrast_params
         )
 
     DC = joint_dc(tf, sf)
@@ -215,7 +218,8 @@ def mk_conv_resp_adjustment_params(
         spacetime_params: do.SpaceTimeParams,
         grating_stim_params: do.GratingStimulusParams,
         sf: do.DOGSpatialFilter,
-        tf: do.TQTempFilter
+        tf: do.TQTempFilter,
+        contrast_params: do.ContrastParams
         ) -> do.ConvRespAdjParams:
     """Factor to adjust amplitude of convolution to what filters dictate
 
@@ -254,7 +258,10 @@ def mk_conv_resp_adjustment_params(
         spacetime_params, grating_stim_params, sf, tf)
 
     # Target joint response of the filters (ie, theoretical, or target, response)
-    joint_resp_params = mk_joint_sf_tf_resp_params(grating_stim_params, sf, tf)
+    joint_resp_params = mk_joint_sf_tf_resp_params(
+        grating_stim_params, sf, tf,
+        contrast=grating_stim_params.contrast,
+        contrast_params=contrast_params)
 
     # derive real unrectified amplitude
     # That is, amplitude that would produce the target F1 after rectification and FFT
