@@ -6,12 +6,15 @@ to correct for resolution artefacts and F1 data recording issues from empirical 
 """
 
 from textwrap import dedent
+from typing import Optional
+
 from ..utils.units.units import (
-    SpatFrequency, TempFrequency, ArcLength, Time, val_gen)
+    SpatFrequency, TempFrequency, ArcLength, Time, val_gen, scalar)
 from ..utils import data_objects as do, settings, exceptions as exc
 from ..receptive_field.filters.filter_functions import (
     mk_tq_tf_ft, mk_dog_sf_ft, mk_dog_sf_conv_amp, mk_tq_tf_conv_amp
     )
+from ..receptive_field.filters import contrast_correction as cont_corr
 from . import estimate_real_amp_from_f1 as est_amp
 
 
