@@ -366,4 +366,6 @@ correction.joint_spat_temp_f1_magnitude(
     contrast_params=cont_corr.OFF)
 # -
 
+# ... using contrast correction in full convolution correction ...
+
 
