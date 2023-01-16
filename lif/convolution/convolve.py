@@ -1,7 +1,7 @@
 """
 Using receptive fields and stimuli to create firing rates through convolution
 """
-from typing import Tuple, Union, Dict
+from typing import Tuple, Union, Dict, Optional
 
 from brian2.monitors.ratemonitor import PopulationRateMonitor
 from brian2.monitors.spikemonitor import SpikeMonitor
@@ -23,6 +23,7 @@ def mk_single_sf_tf_response(
         tf: do.TQTempFilter,
         st_params: do.SpaceTimeParams,
         stim_params: do.GratingStimulusParams,
+        contrast_params: Optional[do.ContrastParams] = None,
         rectified: bool = True
         ) -> np.ndarray:
     """Produces rectified 1D response of "cell" defined by sf+tf to stim
@@ -53,7 +54,8 @@ def mk_single_sf_tf_response(
     # adjustment parameters for going from F1 SF and TF to convolution to accurate
     # sinusoidal response
     adj_params = correction.mk_conv_resp_adjustment_params(
-        st_params, stim_params, sf, tf)
+        st_params, stim_params, sf, tf,
+        contrast_params=contrast_params)
 
     true_resp = correction.adjust_conv_resp(resp, adj_params)
 

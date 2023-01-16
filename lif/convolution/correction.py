@@ -41,6 +41,9 @@ def joint_spat_temp_f1_magnitude(
     This correcting for contrast will affect the targetted F1 amplitude of the responses
     of the filters.
 
+    `contrast_params` define the contrast curve to be used.
+    If not provided, a default is taken from the `contrast_correction` module (typically `ON`)
+
     """
 
     # create default contrast value if necessary
@@ -219,7 +222,7 @@ def mk_conv_resp_adjustment_params(
         grating_stim_params: do.GratingStimulusParams,
         sf: do.DOGSpatialFilter,
         tf: do.TQTempFilter,
-        contrast_params: do.ContrastParams
+        contrast_params: Optional[do.ContrastParams] = None
         ) -> do.ConvRespAdjParams:
     """Factor to adjust amplitude of convolution to what filters dictate
 
