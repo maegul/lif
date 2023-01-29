@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lif"
+version = "0.0.1"
+readme = "README.md"
+dependencies = [
+	"Brian2==2.5.*",
+	"dash==2.5.*",
+	"ipywidgets==8.*",
+	"plotly>=5.4.0",
+	"scipy==1.7.*",
+]
+
+requires-python = ">=3.9"
+# dynamic = ["version"]
+
+[tool.setuptools]
+packages = ["lif"]
+
+# [tool.setuptools.dynamic]
+# version = {attr = "zekell.__version__"}
+
+# [project.scripts]
+# zkl = "zkl.zekell:main"
+# zkl-serve = "zkl.server:main"

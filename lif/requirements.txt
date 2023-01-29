@@ -1,0 +1,5 @@
+Brian2==2.5.0.1
+dash==2.5.1
+ipywidgets==8.0.4
+plotly==5.4.0
+scipy==1.7.3
