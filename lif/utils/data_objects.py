@@ -20,6 +20,7 @@ import copy
 import numpy as np
 from scipy.optimize import OptimizeResult
 from scipy.interpolate import interp1d
+import scipy.stats as stats
 import pandas as pd
 
 from . import settings
@@ -119,12 +120,47 @@ class BasicOptimisationData(ConversionABC):
 @dataclass
 class TFRespMetaData(ConversionABC):
     """Metadata or additional data on context of temp filter data"""
-    dc: float
+    dc: Optional[float]
     sf: SpatFrequency[float]
     mean_lum: float
     contrast: float
     # Ideally would be ContrastValue, but that would break older data files
 
+    def resolve(self):
+        '''Fill missing values by some guided statistical means, return new object
+
+        For new dc value where none is provided, exponential distribution used with
+        parameters derived as follows:
+
+        ```python
+        def basic_exp(x, b):
+            return np.exp(-b * x)
+
+        # data from Kaplan_et_al_1987 fig 1
+        xdata = np.array([10, 20, 30, 40])
+        ydata = np.array([29, 17, 6, 1])
+        ydata_norm = ydata / ydata.sum()
+
+        opt_res = opt.curve_fit(
+            basic_exp, xdata, ydata_norm, p0=[0.01]
+            )
+
+        opt_res[0]
+        # 0.0638429
+        ```
+        '''
+        # if DC provided, no need to generate new value
+        if self.dc:
+            return self
+
+        b = 0.0638429  # hard coded from optimisation run (see docstring)
+
+        new_dc = stats.expon.rvs(scale=1/b, size=1)[0]  # type: ignore
+        new_dc = cast(float, new_dc)
+        new_meta_data = copy.deepcopy(self)
+        new_meta_data.dc = new_dc
+
+        return new_meta_data
 
 @dataclass
 class TempFiltData(ConversionABC):
@@ -284,11 +320,48 @@ class SpatFiltData(ConversionABC):
 @dataclass
 class SFRespMetaData(ConversionABC):
     """Metadata or additional data on context of spat filter data"""
-    dc: float
+    dc: Optional[float]
+    "If not provided, `resolve()` method will generate one"
     tf: TempFrequency[float]  # temp frequency
     mean_lum: float
     # Ideally would be ContrastValue, but that'd break older saved data
     contrast: float
+
+    def resolve(self):
+        '''Fill missing values by some guided statistical means, return new object
+
+        For new dc value where none is provided, exponential distribution used with
+        parameters derived as follows:
+
+        ```python
+        def basic_exp(x, b):
+            return np.exp(-b * x)
+
+        # data from Kaplan_et_al_1987 fig 1
+        xdata = np.array([10, 20, 30, 40])
+        ydata = np.array([29, 17, 6, 1])
+        ydata_norm = ydata / ydata.sum()
+
+        opt_res = opt.curve_fit(
+            basic_exp, xdata, ydata_norm, p0=[0.01]
+            )
+
+        opt_res[0]
+        # 0.0638429
+        ```
+        '''
+        # if DC provided, no need to generate new value
+        if self.dc:
+            return self
+
+        b = 0.0638429  # hard coded from optimisation run (see docstring)
+
+        new_dc = stats.expon.rvs(scale=1/b, size=1)[0]  # type: ignore
+        new_dc = cast(float, new_dc)
+        new_meta_data = copy.deepcopy(self)
+        new_meta_data.dc = new_dc
+
+        return new_meta_data
 
 
 @dataclass
