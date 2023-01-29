@@ -317,7 +317,12 @@ def circ_var_sd_ratio_shou(
 
     # find spat_freq at resp is just above "noise"
     # lets estimate noise as being F1 modulation that is 15% of the DC firing rate
-    threshold = 0.10 * sf_params.resp_params.dc
+    # As not all filters have a known DC/spontaneous firing rate, a base rate will be assumed
+    # for these purposes given data in Kaplan_et_al 1987 and Barardi_Morrone 1984.
+    # Presume 17Hz DC.
+    # Also, it really shouldn't matter, as it's most likely the F1 amplitude that determines
+    # whether a response is "just noticable"
+    threshold = 0.10 * 17  # presume 17Hz DC spontaneous firing rate
     above_threshold_mask = spat_freq_resp_h > threshold
 
     # if no such responses, can't define circ var and so return None

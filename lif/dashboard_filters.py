@@ -9,7 +9,10 @@ import plotly.express as px
 import numpy as np
 import pandas as pd
 
-from lif import plot, ff, DOGSpatialFilter
+# from lif import plot, ff, DOGSpatialFilter
+import receptive_field.filters.filter_functions as ff
+import plot.plot as plot
+from utils.data_objects import DOGSpatialFilter
 
 app = Dash(__name__)
 

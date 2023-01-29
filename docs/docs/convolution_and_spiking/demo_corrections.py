@@ -366,6 +366,10 @@ correction.joint_spat_temp_f1_magnitude(
     contrast_params=cont_corr.OFF)
 # -
 
-# ... using contrast correction in full convolution correction ...
 
+# ### Contrast Correction in full convolution code
 
+# Just need to pass contrast params and stimulus contrast to `mk_conv_resp_adjust_params()` which
+# uses `joint_spat_temp_f1_magnitude()` under the hood.
+#
+#

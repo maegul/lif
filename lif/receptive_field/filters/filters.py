@@ -27,7 +27,7 @@ TIME_UNIT: str = 'ms'
 
 # from ...utils import settings
 
-# > Temp Filters
+# # Temp Filters
 
 class Test():
     a = "dfjd"
@@ -135,7 +135,7 @@ def make_tq_temp_filt(parameters: do.TempFiltParams) -> do.TQTempFilter:
     return temp_filt
 
 
-# > Spatial Filters
+# # Spatial Filters
 
 def _dog_ft_wrapper(
         x: np.ndarray, freqs: SpatFrequency, amplitude_real: np.ndarray) -> np.ndarray:
