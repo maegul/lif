@@ -1,4 +1,4 @@
-from typing import Optional, Tuple, Union, Dict
+from typing import Optional, Tuple, Union, Dict, Sequence
 
 import brian2
 from scipy.ndimage.filters import gaussian_filter1d
@@ -61,12 +61,12 @@ def tq_temp_filt(
     return fig
 
 
-def spat_filt(
+def _mk_spat_filt_values(
         spat_filter: Union[do.DOGSpatialFilter,do.DOGSpatFiltArgs],
         spat_res: ArcLength[scalar] = ArcLength(1, 'mnt'),
         spat_ext: Optional[ArcLength[scalar]] = None,
-        sd: Union[bool, float] = False
-        ):
+        sd: Union[bool, float] = False,
+        ) -> Tuple[ArcLength[np.ndarray], np.ndarray, np.ndarray, np.ndarray]:
 
     if (spat_ext and sd) or ((not spat_ext) and (not sd)):
         raise ValueError('Must provide only one of spat_ext and sd')
@@ -93,6 +93,19 @@ def spat_filt(
         coords=spat_coords, sd=surr_params.arguments.h_sd)
     sf_values = cent_filter_values + surr_filter_values
 
+    return spat_coords, cent_filter_values, surr_filter_values, sf_values
+
+
+def spat_filt(
+        spat_filter: Union[do.DOGSpatialFilter,do.DOGSpatFiltArgs],
+        spat_res: ArcLength[scalar] = ArcLength(1, 'mnt'),
+        spat_ext: Optional[ArcLength[scalar]] = None,
+        sd: Union[bool, float] = False
+        ):
+
+    spat_coords, cent_filter_values, surr_filter_values, sf_values = _mk_spat_filt_values(
+        spat_filter, spat_res, spat_ext, sd)
+
     fig = (
         go.Figure()
         .add_trace(
@@ -118,8 +131,49 @@ def spat_filt(
             )
         .update_layout(
             xaxis_title='Distance (arc mnts)', yaxis_title='Amplitude')
-        .update_yaxes(zeroline=True, zerolinewidth=5, zerolinecolor='grey')
+        .update_yaxes(zeroline=True, zerolinewidth=5, zerolinecolor='grey')  # type: ignore
         )
+
+    return fig
+
+
+def multi_spat_filt(
+        spat_filters: Sequence[do.DOGSpatialFilter],
+        spat_res: ArcLength[scalar] = ArcLength(1, 'mnt'),
+        spat_ext: Optional[ArcLength[scalar]] = None,
+        sd: Union[bool, float] = False,
+        normalise_magnitude: bool = False
+        ):
+
+    spat_filter_data = []
+    for sf in spat_filters:
+        spat_coords, _, _, sf_values = (
+            _mk_spat_filt_values(sf, spat_res, spat_ext, sd)
+            )
+        label = f'{sf.source_data.meta_data.author} ({sf.source_data.meta_data.year}), {sf.source_data.meta_data.reference}'
+        spat_filter_data.append((label, spat_coords, sf_values, sf_values/sf_values.max()))
+
+    fig = go.Figure()
+
+    for sf_data in spat_filter_data:
+        label, spat_coords, values, values_norm = sf_data
+        fig = fig.add_scatter(  # type: ignore
+                name = label,
+                x=spat_coords.mnt,
+                y=(
+                    values
+                        if not normalise_magnitude
+                        else
+                        values_norm
+                    )
+            )
+
+    fig = (
+        fig
+        .update_layout(
+            xaxis_title='Distance (arc mnts)', yaxis_title='Amplitude')
+        .update_yaxes(zeroline=True, zerolinewidth=5, zerolinecolor='grey')  # type: ignore
+    )
 
     return fig
 
@@ -432,7 +486,7 @@ def ori_spat_freq_heatmap(
             resps, x=angles.deg, y=spat_freqs.cpd,
             labels={'x': 'Orientation (Deg)', 'y': 'Spat Freq (CPD)'},
             origin='lower', width=width, height=height, aspect='auto')
-    fig.update_xaxes(tickvals=angles.deg, ticks='outside')  # type: ignore
+    fig = fig.update_xaxes(tickvals=angles.deg, ticks='outside')  # type: ignore
 
     if use_log_yaxis:
         fig = fig.update_yaxes(type='log')
