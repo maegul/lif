@@ -51,7 +51,7 @@ def joint_spat_temp_f1_magnitude(
     if not contrast:
         contrast = do.ContrastValue(contrast=sf.source_data.resp_params.contrast)
     if not contrast_params:
-        contrast_params = cont_corr.ON
+        contrast_params = settings.simulation_params.contrast_params
 
     tf_contrast = do.ContrastValue(tf.source_data.resp_params.contrast)
     sf_contrast = do.ContrastValue(sf.source_data.resp_params.contrast)
