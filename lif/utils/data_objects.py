@@ -369,7 +369,7 @@ class SpatFiltParams(ConversionABC):
     """All data and information on spatial frequency response from the literature"""
     data: SpatFiltData
     resp_params: SFRespMetaData
-    meta_data: Optional[CitationMetaData] = None
+    meta_data: CitationMetaData
 
 
 @dataclass
