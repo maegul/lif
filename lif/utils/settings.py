@@ -22,6 +22,10 @@ import json
 
 from dataclasses import replace, dataclass, asdict
 
+# from lif.utils import data_objects as do
+# from lif.receptive_field.filters import contrast_correction as cont_cor
+
+
 # > config file names
 SETTINGS_FILE_NAME = Path('.lif_hws')
 SIMULATION_PARAMS_FILE_NAME = Path('.lif_sim_params')
@@ -55,6 +59,15 @@ class SimulationParams(ParamsObj):
     "By how many times the spatial coordinates should be larger than the largest Std Dev parameter"
     temp_filt_n_tau: float = 10
     "By how many times the temporal coordinates should be larger than the time constant"
+    # contrast_params: do.ContrastParams = cont_cor.ON
+
+    @property
+    def contrast_params(self):
+
+        # from lif.utils import data_objects as do
+        from lif.receptive_field.filters import contrast_correction as cont_cor
+
+        return cont_cor.ON
 
 
 # > updating default settings from config file

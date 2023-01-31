@@ -2,6 +2,8 @@
 Classes for handling and grouping basic data objects
 """
 
+# # Imports
+
 from __future__ import annotations
 from functools import partial
 from typing import (
@@ -23,16 +25,51 @@ from scipy.interpolate import interp1d
 import scipy.stats as stats
 import pandas as pd
 
-from . import settings
+from . import settings, exceptions as exc
 from .units.units import (
     val_gen, scalar,
     ArcLength, TempFrequency, SpatFrequency, Time
     )
-from ..receptive_field.filters import (
-    filter_functions as ff,
-    cv_von_mises as cvvm
-    )
-from . import exceptions as exc
+
+# ## Circular imports
+
+# Likely to be circular, as we're using modules here that also use this one
+# which isn't surprising as this is a central module, so any module outside
+# of "utils" is likely to be circular if imported here.
+
+# To avoid ... make functions that are "proxies" for an import but only execute
+# "deferred imports"
+
+def _filter_functions_module():
+    import lif.receptive_field.filters.filter_functions as ff
+    return ff
+
+def _cv_von_mises_module():
+    import lif.receptive_field.filters.cv_von_mises as cvvm
+    return cvvm
+
+# Old previous attempts at these imports ...
+
+# try:
+#     import lif.receptive_field.filters.filter_functions as ff
+# except (ImportError, AttributeError):
+#     import sys
+#     root_package = __package__.split('.')[0]
+#     ff = sys.modules[root_package + '.receptive_field.filters.filter_functions']
+# try:
+#     import lif.receptive_field.filters.cv_von_mises as cvvm
+# except (ImportError, AttributeError):
+#     import sys
+#     root_package = __package__.split('.')[0]
+#     cvvm = sys.modules[root_package + '.receptive_field.filters.cv_von_mises']
+
+# import lif.receptive_field.filters.filter_functions as ff
+# import lif.receptive_field.filters.cv_von_mises as cvvm
+
+# from ..receptive_field.filters import (
+#     filter_functions as ff,
+#     cv_von_mises as cvvm
+#     )
 
 
 # numerical_iter = Union[np.ndarray, Iterable[float]]
@@ -718,6 +755,7 @@ class RFLocation(ConversionABC):
     def round_to_spat_res(self, spat_res: ArcLength[int]) -> 'RFLocation':
         """New object with `x`,`y` coords snapped to `spat_res`
         """
+        ff=_filter_functions_module()
         x = ff.round_coord_to_res(coord=self.x, res=spat_res)
         y = ff.round_coord_to_res(coord=self.y, res=spat_res)
 
@@ -756,7 +794,7 @@ class RFStimSpatIndices(ConversionABC):
         Uses the space time parameters to determine what the extent will be,
         then checkes of all indices are within 0 and the predicted size.
         """
-
+        ff = _filter_functions_module()
         full_ext = ff.spatial_extent_in_res_units(
             st_params.spat_res, spat_ext = st_params.spat_ext)
 
@@ -987,6 +1025,8 @@ class VonMisesParams(ConversionABC):
 
     @classmethod
     def from_circ_var(cls, cv: float, phi: ArcLength[scalar], a: float=1) -> VonMisesParams:
+
+        cvvm = _cv_von_mises_module()
         return cls(
             k=cvvm.cv_k(cv),
             phi=phi,
@@ -1198,6 +1238,8 @@ class LGNCircVarParams(ConversionABC):
     "method to be used for defining how a circular variance is converted to spat filt params"
 
     def __post_init__(self):
+
+        cvvm = _cv_von_mises_module()
         # check distribution alias
         alias_available = (
             self.distribution_alias in
