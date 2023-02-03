@@ -541,7 +541,8 @@ def mk_spat_temp_coords(
         sd: Optional[ArcLength[float]] = None,
         sd_limit: float = SPAT_FILT_SD_LIMIT,
         tau: Optional[Time[scalar]] = None,
-        temp_ext_n_tau: float = TEMP_EXT_N_TAU
+        temp_ext_n_tau: float = TEMP_EXT_N_TAU,
+        array_dtype: Optional[str] = None
         ) -> Tuple[ArcLength[np.ndarray], ArcLength[np.ndarray], Time[np.ndarray]]:
     '''
     Produces **grids** or **matrices** of spatial and temporal coordinates
@@ -565,6 +566,7 @@ def mk_spat_temp_coords(
         tau: time contant of a temporal filter, passed to mk_temp_coords to limit the extent
             according to a putative temporal filter
         temp_ext_n_tau: number of time constants to use as the extent, default from config.
+        array_dtype: if provided, will alter the dtype of the returned arrays
 
     Returns:
         xc: 3D output of `np.meshgrid` `x` coord values as an `ArcLength` object,
@@ -650,6 +652,15 @@ def mk_spat_temp_coords(
     # this way, the task of rendering coords in the appropriate units (same as resolution, say)
     # is on the core 1d functions only.
     _xc, _yc, _tc = np.meshgrid(x_coords.value, y_coords.value, t_coords.value)
+
+    try:
+        if array_dtype:
+            _xc, _yc, _tc = _xc.astype(array_dtype), _yc.astype(array_dtype), _tc.astype(array_dtype)
+    except TypeError:
+        raise ValueError(
+            f'array_dtype must be usable by numpy, like "float32" (instead {array_dtype})')
+
+
     xc = ArcLength(_xc, x_coords.unit)
     yc = ArcLength(_yc, y_coords.unit)
     tc = Time(_tc, t_coords.unit)

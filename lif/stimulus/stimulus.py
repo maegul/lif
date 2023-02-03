@@ -30,7 +30,8 @@ PI: float = np.pi
 
 def mk_sinstim(
         space_time_params: do.SpaceTimeParams,
-        grating_stim_params: do.GratingStimulusParams
+        grating_stim_params: do.GratingStimulusParams,
+        array_dtype: Optional[str] = None
         ) -> np.ndarray:
     '''Generate sinusoidal grating stimulus
 
@@ -40,12 +41,15 @@ def mk_sinstim(
     Modulation or propogation over time is in "direction" in grating_stim_params
 
     Spatial and Temporal coords are generated according to space_time_params
+
+    array_dtype, if provided, will alter the dtype of the array
     '''
 
     # creating coords
     xc, yc, tc = ff.mk_spat_temp_coords(
         spat_ext=space_time_params.spat_ext, temp_ext=space_time_params.temp_ext,
-        spat_res=space_time_params.spat_res, temp_res=space_time_params.temp_res
+        spat_res=space_time_params.spat_res, temp_res=space_time_params.temp_res,
+        array_dtype=array_dtype
         )
 
     # within the cos, the coords are in SI (base: degs, seconds) but the factors
