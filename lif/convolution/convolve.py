@@ -23,7 +23,10 @@ def mk_single_sf_tf_response(
         tf: do.TQTempFilter,
         st_params: do.SpaceTimeParams,
         stim_params: do.GratingStimulusParams,
+        stim_slice: np.ndarray,  # better object for this ... let's see what's needed?
         contrast_params: Optional[do.ContrastParams] = None,
+        filter_actual_max_f1_amp: Optional[do.LGNF1AmpMaxValue] = None,
+        target_max_f1_amp: Optional[do.LGNF1AmpMaxValue] = None,
         rectified: bool = True
         ) -> np.ndarray:
     """Produces rectified 1D response of "cell" defined by sf+tf to stim
@@ -36,17 +39,22 @@ def mk_single_sf_tf_response(
     will have an F1 and DC (from fourier analysis) as the filters dictate.
     """
 
+    # Handle if max_f1 passed in or not
+    if (
+            (target_max_f1_amp or filter_actual_max_f1_amp) # at least one
+            and not
+            (target_max_f1_amp and filter_actual_max_f1_amp) # but not both
+            ):
+        raise ValueError('Need to pass BOTH target and actual max_f1_amp')
+
     xc, yc = ff.mk_spat_coords(st_params.spat_res, st_params.spat_ext)
     tc = ff.mk_temp_coords(st_params.temp_res, st_params.temp_ext)
 
     spat_filt = ff.mk_dog_sf(xc, yc, sf.parameters)
     temp_filt = ff.mk_tq_tf(tc, tf.parameters)
 
-    # make stimulus!
-    grating = stim.mk_sinstim(st_params, stim_params)
-
     # spatial convolution
-    spatial_product = (spat_filt[..., np.newaxis] * grating).sum(axis=(0, 1))
+    spatial_product = (spat_filt[..., np.newaxis] * stim_slice).sum(axis=(0, 1))
 
     # temporal convolution
     resp: np.ndarray = convolve(spatial_product, temp_filt)[:tc.value.size]
@@ -55,7 +63,10 @@ def mk_single_sf_tf_response(
     # sinusoidal response
     adj_params = correction.mk_conv_resp_adjustment_params(
         st_params, stim_params, sf, tf,
-        contrast_params=contrast_params)
+        contrast_params=contrast_params,
+        filter_actual_max_f1_amp=filter_actual_max_f1_amp,
+        target_max_f1_amp=target_max_f1_amp
+        )
 
     true_resp = correction.adjust_conv_resp(resp, adj_params)
 
