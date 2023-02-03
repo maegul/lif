@@ -1523,6 +1523,7 @@ class GratingStimulusParams(ConversionABC):
 
         return freq
 
+# # Convolution and adjustment params
 
 @dataclass
 class EstSpatTempConvResp(ConversionABC):
@@ -1552,4 +1553,13 @@ class ConvRespAdjParams(ConversionABC):
     "Necessary only if scaling maximal firing rates"
 
 
-# ## LGN
+# # V1
+
+@dataclass
+class LIFParams(ConversionABC):
+    # See stanley_2012 feedforward lif docs
+    pass
+
+@dataclass
+class V1Params(ConversionABC):
+    lif_params: LIFParams
