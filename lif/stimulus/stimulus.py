@@ -91,8 +91,8 @@ def estimate_max_stimulus_spatial_ext_for_lgn(
 
     Spat extent returned is a width or diameter not a radius.
     Calculated by rendering a set of cell parameters (especially location),
-    finding location and max std dev of spat filter, adding them, then finding
-    the largest such extent amongst all the cells.
+    finding most distal location and greatest std dev of all the spat filters,
+    adding them, then finding the largest such extent amongst all the cells.
     Important to note that this estimate **relies entirely** on the statistical
     generation of cell locations.
 
@@ -115,7 +115,11 @@ def estimate_max_stimulus_spatial_ext_for_lgn(
             lgn_layer = replace(lgn_layer, n_cells=n_cells)
         lgn_layer = lgn.mk_lgn_layer(lgn_layer, spat_res)
 
-    cells_furthest_canvas_coords: Iterable[ArcLength[scalar]] = []
+    # lists for largest distance and sd_extent, both will be put into base units (scalar)
+    largest_locs: Iterable[scalar] = []
+    largest_sd_extents: Iterable[scalar] = []
+
+    # Go through each cell and get the largest distance (from x or y) and the largest sd extent
     for cell in lgn_layer.cells:
         # remain agnostic about the default orientation of the location elongation
         # ... and just take the largest location
@@ -126,31 +130,34 @@ def estimate_max_stimulus_spatial_ext_for_lgn(
             key = lambda a: abs(a.base)
             )
 
+        largest_locs.append(abs(largest_loc.base))
+
         # most likely will get largest surround sd, so using oriented no so necessray
         # ... but using just in case central sd is large
         largest_sd = cell.oriented_spat_filt_params.max_sd()
         largest_sd_extent = (
             largest_sd.base * settings.simulation_params.spat_filt_sd_factor)
 
+        largest_sd_extents.append(largest_sd_extent)
+
+    # Get the largest distance of all cells and the largest sd extent of all cells
+    largest_loc = max(largest_locs)
+    largest_sd_extent = max(largest_sd_extents)
+    # presume this "worst case scenario" and find the spatial width that this would require
+    # round up to spatial res also
+    max_furthest_coords = ff.round_coord_to_res(
         # 1. double to be a spatial extent not a radial
-        # 2. absolute negative only means down/left from origin
-        # 3. rely on base units here
+        # 2. absolute as negative only means down/left from origin
+        # 3. already in base unit (scalar)
         # 4. already put into base unit (ie scalar)
-        #                                  1     2               3         4
-        #                                  V     V               V         V
-        furtherst_canvas_coord = ArcLength(2 * (abs(largest_loc.base) + largest_sd_extent) )
-
-        # round up to spat_res
-        rounded_furthest_canvas_coord = ff.round_coord_to_res(
-                    furtherst_canvas_coord,
-                    spat_res,
-                    high=True  # round up to be slightly safer
-             )
-        cells_furthest_canvas_coords.append(rounded_furthest_canvas_coord)
-
+        #         1     2     3              4
+        #         V     V     V              V
+        ArcLength(2 * (abs(largest_loc) + largest_sd_extent) ),
+        spat_res, high=True
+        )
 
     # find largest of all cells
-    max_furthest_coords = max(cells_furthest_canvas_coords, key=lambda a: a.base)
+    # max_furthest_coords = max(cells_furthest_canvas_coords, key=lambda a: a.base)
 
     return max_furthest_coords
 
