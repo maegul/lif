@@ -9,8 +9,9 @@
 from __future__ import annotations
 import warnings
 # from functools import partial
-from typing import Optional, Tuple, Callable, cast
+from typing import Optional, Tuple, Dict, Callable, cast
 from textwrap import dedent
+import json
 
 import numpy as np
 from scipy.optimize import least_squares, OptimizeResult, minimize, minimize_scalar
@@ -19,7 +20,7 @@ from scipy.optimize import least_squares, OptimizeResult, minimize, minimize_sca
 from . import (
     filter_functions as ff,
     cv_von_mises as cvvm)
-from ...utils import data_objects as do, exceptions as exc
+from ...utils import data_objects as do, exceptions as exc, settings
 from ...utils.units.units import ArcLength, SpatFrequency, TempFrequency, Time
 
 PI: float = np.pi  # type: ignore
@@ -409,3 +410,44 @@ def make_dog_spat_filt(parameters: do.SpatFiltParams) -> do.DOGSpatialFilter:
     return spat_filt
 
 
+# # Load current filters from file and store as module attributes
+
+filter_index = Dict[str, Dict[str, str]]
+
+def get_filter_index() -> filter_index:
+
+    data_dir = settings.get_data_dir()
+    filter_index_path = data_dir / 'filter_index.json'
+    try:
+        with open(filter_index_path, 'r') as f:
+            filter_index = json.load(f)
+    except Exception as e:
+        raise exc.FilterError(f'Count not loda filter index at {filter_index_path}') from e
+
+    return filter_index
+
+
+_filter_type_lookup = {
+    'spatial': do.DOGSpatialFilter,
+    'temporal': do.TQTempFilter
+}
+
+
+def get_filters(index: filter_index):
+
+    filters = {}
+    for filter_type, filter_items in index.items():
+        filters[filter_type] = {}
+        for filter_alias, file_name in filter_items.items():
+            try:
+                new_filter = _filter_type_lookup[filter_type].load(file_name)
+            except Exception as e:
+                raise exc.FilterError(f'Could not load filter at {file_name}') from e
+            filters[filter_type][filter_alias] = new_filter
+
+    return filters
+
+# ## Load filters and set to module variables
+_all_filters = get_filters(get_filter_index())
+spatial_filters: Dict[str, do.DOGSpatialFilter] = _all_filters['spatial']
+temporal_filters: Dict[str, do.TQTempFilter] = _all_filters['temporal']

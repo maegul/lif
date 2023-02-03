@@ -34,7 +34,7 @@ Examples:
     # -
 """
 
-# > Imports
+# # Imports
 import random
 from textwrap import dedent
 from typing import List, cast, Dict, Tuple, Iterable
@@ -58,53 +58,15 @@ from . import (
     rf_locations as rflocs,
     orientation_preferences as rforis)
 
+from ..receptive_field.filters import filters
 from ..receptive_field.filters import filter_functions as ff
 
-
-# > Shortcuts to spatial and temporal filters
-
-filter_index = Dict[str, Dict[str, str]]
-
-def get_filter_index() -> filter_index:
-
-    data_dir = settings.get_data_dir()
-    filter_index_path = data_dir / 'filter_index.json'
-    try:
-        with open(filter_index_path, 'r') as f:
-            filter_index = json.load(f)
-    except Exception as e:
-        raise exc.FilterError(f'Count not loda filter index at {filter_index_path}') from e
-
-    return filter_index
+# # spatial and temporal filter dictionaries
+spatial_filters = filters.spatial_filters
+temporal_filters = filters.temporal_filters
 
 
-_filter_type_lookup = {
-    'spatial': do.DOGSpatialFilter,
-    'temporal': do.TQTempFilter
-}
-
-
-def get_filters(index: filter_index):
-
-    filters = {}
-    for filter_type, filter_items in index.items():
-        filters[filter_type] = {}
-        for filter_alias, file_name in filter_items.items():
-            try:
-                new_filter = _filter_type_lookup[filter_type].load(file_name)
-            except Exception as e:
-                raise exc.FilterError(f'Could not load filter at {file_name}') from e
-            filters[filter_type][filter_alias] = new_filter
-
-    return filters
-
-# >> Load filters and set to module variables
-_all_filters = get_filters(get_filter_index())
-spatial_filters: Dict[str, do.DOGSpatialFilter] = _all_filters['spatial']
-temporal_filters: Dict[str, do.TQTempFilter] = _all_filters['temporal']
-
-
-# > Shortcuts to RF Loc Distributions
+# # Shortcuts to RF Loc Distributions
 # they come from file ... just list them as done for spatial+temproal but here
 # they're much more constrained ... so it shold maked sense without an index file
 
