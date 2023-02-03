@@ -99,13 +99,13 @@ def get_rfloc_dists(
 
     return rfdists
 
-# >> Load RF Dists and assign to module variables
+# ## Load RF Dists and assign to module variables
 rf_dists = get_rfloc_dists(get_rfloc_dist_index())
 
 
-# > functions for generating cells
+# # functions for generating cells
 
-# >> Make Orientation Values
+# ## Make Orientation Values
 
 def mk_orientations(
         n: int,
@@ -121,7 +121,7 @@ def mk_orientations(
 
     return orientations
 
-# >> Make Circular Variance Values
+# ## Make Circular Variance Values
 
 def mk_circ_var_values(
         n: int, cv_params: do.LGNCircVarParams
@@ -138,7 +138,7 @@ def mk_circ_var_values(
 
 
 
-# >> Make RF Locations
+# ## Make RF Locations
 
 # +
 def mk_rf_locations(
@@ -180,6 +180,8 @@ def mk_rf_locations(
     return rf_locations
 
 # -
+
+# ## Make filters
 
 def mk_filters(
         n: int, filter_params: do.LGNFilterParams
@@ -229,8 +231,18 @@ def mk_filters(
     return sfs, tfs
 
 
+# ## Make Max F1 Amplitudes
 
-# >> Make Cells
+def mk_max_f1_amplitudes(
+        n: int,
+        f1_amp_params: do.LGNF1AmpDistParams) -> Iterable[do.LGNF1AmpMaxValue]:
+
+    f1_amps = f1_amp_params.draw_f1_amp_vals(n = n)
+
+    return f1_amps
+
+
+# ## Make Cells (final stage)
 
 def mk_lgn_layer(
         lgn_params: do.LGNParams,
@@ -248,6 +260,8 @@ def mk_lgn_layer(
 
     # spat_filters
     spat_filts, temp_filts = mk_filters(n_cells, lgn_params.filters)
+
+    f1_max_amps = mk_max_f1_amplitudes(n_cells, lgn_params.F1_amps)
 
     # oriented spat filters
     # let's pre-compute them and have both available
@@ -278,15 +292,18 @@ def mk_lgn_layer(
                 orientation=ori, circ_var=cv,
                 spat_filt=sf, oriented_spat_filt_params=ori_sf,
                 temp_filt=tf,
-                location=loc
+                location=loc,
+                max_f1_amplitude=max_f1_amp
                 )
-            for ori, cv, sf, ori_sf, tf, loc
+            for ori, cv, sf, ori_sf, tf, loc, max_f1_amp
                 in zip(
                     orientations,
                     circ_var_vals,
                     spat_filts, oriented_spat_filts,
                     temp_filts,
-                    rf_locations.locations)
+                    rf_locations.locations,
+                    f1_max_amps
+                    )
             ),
         params = lgn_params
     )
