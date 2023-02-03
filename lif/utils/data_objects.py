@@ -8,7 +8,7 @@ from __future__ import annotations
 from functools import partial
 from typing import (
     Union, Optional,
-    Iterable, Dict, Any, Tuple, List, Literal, Set,
+    Iterable, Iterator, Sequence, Dict, Any, Tuple, List, Literal, Set,
     overload, cast,
     Callable, Protocol
     )
@@ -292,6 +292,17 @@ class TQTempFilter(ConversionABC):
     """Data from which derived"""
     parameters: TQTempFiltParams
     optimisation_result: BasicOptimisationData
+
+    @property
+    def key(self) -> Optional[str]:
+        "Shortcut to getting key of filter"
+        key: Optional[str] = (
+            self.source_data.meta_data.make_key()
+            if self.source_data.meta_data is not None
+            else None
+            )
+
+        return key
 
     def save(self, overwrite: bool = False):
         """Save this filter object to file as in pickle format.
@@ -672,6 +683,17 @@ class DOGSpatialFilter(ConversionABC):
     # ori_bias_params: CircularVarianceSDRatioVals
     ori_bias_params: CircularVarianceParams
     """Values for generating orientation biased version of this filter"""
+
+    @property
+    def key(self) -> Optional[str]:
+        "Shortcut to getting key of filter"
+        key: Optional[str] = (
+            self.source_data.meta_data.make_key()
+            if self.source_data.meta_data is not None
+            else None
+            )
+
+        return key
 
     def save(self, overwrite: bool = False, custom_key: str = 'Unknown'):
 

@@ -652,7 +652,9 @@ def real_amp_est(r, t, f1_target):
 
 def joint_sf_tf_amp(
         tf: TQTempFilter, sf: DOGSpatialFilter,
-        n_increments: int = 20, width=650, height=650):
+        n_increments: int = 20, width=650, height=650,
+        contrast: Optional[do.ContrastValue] = None
+        ):
     '''Plots joint distribution of Response Amplitudes to spatial and temporal frequencies
 
     Also plots original temporal and spatial frequency response data the filters
@@ -676,7 +678,8 @@ def joint_sf_tf_amp(
 
     joint_sf_tf_amp = correction.joint_spat_temp_f1_magnitude(
         temp_freqs=tf_freq_mg, spat_freqs_x=sf_freq_mg_x, spat_freqs_y=sf_freq_mg_y,
-        sf=sf, tf=tf
+        sf=sf, tf=tf,
+        contrast=contrast
         )
 
     main_size, margin_size = 0.7, 0.3

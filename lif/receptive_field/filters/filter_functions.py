@@ -16,11 +16,10 @@ from scipy.ndimage import interpolation
 
 from . import cv_von_mises as cvvm
 from ...utils import data_objects as do, settings, exceptions as exc
-from ...utils.data_objects import ConvRespAdjParams, SpaceTimeParams
 from ...utils.units.units import (
     SpatFrequency, TempFrequency, ArcLength, Time,
     val_gen, scalar)
-from ...convolution import estimate_real_amp_from_f1 as est_amp
+# from ...convolution import estimate_real_amp_from_f1 as est_amp
 
 
 # # Globals and Settings

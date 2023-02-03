@@ -63,6 +63,7 @@ class SimulationParams(ParamsObj):
 
     @property
     def contrast_params(self):
+        "Default contrast params defining the default contrast curve"
 
         # from lif.utils import data_objects as do
         from lif.receptive_field.filters import contrast_correction as cont_cor
