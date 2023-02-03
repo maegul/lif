@@ -6,7 +6,9 @@ to correct for resolution artefacts and F1 data recording issues from empirical 
 """
 
 from textwrap import dedent
-from typing import Optional
+from typing import Optional, Dict, Tuple
+
+import scipy.optimize as opt
 
 from ..utils.units.units import (
     SpatFrequency, TempFrequency, ArcLength, Time, val_gen, scalar)
@@ -26,7 +28,7 @@ def joint_spat_temp_f1_magnitude(
         tf: do.TQTempFilter, sf: do.DOGSpatialFilter,
         contrast: Optional[do.ContrastValue]=None,
         contrast_params: Optional[do.ContrastParams]=None,
-        collapse_symmetry: bool = False
+        collapse_symmetry: bool = False,
         ) -> scalar:
     """Joint amplitude of separate TF and SF treated as separable
 
@@ -127,6 +129,12 @@ def joint_dc(tf: do.TQTempFilter, sf: do.DOGSpatialFilter) -> float:
     tf_dc = tf.source_data.resp_params.dc
     sf_dc = sf.source_data.resp_params.dc
 
+    if (tf_dc is None):
+        raise ValueError(f'Temp Filter has no DC value in source data ... source from dist?')
+    if (sf_dc is None):
+        raise ValueError(f'Temp Filter has no DC value in source data ... source from dist?')
+
+
     if abs(tf_dc - sf_dc) > (0.3 * min([tf_dc, sf_dc])):
         tf_desc = (
             tf.source_data.meta_data.make_key()
@@ -164,7 +172,7 @@ def mk_joint_sf_tf_resp_params(
         spat_freqs_y=grating_stim_params.spat_freq_y,
         temp_freqs=grating_stim_params.temp_freq,
         sf=sf, tf=tf,
-        contrast=contrast, contrast_params=contrast_params
+        contrast=contrast, contrast_params=contrast_params,
         )
 
     DC = joint_dc(tf, sf)
@@ -222,7 +230,9 @@ def mk_conv_resp_adjustment_params(
         grating_stim_params: do.GratingStimulusParams,
         sf: do.DOGSpatialFilter,
         tf: do.TQTempFilter,
-        contrast_params: Optional[do.ContrastParams] = None
+        filter_actual_max_f1_amp: Optional[do.LGNF1AmpMaxValue] = None,
+        target_max_f1_amp: Optional[do.LGNF1AmpMaxValue] = None,
+        contrast_params: Optional[do.ContrastParams] = None,
         ) -> do.ConvRespAdjParams:
     """Factor to adjust amplitude of convolution to what filters dictate
 
@@ -255,6 +265,19 @@ def mk_conv_resp_adjustment_params(
     Thus, the factor returned is the theoretical amplitude / convolutional amplitude.
 
     """
+    # Handle if max_f1 passed in or not
+    if (
+            (target_max_f1_amp or filter_actual_max_f1_amp) # at least one
+            and not
+            (target_max_f1_amp and filter_actual_max_f1_amp) # but not both
+            ):
+        raise ValueError('Need to pass BOTH target and actual max_f1_amp')
+
+    if (target_max_f1_amp and filter_actual_max_f1_amp):
+        max_f1_adj_factor = mk_max_f1_resp_adjustment_factor(
+            target_max_f1_amp, filter_actual_max_f1_amp)
+    else:  # if max f1 parameters not provided, just set to 1
+        max_f1_adj_factor = None
 
     # Estimate of the convolution_amplitude after full sf and tf convolution with stim!!
     conv_resp_params = mk_estimate_sf_tf_conv_params(
@@ -264,7 +287,8 @@ def mk_conv_resp_adjustment_params(
     joint_resp_params = mk_joint_sf_tf_resp_params(
         grating_stim_params, sf, tf,
         contrast=grating_stim_params.contrast,
-        contrast_params=contrast_params)
+        contrast_params=contrast_params,
+        )
 
     # derive real unrectified amplitude
     # That is, amplitude that would produce the target F1 after rectification and FFT
@@ -284,14 +308,81 @@ def mk_conv_resp_adjustment_params(
 
     adjustment_params = do.ConvRespAdjParams(
         amplitude=amp_adjustment_factor,
-        DC=dc_shift_factor
+        DC=dc_shift_factor,
+        max_f1_adj_factor=max_f1_adj_factor
         )
 
     return adjustment_params
 
 
-def adjust_conv_resp(conv_resp: val_gen, adjustment: do.ConvRespAdjParams) -> val_gen:
+# Best used outside of this module ahead of time but kept here for consistency
+def mk_actual_filter_max_amp(
+        sf: do.DOGSpatialFilter,
+        tf: do.TQTempFilter,
+        contrast: do.ContrastValue,
+        contrast_params: Optional[do.ContrastParams] = None
+        ) -> do.LGNActualF1AmpMax:
 
-    adjusted_resp = (conv_resp * adjustment.amplitude) + adjustment.DC
+    # x: temp_freq (Hz), spat_freq (cpd)
+    joint_f1_wrapper = lambda x: (
+        # make negative to "minimize" to the maximal response
+         -1 * joint_spat_temp_f1_magnitude(
+            TempFrequency(x[0]), SpatFrequency(x[1]), SpatFrequency(0),
+            tf, sf,
+            contrast=contrast, contrast_params=contrast_params
+            )
+         # prevent negative values
+         if all(v >= 0 for v in x)
+            else 1e9
+        )
+
+    opt_result: opt.OptimizeResult = opt.minimize(joint_f1_wrapper, x0=[4, 1])
+    if not opt_result['success']:
+        # try a different method just in case
+        opt_result: opt.OptimizeResult = opt.minimize(
+            joint_f1_wrapper, x0=[4, 1], method='Nelder-Mead')
+    if not opt_result['success']:
+        raise exc.LGNError('Could not find maximal response of joint sf and tf filters')
+
+    # value of function is the maximal response, but negative, so make positive
+    max_response = do.LGNF1AmpMaxValue(max_amp = -1 * opt_result['fun'], contrast=contrast)
+    temp_freq, spat_freq = do.TempFrequency(opt_result['x'][0]), do.SpatFrequency(opt_result['x'][1])
+    actual_max = do.LGNActualF1AmpMax(max_response, temp_freq, spat_freq)
+
+    return actual_max
+
+
+def mk_max_f1_resp_adjustment_factor(
+        target_f1_max_amp: do.LGNF1AmpMaxValue,
+        actual_f1_max_amp: do.LGNF1AmpMaxValue
+        ) -> float:
+    """Generate ratio for scaling of F1 amplitude to that of target
+
+    Checks that both amplitudes are scaled to the same contrast
+    """
+
+    # Check that contrasts are the same for both values
+    # to ensure that they've been scaled for contrast to the same extent
+    actual_cont, target_cont = (
+        actual_f1_max_amp.contrast.contrast, target_f1_max_amp.contrast.contrast)
+    if not (actual_f1_max_amp.contrast == target_f1_max_amp.contrast):
+        raise exc.LGNError(
+            f'F1 max amplitudes not scaled to the same contrast: {actual_cont=}, {target_cont=}')
+
+    factor = target_f1_max_amp.max_amp / actual_f1_max_amp.max_amp
+
+    return factor
+
+
+def adjust_conv_resp(conv_resp: val_gen, adjustment: do.ConvRespAdjParams ) -> val_gen:
+
+    max_f1_adj_factor = (adjustment.max_f1_adj_factor)
+    if max_f1_adj_factor is None:
+        max_f1_adj_factor = 1
+
+    adjusted_resp = (
+        (conv_resp * (adjustment.amplitude * max_f1_adj_factor))
+        + adjustment.DC
+        )
 
     return adjusted_resp

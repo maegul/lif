@@ -1202,6 +1202,56 @@ class ContrastParams:
 
         return replace(self, max_resp = new_max_resp)
 
+
+# ## Max Firing Rate (F1 Amp) Distribution
+
+@dataclass
+class LGNF1AmpMaxValue(ConversionABC):
+    max_amp: float
+    contrast: ContrastValue
+
+
+@dataclass
+class LGNActualF1AmpMax(ConversionABC):
+    "For recording actual maximal amplitudes of actual filters"
+    value: LGNF1AmpMaxValue
+    temp_freq: TempFrequency
+    "temporal frequency at which maximum occurs"
+    spat_freq: SpatFrequency
+    "spatial frequency at which maximum occurs"
+
+@dataclass
+class LGNF1AmpDistParams(ConversionABC):
+    """Distribution for Max F1 amplitude of LGN cells
+
+    Drawn, approximately, from Table 2 of Saul and Humphrey 1990
+
+    Default parameters approximately the data for a modulating spot in table 2
+    """
+    alpha: float = 10
+    loc: float = 24
+    scale: float = 28
+    contrast: ContrastValue = ContrastValue(0.4)
+    "Contrast at which the represented data was generated"
+
+    def draw_f1_amp_vals(self, n: int) -> Sequence[LGNF1AmpMaxValue]:
+
+        f1_rvs: np.ndarray = (
+                 stats
+                 .skewnorm(
+                    self.alpha,
+                    loc=self.loc,
+                    scale=self.scale)
+                 .rvs(size=n)
+                 )
+        f1_max_vals = [
+            LGNF1AmpMaxValue(max_amp=max_amp, contrast=self.contrast)
+                for max_amp in f1_rvs
+        ]
+
+        return f1_max_vals
+
+
 # ## Full LGN Cell
 
 @dataclass
@@ -1214,6 +1264,8 @@ class LGNCell(ConversionABC):
     "spat filt params with gauss params adjusted to have anisotropy to circ_var"
     temp_filt: TQTempFilter
     "The temporal filter to convolve with the time course of the stimulus"
+    max_f1_amplitude: float
+    "Maximum amplitude of the F1 response after convolution"
     orientation: ArcLength[scalar]
     "orientation for the spatial filter when made anisotropic"
     circ_var: float
@@ -1378,6 +1430,10 @@ class LGNParams(ConversionABC):
     circ_var: LGNCircVarParams
     spread: LGNLocationParams
     filters: LGNFilterParams
+    F1_amps: LGNF1AmpDistParams
+    "Distribution to draw max F1 amplitudes from"
+    contrast_params: Optional[ContrastParams] = None
+    "Params for contrast curve to use for contrast scaling"
 
 @dataclass
 class LGNLayer(ConversionABC):
@@ -1492,6 +1548,8 @@ class ConvRespAdjParams(ConversionABC):
 
     amplitude: float
     DC: float
+    max_f1_adj_factor: Optional[float] = None
+    "Necessary only if scaling maximal firing rates"
 
 
 # ## LGN
