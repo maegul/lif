@@ -125,16 +125,20 @@ def mk_orientations(
 
 def mk_circ_var_values(
         n: int, cv_params: do.LGNCircVarParams
-        ) -> List[float]:
+        ) -> np.ndarray:
 
     cv_dist = (
               rforis
               .circ_var_distributions
               .get_distribution(cv_params.distribution_alias)
               )
+    cvvals = cv_dist.distribution.rvs(size=n)
+    # Clip to [0,1]
+    cvvals[cvvals<0] = 0
+    cvvals[cvvals>1] = 1
 
-    cvvals = [cv for cv in cv_dist.distribution.rvs(size=n)]
     return cvvals
+
 
 
 
