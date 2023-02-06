@@ -205,13 +205,19 @@ def mk_params_from_stim_signature(
         )->Tuple[do.SpaceTimeParams, do.GratingStimulusParams]:
     """Provide data structures for generating a stimulus from a string signature
 
-
+    This is ... not good code ... hacky and patched a few times to just work.
+    If it starts to cause some trouble, consider re-working the whole idea ...
+    ... maybe a json index with unique IDs and the actual JSON of the data_objects?
     """
     elements =signature.split('|')
     if not elements[:2] == ['STIMULUS', 'STP']:
         raise ValueError('signature is not a stimulus signature')
 
-    param_pattern=re.compile(r'([\w_]+)=([\d\.]+e?[\-\+\d]*)\((\w+)\)')
+    param_pattern=re.compile(r'([\w_]+)=([\d\.]+e?[\-\+\d]*|\w+)\((\w+)\)')
+    int_value_pattern = re.compile(r'\d+')  # for parsing ints as integers (no decimal!)
+    str_value_pattern = re.compile(r'\w+')
+    # for long floats with (e+6) exponentials
+    # no need to parse normal floats (with decimal) as float is the fallback
     long_float_pattern = re.compile(r'[\d\.]+e[-+]?\d+')
     unit_type_look_up = {
         ('deg', 'mnt', 'sec', 'rad'): ArcLength,
@@ -219,7 +225,9 @@ def mk_params_from_stim_signature(
         ('cpd', 'cpm', 'cpd_w'): SpatFrequency,
         ('hz', 'w'): TempFrequency,
         ('int',): lambda v,_: int(v),  # proxy to maintain consistent interface
-        ('float',): lambda v,_: float(v)
+        ('float',): lambda v,_: float(v),
+        ('str',): lambda v,_: str(v),
+        ('contrast',): lambda v,_: do.ContrastValue(contrast=v)
     }
 
     signature_start_idx = elements.index('STIMULUS')
@@ -242,18 +250,25 @@ def mk_params_from_stim_signature(
 
         attribute = param_parts.group(1)
         value_match = param_parts.group(2)
-        is_int_type = attribute in ('spat_res', 'temp_res')
+        # determine basic qualities of the value for conversion
+        is_int_type = (int_value_pattern.fullmatch(value_match) is not None)
+        is_str_type = (str_value_pattern.fullmatch(value_match) is not None)
         long_float_value_match = long_float_pattern.fullmatch(value_match)
 
         if is_int_type:
             value = int(param_parts.group(2))
+        elif is_str_type:
+            value = str(param_parts.group(2))
         elif long_float_value_match:
             value = float(long_float_value_match.string)
+        # float is default fallback
         else:
             value = float(param_parts.group(2))
+
         unit = param_parts.group(3)
 
-        # find unit_type by simply iterating until found
+        # find unit_type by simply iterating until found,
+        # ... then use the loop variable directly after (bit hacky!)
         for possible_units, unit_type in unit_type_look_up.items():
             if unit in possible_units:
                 break
