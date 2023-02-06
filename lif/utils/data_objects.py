@@ -1566,3 +1566,14 @@ class LIFParams(ConversionABC):
 @dataclass
 class V1Params(ConversionABC):
     lif_params: LIFParams
+
+
+# # Simulation
+
+@dataclass
+class SimulationParams(ConversionABC):
+    n: int
+    space_time_params: SpaceTimeParams
+    stim_params: GratingStimulusParams
+    lgn_params: LGNParams
+    v1_params: V1Params

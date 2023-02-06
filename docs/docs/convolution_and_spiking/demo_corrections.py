@@ -2,10 +2,23 @@
 # ## Imports
 
 # +
-from lif import *
-from lif.convolution import correction, convolve
-from lif.receptive_field.filters import contrast_correction as cont_corr
+from typing import Optional
+
+import numpy as np
+
+# from lif import *
+from lif.convolution import (
+    correction,
+    convolve,
+    estimate_real_amp_from_f1 as est_amp
+    )
 from lif.utils import data_objects as do
+from lif.utils import settings
+from lif.utils.units.units import ArcLength, SpatFrequency, Time, TempFrequency, scalar
+from lif.receptive_field.filters import (
+    contrast_correction as cont_corr,
+    filter_functions as ff
+    )
 
 import plotly.express as px
 import plotly.graph_objects as go
@@ -51,8 +64,8 @@ def write_fig(fig, file_name: str, **kwargs):
 # * These are loaded from file, having been previously fit to data
 
 # +
-tf = TQTempFilter.load(TQTempFilter.get_saved_filters()[0])
-sf = DOGSpatialFilter.load(DOGSpatialFilter.get_saved_filters()[0])
+tf = do.TQTempFilter.load(do.TQTempFilter.get_saved_filters()[0])
+sf = do.DOGSpatialFilter.load(do.DOGSpatialFilter.get_saved_filters()[0])
 # -
 
 # ## Space, time and stimulus parameters
@@ -107,21 +120,21 @@ stim_params = do.GratingStimulusParams(
 # Will use `scipy` convolution
 
 # +
-from scipy.signal import convolve
+from scipy.signal import convolve as signal_convolve
 # -
 
 # Prepare time coords, temp filter and sinusoid
 
 # +
-time_coords = mk_temp_coords(st_params.temp_res, st_params.temp_ext)
+time_coords = ff.mk_temp_coords(st_params.temp_res, st_params.temp_ext)
 signal = est_amp.gen_sin(
     amplitude=stim_params.amplitude,
     DC_amp=stim_params.DC,
     time=time_coords,
     freq=stim_params.temp_freq
     )
-temp_filter = mk_tq_tf(time_coords, tf.parameters)
-signal_conv = convolve(signal, temp_filter)[:time_coords.value.size]
+temp_filter = ff.mk_tq_tf(time_coords, tf.parameters)
+signal_conv = signal_convolve(signal, temp_filter)[:time_coords.value.size]
 # -
 
 # Plotting if desired
@@ -145,13 +158,13 @@ px.line(signal_conv).show()
 # +
 estimated_amplitude = (
                       stim_params.amplitude *
-                      mk_tq_tf_ft(stim_params.temp_freq, tf.parameters) /
+                      ff.mk_tq_tf_ft(stim_params.temp_freq, tf.parameters) /
                       st_params.temp_res.s
                       )
 estimated_dc = (
                # ### ! Multiply by the DC ... not the `F1` amplitude
                stim_params.DC *
-               mk_tq_tf_ft(TempFrequency(0), tf.parameters) /
+               ff.mk_tq_tf_ft(TempFrequency(0), tf.parameters) /
                st_params.temp_res.s
                )
 
@@ -181,11 +194,11 @@ print(f'Error DC: {(abs(estimated_dc- actual_DC)/actual_DC):.3%}')
 # +
 estimated_amplitude = (
     stim_params.amplitude *
-    mk_tq_tf_conv_amp(stim_params.temp_freq, tf.parameters, st_params.temp_res)
+    ff.mk_tq_tf_conv_amp(stim_params.temp_freq, tf.parameters, st_params.temp_res)
     )
 estimated_dc = (
     stim_params.DC *
-    mk_tq_tf_conv_amp(TempFrequency(0), tf.parameters, st_params.temp_res)
+    ff.mk_tq_tf_conv_amp(TempFrequency(0), tf.parameters, st_params.temp_res)
     )
 
 print(f'est_amp: {estimated_amplitude:.3f}, actual: {actual_amplitude:.3f}')
@@ -213,6 +226,7 @@ print(f'Error: {(abs(estimated_dc- actual_DC)/actual_DC):.3%}')
 
 # #### Norm or Intersection Response
 
+# +
 # static spat freq at which temp_filt measured
 tf_sf = tf.source_data.resp_params.sf
 # static temp freq at which spat_filt measured
@@ -220,9 +234,9 @@ sf_tf = sf.source_data.resp_params.tf
 
 # find "intersection response"
 # response of both filters at the other filter's static frequency
-norm_tf = mk_tq_tf_ft(sf_tf, tf.parameters)
-norm_sf = mk_dog_sf_ft(tf_sf, SpatFrequency(0), sf.parameters)
-
+norm_tf = ff.mk_tq_tf_ft(sf_tf, tf.parameters)
+norm_sf = ff.mk_dog_sf_ft(tf_sf, SpatFrequency(0), sf.parameters)
+# -
 # +
 # norm amplitude
 # The amplitude that is what all amps are normlised to
@@ -245,20 +259,21 @@ spat_freq_y = SpatFrequency(0)
 
 # factors (filters' responses relative to norm response)
 sf_factor = (
-    mk_dog_sf_ft(
+    ff.mk_dog_sf_ft(
         spat_freq_x, spat_freq_y, sf.parameters,
         collapse_symmetry=False)
     /
     norm_sf
 )
-tf_factor = mk_tq_tf_ft(temp_freq, tf.parameters) / norm_tf
+tf_factor = ff.mk_tq_tf_ft(temp_freq, tf.parameters) / norm_tf
 
 joint_amp = norm_amp * sf_factor * tf_factor
 # -
 
 # ### Joint DC
 
-# * The DC of a spatial or temporal filter is the response of the cell to a uniform stimulus of the same average luminance (or DC luminance) as as the sinusoidal stimuli.
+# * The DC of a spatial or temporal filter is the response of the cell to a uniform stimulus
+#   of the same average luminance (or DC luminance) as as the sinusoidal stimuli.
 # * To fuse two filters, their DCs can just be averaged.
 # * There is a potential issue around mean luminance being too difference between stimuli
 # * Just find average of the two?  Raise error if they're too different?
@@ -358,12 +373,16 @@ print(sf.source_data.resp_params.contrast, tf.source_data.resp_params.contrast, 
 # `0.5 0.4`
 
 # +
+temp_freq = TempFrequency(1)
+spat_freq_x = SpatFrequency(1)
+spat_freq_y = SpatFrequency(0)
+
 correction.joint_spat_temp_f1_magnitude(
     temp_freq,
     spat_freq_x, spat_freq_y,
     tf, sf,
     contrast=do.ContrastValue(0.2),
-    contrast_params=cont_corr.OFF)
+    contrast_params=cont_corr.ON)
 # -
 
 
@@ -371,5 +390,196 @@ correction.joint_spat_temp_f1_magnitude(
 
 # Just need to pass contrast params and stimulus contrast to `mk_conv_resp_adjust_params()` which
 # uses `joint_spat_temp_f1_magnitude()` under the hood.
-#
-#
+
+# Actually, now `contrast` is a parameter of `GratingStimulusParams` with default value of `0.3`
+
+
+# ## Max F1 Amplitude Distribution
+
+# +
+import lif.lgn.cells as lgn_cells
+# -
+
+# +
+f1_amps_params = do.LGNF1AmpDistParams()
+
+f1_amps_params.draw_f1_amp_vals(n=10)
+# -
+
+
+# +
+stparams = do.SpaceTimeParams(
+    spat_ext=ArcLength(5), spat_res=ArcLength(1, 'mnt'), temp_ext=Time(1),
+    temp_res=Time(1, 'ms'))
+
+lgnparams = do.LGNParams(
+    n_cells=10,
+    orientation = do.LGNOrientationParams(ArcLength(30), 0.5),
+    circ_var = do.LGNCircVarParams('naito_lg_highsf', 'naito'),
+    spread = do.LGNLocationParams(2, 'jin_etal_on'),
+    filters = do.LGNFilterParams(spat_filters='all', temp_filters='all'),
+    F1_amps = do.LGNF1AmpDistParams()
+    )
+# -
+# +
+lgn = lgn_cells.mk_lgn_layer(lgnparams, spat_res=stparams.spat_res)
+# -
+# +
+len(lgn.cells)
+# -
+# +
+for i in range(len(lgn.cells)):
+    print(lgn.cells[i].max_f1_amplitude)
+# -
+# +
+for i in range(len(lgn.cells)):
+    print(
+        lgn.cells[i].location
+        )
+# -
+# +
+for i in range(len(lgn.cells)):
+    print(
+        lgn.cells[i].location.round_to_spat_res(stparams.spat_res)
+        )
+# -
+
+# +
+lgnparams.F1_amps
+# -
+
+# +
+base, target = lgnparams.F1_amps.contrast, do.ContrastValue(0.8)
+scaling_factor = cont_corr.mk_contrast_resp_amplitude_adjustment_factor(
+    base_contrast=base, target_contrast=target, params=cont_corr.ON)
+print(f'{scaling_factor=}')
+
+# -
+# +
+test = lgnparams.F1_amps.contrast
+# -
+# +
+test.contrast
+# -
+
+
+# +
+f1_max_amp = f1_amps_params.draw_f1_amp_vals(n=1)[0]
+# -
+# +
+contrast_params = settings.simulation_params.contrast_params
+
+max_f1_amp = f1_max_amp.max_amp
+max_f1_amp_contrast = f1_max_amp.contrast.contrast
+stim_contrast = do.ContrastValue(0.4)
+
+contrast_adjusted_f1_max_amp = cont_corr.correct_contrast_response_amplitude(
+        response_amplitude=max_f1_amp,
+        base_contrast=f1_max_amp.contrast,
+        target_contrast=stim_contrast,
+        contrast_params=contrast_params
+    )
+
+print(f1_max_amp.max_amp, contrast_adjusted_f1_max_amp)
+# -
+
+
+# ### How find actual max response at opt temp and spat freq?
+
+# +
+tf = do.TQTempFilter.load(do.TQTempFilter.get_saved_filters()[0])
+sf = do.DOGSpatialFilter.load(do.DOGSpatialFilter.get_saved_filters()[0])
+# -
+
+# +
+temp_freq = TempFrequency(4)
+spat_freq_x = SpatFrequency(1)
+spat_freq_y = SpatFrequency(0)
+
+correction.joint_spat_temp_f1_magnitude(
+    temp_freq,
+    spat_freq_x, spat_freq_y,
+    tf, sf,
+    contrast=do.ContrastValue(0.2),
+    contrast_params=cont_corr.ON)
+# -
+# +
+correction.mk_actual_filter_max_amp(sf, tf, contrast=do.ContrastValue(0.1))
+# -
+# +
+import scipy.optimize as opt
+# -
+# +
+def mk_joint_f1_wrapper(
+    tf: do.TQTempFilter, sf: do.DOGSpatialFilter,
+    contrast: Optional[do.ContrastValue]=None,
+    ):
+
+    joint_f1_wrapper = lambda x: (
+         -1 * correction.joint_spat_temp_f1_magnitude(
+            TempFrequency(x[0]), SpatFrequency(x[1]), SpatFrequency(0),
+            tf, sf,
+            contrast=contrast
+            )
+        )
+
+    return joint_f1_wrapper
+# -
+# +
+wrapper = mk_joint_f1_wrapper(tf, sf, contrast=do.ContrastValue(0.8))
+wrapper([4, 1])
+# -
+# +
+opt_result = opt.minimize(wrapper, x0=[4,1])
+opt_result['fun']
+# -
+# +
+correction.joint_spat_temp_f1_magnitude(
+    TempFrequency(opt_result.x[0]), SpatFrequency(opt_result.x[1]), SpatFrequency(0),
+    tf, sf, contrast=do.ContrastValue(0.4)
+    )
+# -
+# +
+def mk_simple_f1_wrapper(
+    tf: do.TQTempFilter, sf: do.DOGSpatialFilter,
+    contrast: Optional[do.ContrastValue]=None,
+    ):
+
+    joint_f1_wrapper = lambda x: (
+                            -1 *
+                            (
+                                ff.mk_tq_tf_ft(TempFrequency(x[0]), tf.parameters) +
+                                ff.mk_dog_sf_ft(
+                                    SpatFrequency(float(x[1])), SpatFrequency(0), sf.parameters)
+                            )
+                        )
+
+    return joint_f1_wrapper
+# -
+# +
+wrapper = mk_simple_f1_wrapper(tf, sf)
+# -
+# +
+wrapper([4,1])
+# -
+# +
+opt.minimize(wrapper, x0=[4,1])
+# %timeit opt.minimize(wrapper, x0=[4,1])
+# -
+
+# ## Make Lookup for all permutations
+
+# +
+from itertools import product
+# -
+# +
+tfs = do.TQTempFilter.get_saved_filters()
+sfs = do.DOGSpatialFilter.get_saved_filters()
+# -
+# +
+all_filters = tuple(product(tfs, sfs))
+# -
+# +
+for f in all_filters:
+    print(f[0].stem, f[1].stem)
+# -

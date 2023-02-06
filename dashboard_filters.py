@@ -11,17 +11,19 @@ import pandas as pd
 
 # from lif import plot, ff, DOGSpatialFilter
 from lif.plot import plot
-from lif.receptive_field.filters import filter_functions as ff
+from lif.receptive_field.filters import filter_functions as ff, filters
 from lif.utils.data_objects import DOGSpatialFilter
 
 app = Dash(__name__)
 
 # get all saved filters
-saved_sfs = sorted(DOGSpatialFilter.get_saved_filters(), key=lambda p : p.name)
-saved_sfs_dict = {
-    ssf.name: DOGSpatialFilter.load(ssf)
-    for ssf in saved_sfs
-}
+spatial_filters = filters.spatial_filters
+saved_sfs_dict = {key: spatial_filters[key] for key in sorted(spatial_filters)}
+# saved_sfs = sorted(DOGSpatialFilter.get_saved_filters(), key=lambda p : p.name)
+# saved_sfs_dict = {
+#     ssf.name: DOGSpatialFilter.load(ssf)
+#     for ssf in saved_sfs
+# }
 
 # dropdown box to select spatial filter
 sf_selector = dcc.Dropdown(
@@ -33,7 +35,7 @@ sf_selector = dcc.Dropdown(
             for name, ssf in saved_sfs_dict.items()
     ],
     # options = list(saved_sfs_dict.keys()),
-    value = saved_sfs[0].name,
+    value = list(saved_sfs_dict.keys())[0],
     id='sf_sel')
 
 sf_selected = html.H3(id='sf_selected')

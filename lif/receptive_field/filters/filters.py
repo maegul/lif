@@ -433,10 +433,15 @@ _filter_type_lookup = {
 }
 
 
-def get_filters(index: filter_index):
+def get_filters(
+        index: filter_index,
+        filter_types: Tuple[str,...] = ('spatial', 'temporal')):
 
     filters = {}
     for filter_type, filter_items in index.items():
+        # don't use types listed as ignore types
+        if filter_type not in filter_types:
+            continue
         filters[filter_type] = {}
         for filter_alias, file_name in filter_items.items():
             try:
