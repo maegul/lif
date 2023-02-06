@@ -803,7 +803,8 @@ class RFStimSpatIndices(ConversionABC):
 
     Examples:
         # rf_idxs: RFStimIndices
-        >>> stim[rf_idxs.x1:rf_idxs.x2, rf_idxs.y1:rf_idxs.y2]
+        # Note, y goes first, as meshgrid by default puts Y as the first dimension
+        >>> stim[rf_idxs.y1:rf_idxs.y2, rf_idxs.x1:rf_idxs.x2]
     """
     x1: int
     x2: int
@@ -1140,7 +1141,7 @@ class AllCircVarianceDistributions:
 
 # ## Contrast Parameters
 
-@dataclass
+@dataclass(frozen=True)
 class ContrastValue:
     contrast: scalar
 
@@ -1464,6 +1465,8 @@ class SpaceTimeParams(ConversionABC):
     """
     temp_ext: Time[float]
     temp_res: Time[float]
+    array_dtype: Optional[str] = None
+    "data type for numpy arrays of coords ('float64'(default) or 'float32')"
 
     # manually ensure that spat_res is an integer
     # as the typing system behind val_gen doesn't allow specifying an int

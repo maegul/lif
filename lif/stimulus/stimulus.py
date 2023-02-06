@@ -17,7 +17,7 @@ import numpy as np
 # I'd prefer to move the coords functions to utls.coords.py
 from ..receptive_field.filters import filter_functions as ff
 from .. import lgn
-from ..utils import settings
+from ..utils import settings, exceptions as exc
 from ..utils.units.units import (
     SpatFrequency, TempFrequency, ArcLength, Time,
     val_gen, scalar)
@@ -31,7 +31,6 @@ PI: float = np.pi
 def mk_sinstim(
         space_time_params: do.SpaceTimeParams,
         grating_stim_params: do.GratingStimulusParams,
-        array_dtype: Optional[str] = None
         ) -> np.ndarray:
     '''Generate sinusoidal grating stimulus
 
@@ -49,7 +48,7 @@ def mk_sinstim(
     xc, yc, tc = ff.mk_spat_temp_coords(
         spat_ext=space_time_params.spat_ext, temp_ext=space_time_params.temp_ext,
         spat_res=space_time_params.spat_res, temp_res=space_time_params.temp_res,
-        array_dtype=array_dtype
+        array_dtype=space_time_params.array_dtype
         )
 
     # within the cos, the coords are in SI (base: degs, seconds) but the factors
@@ -79,17 +78,20 @@ def estimate_max_stimulus_spatial_ext_for_lgn(
         spat_res: ArcLength[int],
         lgn_layer: do.LGNParams,
         n_cells: Optional[int] = None,
+        safety_margin_increment: float = 0,
         ) -> ArcLength[scalar]: ...
 @overload
 def estimate_max_stimulus_spatial_ext_for_lgn(
         spat_res: ArcLength[int],
         lgn_layer: do.LGNLayer,
         n_cells: None = None,
+        safety_margin_increment: float = 0,
         ) -> ArcLength[scalar]: ...
 def estimate_max_stimulus_spatial_ext_for_lgn(
         spat_res: ArcLength[int],
         lgn_layer: Union[do.LGNParams, do.LGNLayer],
         n_cells: Optional[int] = None,
+        safety_margin_increment: float = 0,
         ) -> ArcLength[scalar]:
     """Spatial ext (width, not radial) to encompass the LGN layer given the params
 
@@ -106,6 +108,8 @@ def estimate_max_stimulus_spatial_ext_for_lgn(
                  Useful for dealing with the statistical nature of the estimate and so
                  use more cells to get a better estimate.
                  Must be provided along with an `LGNParams` object.
+         safety_margin_increment: percentage (fraction) to add to estimate as a safety
+                                  margin.  Estimate is multiplied by `(1 + safety_margin_increment)`.
     Examples:
         >>> spat_res = ArcLength(1, 'mnt')
         >>> lgn_params = lgn.demo_lgnparams
@@ -154,9 +158,10 @@ def estimate_max_stimulus_spatial_ext_for_lgn(
         # 2. absolute as negative only means down/left from origin
         # 3. already in base unit (scalar)
         # 4. already put into base unit (ie scalar)
-        #         1     2     3              4
-        #         V     V     V              V
-        ArcLength(2 * (abs(largest_loc) + largest_sd_extent) ),
+        # 5. add safety increment by treating as a percentage (eg, 10% -> * 1.1)
+        #         1     2     3              4                  5
+        #         V     V     V              V                  V
+        ArcLength(2 * (abs(largest_loc) + largest_sd_extent) * (1 + safety_margin_increment) ),
         spat_res, high=True
         )
 
@@ -175,10 +180,22 @@ def mk_stim_signature(
 
     """
 
-    stparams_signature = [
-        f'{field}={getattr(st_params, field).value}({getattr(st_params, field).unit})'
-        for field in st_params.__dataclass_fields__.keys()
-    ]
+    stparams_signature = []
+    for field in st_params.__dataclass_fields__.keys():
+        field_value = getattr(st_params, field)
+
+        # is a unit, so get value and description out
+        if hasattr(field_value, 'unit'):
+            value = field_value.value
+            description = field_value.unit
+        # handle scalar or string
+        elif isinstance(field_value, (int, float, str)):
+            value = field_value
+            description = type(field_value).__name__
+        else:
+            raise ValueError(f'Field cannot be parsed into string: {field, field_value}')
+        signature_element = f'{field}={value}({description})'
+        stparams_signature.append(signature_element)
 
     stimparams_signature = []
     for field in stim_params.__dataclass_fields__.keys():
@@ -191,6 +208,13 @@ def mk_stim_signature(
         elif isinstance(field_value, (int, float)):
             value = field_value
             description = type(field_value).__name__
+        # Handle others ...
+        # handle contrast
+        elif isinstance(field_value, do.ContrastValue):
+            value = field_value.contrast
+            description = 'contrast'
+        else:
+            raise ValueError(f'Field cannot be parsed into string: {field, field_value}')
         signature_element = f'{field}={value}({description})'
         stimparams_signature.append(signature_element)
 
@@ -292,7 +316,7 @@ def save_stim_array_to_file(
         ):
 
     data_dir = settings.get_data_dir()
-    file_name = Path(mk_stim_signature(st_params, stim_params)).with_suffix('.npy')
+    file_name = Path(mk_stim_signature(st_params, stim_params) + '.npy')
     file_path = data_dir/file_name
 
     if file_path.exists() and (not overwrite):
@@ -327,6 +351,19 @@ def load_stim_array_from_file(
 
     return stimulus_array
 
+
+def load_stimulus_from_params(st_params, stim_params) -> np.ndarray:
+    """Load from data directory based on params ... presumes already cached
+    """
+
+    signature = mk_stim_signature(st_params, stim_params)
+    stim_file_name = Path(signature + '.npy')
+
+    stimulus = load_stim_array_from_file(stim_file_name)
+
+    return stimulus
+
+
 def get_params_for_all_saved_stimuli(
         ) -> Dict[do.SpaceTimeParams, List[do.GratingStimulusParams]]:
 
@@ -346,6 +383,7 @@ def get_params_for_all_saved_stimuli(
         all_params[st].update(set(g[1] for g in group))
 
     return all_params
+
 
 def print_params_for_all_saved_stimuli():
 
@@ -371,17 +409,64 @@ def print_params_for_all_saved_stimuli():
         for stim in stim_params:
             ori = f'Ori: {stim.orientation.deg:<5}'
             freqs = f'SF: {stim.spat_freq.cpd:<5} | TF: {stim.temp_freq.hz:<5}'
-            print(f'\t{ori} | {freqs} (Amp: {stim.amplitude:<2}, DC: {stim.DC:<3})')
+            print(f'\t{ori} | {freqs} (Amp: {stim.amplitude:<2}, DC: {stim.DC:<3}, Cont: {stim.contrast.contrast})')
 
 
-def mk_stimulus_cache(
-        st_params: do.SpaceTimeParams,
+
+def mk_multi_stimulus_params(
         spat_freqs: Iterable[float],
         temp_freqs: Iterable[float],
         orientations: Iterable[float],
         spat_freq_unit: str = 'cpd',
         temp_freq_unit: str = 'hz',
         ori_arc_unit: str = 'deg',
+        contrasts: Iterable[Optional[float]] = [None],
+        amplitudes: Iterable[Optional[float]] = [None],
+        DC_vals: Iterable[Optional[float]] = [None]
+        ) -> Tuple[do.GratingStimulusParams]:
+    """Make multiple stimulus params from all combinations of parameters provided
+
+    Where default value is `[None]`, the fallback will be the default value of the
+    stimulus parameters object for these parameters anytime the value passed in is `None`.
+    """
+
+
+    stim_param_val_combos = itertools.product(
+        spat_freqs,
+        temp_freqs,
+        orientations,
+        contrasts,
+        amplitudes,
+        DC_vals
+        )
+    stim_param_combos = tuple(
+        do.GratingStimulusParams(
+            spat_freq=SpatFrequency(c[0], spat_freq_unit),
+            temp_freq=TempFrequency(c[1], temp_freq_unit),
+            orientation=ArcLength(c[2], ori_arc_unit),
+            # Use default value as the fall back if value is None
+            contrast=(do.ContrastValue(c[3])
+                if c[3] is not None
+                else do.GratingStimulusParams.__dataclass_fields__['contrast'].default
+                ),
+            amplitude=(c[4]
+                if c[4] is not None
+                else do.GratingStimulusParams.__dataclass_fields__['amplitude'].default
+                ),
+            DC=(c[5]
+                if c[5] is not None
+                else do.GratingStimulusParams.__dataclass_fields__['DC'].default
+                ),
+            )
+        for c in  stim_param_val_combos
+    )
+
+    return stim_param_combos
+
+
+def mk_stimulus_cache(
+        st_params: do.SpaceTimeParams,
+        multi_stim_params: Tuple[do.GratingStimulusParams],
         overwrite: bool = False
         ):
     """Create stimulus arrays and save to file for all parameters provided
@@ -389,23 +474,12 @@ def mk_stimulus_cache(
     Examples:
         >>> mk_stimulus_cache(stparams,
                 spat_freqs=[2,4], temp_freqs=[1,2], orientations=[0, 90],
-                spat_freq"unit='cpd', temp_freq_unit='hz', ori_arc_unit='deg',
+                spat_freq_unit='cpd', temp_freq_unit='hz', ori_arc_unit='deg',
                 overwrite=True
             )
     """
 
-    stim_param_val_combos = itertools.product(
-        spat_freqs,
-        temp_freqs,
-        orientations)
-    stim_param_combos = tuple(
-        do.GratingStimulusParams(
-            SpatFrequency(c[0], spat_freq_unit),
-            TempFrequency(c[1], temp_freq_unit),
-            ArcLength(c[2], ori_arc_unit)
-            )
-        for c in  stim_param_val_combos
-    )
+    stim_param_combos = multi_stim_params
 
     cached_stim_params = get_params_for_all_saved_stimuli()
     # space time params already exist ... maybe some stim params will too?
@@ -428,9 +502,11 @@ def mk_stimulus_cache(
 
 def mk_rf_stim_spatial_slice_idxs(
         st_params: do.SpaceTimeParams,
-        spat_filt_params: do.DOGSpatFiltArgs,
+        spat_filt_params: do.DOGSF,
         spat_filt_location: do.RFLocation
         ) -> do.RFStimSpatIndices:
+
+
 
     spat_res = st_params.spat_res
     # snap location to spat_res grid
@@ -494,3 +570,30 @@ def mk_rf_stim_spatial_slice_idxs(
         y1=slice_y_idxs[0], y2=slice_y_idxs[1])
 
     return rf_idxs
+
+
+def slice_stimulus_array(
+        st_params: do.SpaceTimeParams,
+        stimulus_array: np.ndarray,
+        spat_filt_array: np.ndarray,
+        slice_idxs: do.RFStimSpatIndices
+        ) -> np.ndarray:
+
+    # require that slice is within the bounds of the sitmulus array
+    if not slice_idxs.is_within_extent(st_params):
+        raise exc.LGNError('Stimulus slice indices are not within bounds of stimulus')
+
+    sliced_array = stimulus_array[slice_idxs.y1:slice_idxs.y2, slice_idxs.x1:slice_idxs.x2]
+
+    # requrie that the spatial filter and the stimulus slice are the same size
+    if not (
+            (spat_filt_array.shape[0] == (slice_idxs.y2-slice_idxs.y1)) and
+            (spat_filt_array.shape[1] == (slice_idxs.x2-slice_idxs.x1))
+            ):
+        raise exc.LGNError('Stimulus slice and spatial filter array are not the same shape')
+
+    return sliced_array
+
+
+
+
