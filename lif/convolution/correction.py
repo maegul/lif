@@ -293,8 +293,19 @@ def mk_conv_resp_adjustment_params(
     # derive real unrectified amplitude
     # That is, amplitude that would produce the target F1 after rectification and FFT
     # ... allow any exception to bubble up
+    # Max f1 adj factor is used here to ensure that the rectified FFT F1 amplitude compensation
+    # accounts for this scaling.  If this scaling were done later, linearity could not be presumed
+    # Default to 1 if not being used
     real_unrect_joint_amp_opt = est_amp.find_real_f1(
-        DC_amp=joint_resp_params.DC, f1_target=joint_resp_params.amplitude)
+        DC_amp=joint_resp_params.DC,
+        f1_target=(
+            joint_resp_params.amplitude * (
+                max_f1_adj_factor
+                    if max_f1_adj_factor
+                    else 1
+                    )
+            )
+        )
 
     real_unrect_joint_amp: float = real_unrect_joint_amp_opt.x[0]
 
@@ -309,7 +320,8 @@ def mk_conv_resp_adjustment_params(
     adjustment_params = do.ConvRespAdjParams(
         amplitude=amp_adjustment_factor,
         DC=dc_shift_factor,
-        max_f1_adj_factor=max_f1_adj_factor
+        max_f1_adj_factor=max_f1_adj_factor,
+        joint_response=joint_resp_params
         )
 
     return adjustment_params
@@ -376,12 +388,8 @@ def mk_max_f1_resp_adjustment_factor(
 
 def adjust_conv_resp(conv_resp: val_gen, adjustment: do.ConvRespAdjParams ) -> val_gen:
 
-    max_f1_adj_factor = (adjustment.max_f1_adj_factor)
-    if max_f1_adj_factor is None:
-        max_f1_adj_factor = 1
-
     adjusted_resp = (
-        (conv_resp * (adjustment.amplitude * max_f1_adj_factor))
+        (conv_resp * (adjustment.amplitude))
         + adjustment.DC
         )
 
