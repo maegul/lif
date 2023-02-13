@@ -237,8 +237,8 @@ def mk_params_from_stim_signature(
     if not elements[:2] == ['STIMULUS', 'STP']:
         raise ValueError('signature is not a stimulus signature')
 
-    param_pattern=re.compile(r'([\w_]+)=([\d\.]+e?[\-\+\d]*|\w+)\((\w+)\)')
-    int_value_pattern = re.compile(r'\d+')  # for parsing ints as integers (no decimal!)
+    param_pattern=re.compile(r'([\w_]+)=([\-\+]?[\d\.]+e?[\-\+\d]*|\w+)\((\w+)\)')
+    int_value_pattern = re.compile(r'[\-\+]?\d+')  # for parsing ints as integers (no decimal!)
     str_value_pattern = re.compile(r'\w+')
     # for long floats with (e+6) exponentials
     # no need to parse normal floats (with decimal) as float is the fallback
@@ -572,10 +572,9 @@ def mk_rf_stim_spatial_slice_idxs(
     return rf_idxs
 
 
-def slice_stimulus_array(
+def mk_stimulus_slice_array(
         st_params: do.SpaceTimeParams,
         stimulus_array: np.ndarray,
-        spat_filt_array: np.ndarray,
         slice_idxs: do.RFStimSpatIndices
         ) -> np.ndarray:
 
@@ -585,12 +584,6 @@ def slice_stimulus_array(
 
     sliced_array = stimulus_array[slice_idxs.y1:slice_idxs.y2, slice_idxs.x1:slice_idxs.x2]
 
-    # requrie that the spatial filter and the stimulus slice are the same size
-    if not (
-            (spat_filt_array.shape[0] == (slice_idxs.y2-slice_idxs.y1)) and
-            (spat_filt_array.shape[1] == (slice_idxs.x2-slice_idxs.x1))
-            ):
-        raise exc.LGNError('Stimulus slice and spatial filter array are not the same shape')
 
     return sliced_array
 
