@@ -6,9 +6,11 @@ to correct for resolution artefacts and F1 data recording issues from empirical 
 """
 
 from textwrap import dedent
-from typing import Optional, Dict, Tuple
+from typing import Optional, Dict, Tuple, cast
+import copy
 
 import scipy.optimize as opt
+import scipy.stats as stats
 
 from ..utils.units.units import (
     SpatFrequency, TempFrequency, ArcLength, Time, val_gen, scalar)
@@ -118,7 +120,54 @@ def joint_spat_temp_f1_magnitude(
     return joint_amp
 
 
-def joint_dc(tf: do.TQTempFilter, sf: do.DOGSpatialFilter) -> float:
+def generate_dc_value() -> float:
+    '''Create a DC value from a distribution derived from data
+
+    For new dc value where none is provided, exponential distribution used with
+    parameters derived as follows:
+
+    ```python
+    def basic_exp(x, b):
+        return np.exp(-b * x)
+
+    # data from Kaplan_et_al_1987 fig 1
+    xdata = np.array([10, 20, 30, 40])
+    ydata = np.array([29, 17, 6, 1])
+    ydata_norm = ydata / ydata.sum()
+
+    opt_res = opt.curve_fit(
+        basic_exp, xdata, ydata_norm, p0=[0.01]
+        )
+
+    opt_res[0]
+    # 0.0638429
+    ```
+
+    Values are clipped at 30 (ie, first sample equal to or less than 30 is taken)
+
+    To ensure such a value is obtained, 100 samples are taken 5 times until an
+    appropriate value is found
+    '''
+
+    b = 0.0638429  # hard coded from optimisation run (see docstring)
+
+    new_dc_vals_clipped = []
+    # try 5 times ... just in case (I'm being paranoid here)!
+    for _ in range(5):
+        new_dc_vals = stats.expon.rvs(scale=1/b, size=100)  # type: ignore
+        new_dc_vals_clipped = new_dc_vals[new_dc_vals<=30]  # type: ignore
+        if len(new_dc_vals_clipped) > 0:
+            break
+    new_dc = new_dc_vals_clipped[0]  # type: ignore
+    new_dc = cast(float, new_dc)
+
+    return new_dc
+
+
+def joint_dc(
+        tf: do.TQTempFilter, sf: do.DOGSpatialFilter,
+        draw_dc_if_missing: bool = True
+        ) -> Tuple[float, float, float]:
     """Calculate joint DC of temp and spat filters by averaging
 
     The DC Values must be within 30% of eachother
@@ -130,30 +179,36 @@ def joint_dc(tf: do.TQTempFilter, sf: do.DOGSpatialFilter) -> float:
     sf_dc = sf.source_data.resp_params.dc
 
     if (tf_dc is None):
-        raise ValueError(f'Temp Filter has no DC value in source data ... source from dist?')
-    if (sf_dc is None):
-        raise ValueError(f'Temp Filter has no DC value in source data ... source from dist?')
+        if draw_dc_if_missing:
+            tf_dc = generate_dc_value()
+        else:
+            raise ValueError(f'Temp Filter has no DC value in source data ... source from dist?')
+    if (sf_dc is None) :
+        if draw_dc_if_missing:
+            sf_dc = generate_dc_value()
+        else:
+            raise ValueError(f'Spat Filter has no DC value in source data ... source from dist?')
 
-
-    if abs(tf_dc - sf_dc) > (0.3 * min([tf_dc, sf_dc])):
-        tf_desc = (
-            tf.source_data.meta_data.make_key()
-            if tf.source_data.meta_data is not None
-            else tf.parameters)
-        sf_desc = (
-            sf.source_data.meta_data.make_key()
-            if sf.source_data.meta_data is not None
-            else sf.parameters)
-        raise ValueError(dedent(f'''
-            DC amplitudes of Temp Filt and Spat Filt are too differente\n
-            filters: {tf_desc}, {sf_desc}
-            DC amps: TF: {tf_dc}, SF: {sf_dc}
-            ''')
-            )
+    # Being too cautious I think with this
+    # if abs(tf_dc - sf_dc) > (0.3 * min([tf_dc, sf_dc])):
+    #     tf_desc = (
+    #         tf.source_data.meta_data.make_key()
+    #         if tf.source_data.meta_data is not None
+    #         else tf.parameters)
+    #     sf_desc = (
+    #         sf.source_data.meta_data.make_key()
+    #         if sf.source_data.meta_data is not None
+    #         else sf.parameters)
+    #     raise ValueError(dedent(f'''
+    #         DC amplitudes of Temp Filt and Spat Filt are too differente\n
+    #         filters: {tf_desc}, {sf_desc}
+    #         DC amps: TF: {tf_dc}, SF: {sf_dc}
+    #         ''')
+    #         )
     # Just take the average
     joint_dc = (tf_dc + sf_dc) / 2
 
-    return joint_dc
+    return joint_dc, sf_dc, tf_dc
 
 
 def mk_joint_sf_tf_resp_params(
@@ -175,9 +230,9 @@ def mk_joint_sf_tf_resp_params(
         contrast=contrast, contrast_params=contrast_params,
         )
 
-    DC = joint_dc(tf, sf)
+    DC, sf_dc, tf_dc = joint_dc(tf, sf)
 
-    resp_estimate = do.JointSpatTempResp(amplitude, DC)
+    resp_estimate = do.JointSpatTempResp(amplitude, DC, spat_filt_DC=sf_dc, temp_filt_DC=tf_dc)
 
     return resp_estimate
 
