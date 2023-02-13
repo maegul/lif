@@ -283,6 +283,19 @@ class TQTempFiltParams(ConversionABC):
         del flat_dict['arguments']  # remove nested dict
         return flat_dict
 
+    @property
+    def parameters(self):
+        """Convenience to allow either TQTempFilter or a TQTempFiltParams
+        object to be used by a function whenever just using the TQTempFiltParams
+        object (which is a child attribute of a TQTempFilter object) is
+        desired.
+
+        As TQTempFilter objects have TQTempFiltParams objects as "parameters",
+        `tf_args = tf.parameters` will work in either case.
+        Thus a variety of functions can happily take either kind of object.
+        """
+        return self
+
 
 @dataclass
 class TQTempFilter(ConversionABC):
@@ -355,6 +368,13 @@ class TQTempFilter(ConversionABC):
 
         return temp_filt
 
+
+
+# As both have an equivalent "parameters" attribute, and so can be treated
+# as the same functional type for certain purposes,
+# this is a convenient type for such instances
+TQTF = Union[TQTempFiltParams,TQTempFilter]
+"Convenient type so that either may be provided though only parameters to be used"
 
 # # Spatial Filter
 
@@ -739,6 +759,15 @@ class DOGSpatialFilter(ConversionABC):
             spat_filt = pkl.load(f)
 
         return spat_filt
+
+    # def resolve(self):
+    #     """Perform any arbitrary actions required to fill in any missing values
+
+    #     This will return a new deeply copied object with the value replaced
+
+    #     Current:
+    #         Add a DC value to the repsonse params if there wasn't one provided
+    #     """
 
 
 # As both have an equivalent "parameters" attribute, and so can be treated
@@ -1265,7 +1294,7 @@ class LGNCell(ConversionABC):
     "spat filt params with gauss params adjusted to have anisotropy to circ_var"
     temp_filt: TQTempFilter
     "The temporal filter to convolve with the time course of the stimulus"
-    max_f1_amplitude: float
+    max_f1_amplitude: LGNF1AmpMaxValue
     "Maximum amplitude of the F1 response after convolution"
     orientation: ArcLength[scalar]
     "orientation for the spatial filter when made anisotropic"
@@ -1441,6 +1470,12 @@ class LGNLayer(ConversionABC):
     cells: Tuple[LGNCell]
     params: LGNParams
 
+
+@dataclass
+class LGNLayerResponse(ConversionABC):
+    cell_rates: Tuple[np.ndarray]
+    cell_spike_times: Tuple[np.ndarray]
+
 # methods and parameters for the generation of LGN cells
 
 # # Stimuli and Coords
@@ -1544,6 +1579,10 @@ class JointSpatTempResp(ConversionABC):
     "F1 Amplitude"
     DC: float
     "Shift from 0 of mean of sinusoid"
+    spat_filt_DC: float
+    "Original DC of spatial filter"
+    temp_filt_DC: float
+    "Original DC of temporal filter"
 
 
 @dataclass
@@ -1551,10 +1590,17 @@ class ConvRespAdjParams(ConversionABC):
     """Parameters for adjusting the response of convolution"""
 
     amplitude: float
+    "factor by which amplitude needs to be adjusted"
     DC: float
+    "amount by which DC response needs to be shifted"
+    joint_response: JointSpatTempResp
     max_f1_adj_factor: Optional[float] = None
     "Necessary only if scaling maximal firing rates"
 
+@dataclass
+class ConvolutionResponse(ConversionABC):
+    response: np.ndarray
+    adjustment_params: ConvRespAdjParams
 
 # # V1
 
