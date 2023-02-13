@@ -87,6 +87,9 @@ def _mk_spat_filt_values(
     cent_params = spat_filter.parameters.cent
     surr_params = spat_filter.parameters.surr
 
+    # #! This will produce excessive amplitudes
+    #       as in 2D version, the vectors are multiplied by each other
+    #       ... and tend to have values <1, and so reduce amplitude overall
     cent_filter_values = cent_params.amplitude * ff.mk_gauss_1d(
         coords=spat_coords, sd=cent_params.arguments.h_sd)
     surr_filter_values = -1 * surr_params.amplitude * ff.mk_gauss_1d(

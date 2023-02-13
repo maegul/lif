@@ -854,7 +854,9 @@ def mk_gauss_2d_ft(
 # sf = spatial filter
 def mk_dog_sf(
         x_coords: ArcLength[val_gen], y_coords: ArcLength[val_gen],
-        dog_args: do.DOGSpatFiltArgs) -> val_gen:
+        dog_args: do.DOGSF) -> val_gen:
+
+    dog_args = dog_args.parameters  # works because of parameters hack
 
     cent_gauss_2d = mk_gauss_2d(x_coords, y_coords, gauss_params=dog_args.cent)
     surr_gauss_2d = mk_gauss_2d(x_coords, y_coords, gauss_params=dog_args.surr)
@@ -1205,7 +1207,7 @@ def _mk_tqtempfilt(
 
 def mk_tq_tf(
         t: Time[val_gen],
-        tf_params: do.TQTempFiltParams) -> val_gen:
+        tf_params: Union[do.TQTempFiltParams, do.TQTempFilter]) -> val_gen:
     r"""Generate single temp filter by modulating a negative exp with a cosine
 
     Args passed to _mk_tqtempfilt
@@ -1247,6 +1249,8 @@ def mk_tq_tf(
         The additional term of $`- \frac{n}{e^n}`$ slows the growth/decay, but converges
         to zero by approx. 10 time constants (0.05%)
     """
+
+    tf_params = tf_params.parameters  # will work either way because of the "parameters" hack
 
     tf = tf_params.amplitude * _mk_tqtempfilt(
                     t,
