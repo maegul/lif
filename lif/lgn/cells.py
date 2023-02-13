@@ -37,7 +37,7 @@ Examples:
 # # Imports
 import random
 from textwrap import dedent
-from typing import List, cast, Dict, Tuple, Iterable
+from typing import List, cast, Dict, Tuple, Sequence
 from itertools import combinations, combinations_with_replacement
 import json
 from dataclasses import dataclass
@@ -239,7 +239,7 @@ def mk_filters(
 
 def mk_max_f1_amplitudes(
         n: int,
-        f1_amp_params: do.LGNF1AmpDistParams) -> Iterable[do.LGNF1AmpMaxValue]:
+        f1_amp_params: do.LGNF1AmpDistParams) -> Sequence[do.LGNF1AmpMaxValue]:
 
     f1_amps = f1_amp_params.draw_f1_amp_vals(n = n)
 
@@ -260,7 +260,7 @@ def mk_lgn_layer(
         n = n_cells, ori_params = lgn_params.orientation)
 
     # circular variance (of spat filt orientation bias)
-    circ_var_vals = mk_circ_var_values(n_cells, lgn_params.circ_var)
+    circ_var_vals: List[float] = list(mk_circ_var_values(n_cells, lgn_params.circ_var))
 
     # spat_filters
     spat_filts, temp_filts = mk_filters(n_cells, lgn_params.filters)
@@ -270,7 +270,7 @@ def mk_lgn_layer(
     # oriented spat filters
     # let's pre-compute them and have both available
     # ... only a few params and objects more
-    oriented_spat_filts = tuple(
+    oriented_spat_filts: Tuple[do.DOGSpatFiltArgs,...] = tuple(
         ff.mk_ori_biased_spatfilt_params_from_spat_filt(
                 spat_filt, circ_var,
                 method=lgn_params.circ_var.circ_var_definition_method
@@ -289,27 +289,19 @@ def mk_lgn_layer(
         distance_scale=rf_distance_scale
         )
 
-
-    lgn_layer = do.LGNLayer(
-        cells = tuple(
+    lgn_cells = tuple(
             do.LGNCell(
-                orientation=ori, circ_var=cv,
-                spat_filt=sf, oriented_spat_filt_params=ori_sf,
-                temp_filt=tf,
-                location=loc,
-                max_f1_amplitude=max_f1_amp
-                )
-            for ori, cv, sf, ori_sf, tf, loc, max_f1_amp
-                in zip(
-                    orientations,
-                    circ_var_vals,
-                    spat_filts, oriented_spat_filts,
-                    temp_filts,
-                    rf_locations.locations,
-                    f1_max_amps
+                    spat_filts[i],
+                    oriented_spat_filts[i],
+                    temp_filts[i],
+                    f1_max_amps[i],
+                    orientations[i],
+                    circ_var_vals[i],
+                    rf_locations.locations[i],
                     )
-            ),
-        params = lgn_params
-    )
+            for i in range(lgn_params.n_cells)
+        )
+
+    lgn_layer = do.LGNLayer(cells=lgn_cells, params=lgn_params)
 
     return lgn_layer
