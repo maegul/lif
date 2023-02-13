@@ -45,7 +45,9 @@ def gen_sin(
 
 def gen_fft(
         signal: np.ndarray, time: Time[np.ndarray],
-        view_max=20) -> Tuple[np.ndarray, np.ndarray]:
+        view_max=20,
+        align_freqs: bool = False
+        ) -> Tuple[np.ndarray, np.ndarray]:
     """Generate FFT of signal over time, returning spectrum and freqs
 
     FFT is normalised to the size of the signal.
@@ -53,10 +55,36 @@ def gen_fft(
     view_max: number of items returned from beginning for both
         spectrum and frequency
 
+    align_freqs: Manipulate the time vector to generate integer frequencies
+        Done by altering the size of the time coord, if possible, so that
+        it extends for `(1/temp_res)` samples
+
+    freq workings relies on time being 1 second with even increments/period
+    so that time.size * time[1]-time[0] is 1
+    this ensures that the freqs in the spec are 0, 1, 2, ... n/2, as
+    time_size*time_res is the denominating factor in the freqs series (see np.fft.rfftfreq docs)
+
     Returns
     -------
     spectrum, frequencies
     """
+
+    if align_freqs:
+        t_size = time.value.size
+        t_res = time.s[1] - time.s[0]
+        opt_size = 1/t_res
+        # check if integer size
+        if not (opt_size == int(opt_size)):
+            raise ValueError(f'Time coordinates cannot align, opt size is not integer: {opt_size}')
+        if (t_size < opt_size) or (signal.size < opt_size):
+            raise ValueError(
+                f'extent/sizes are too small. Sizes are {t_size, signal.size} but need {opt_size} ')
+        time = Time(time.s[:int(opt_size)], 's')
+        signal = signal[:int(opt_size)]
+
+        # check they're the same size
+        if not (time.value.size == signal.size):
+            raise ValueError(f'time and signal not same size: {time.value.size, signal.size}')
 
     signal_size = time.value.size
 
