@@ -36,7 +36,11 @@ from ..convolution import correction
 # # Get all filters and product
 
 spatial_filters = filters.spatial_filters
+"Filter index key : spatial filter"
 temporal_filters = filters.temporal_filters
+"Filter index key : temporal filter"
+
+
 
 all_filter_combinations_keys = tuple(
         product(spatial_filters.keys(), temporal_filters.keys())
@@ -63,3 +67,16 @@ def mk_actual_max_f1_amps(
     return actual_max_f1_amps
 
 
+def get_cell_actual_max_f1_amp(
+        lgn_cell: do.LGNCell,
+        all_max_f1_amps: Dict[Tuple[str, str], do.LGNActualF1AmpMax]
+        ):
+
+    cell_index_key = (
+            filters.reverse_spatial_filters[lgn_cell.spat_filt.key],
+            filters.reverse_temporal_filters[lgn_cell.temp_filt.key]
+        )
+
+    max_f1_amp = all_max_f1_amps[cell_index_key]
+
+    return max_f1_amp

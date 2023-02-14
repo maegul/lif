@@ -455,4 +455,34 @@ def get_filters(
 # ## Load filters and set to module variables
 _all_filters = get_filters(get_filter_index())
 spatial_filters: Dict[str, do.DOGSpatialFilter] = _all_filters['spatial']
+"Filter index key : spatial filter"
 temporal_filters: Dict[str, do.TQTempFilter] = _all_filters['temporal']
+"Filter index key : temporal filter"
+
+
+# ## Make reverse lookup (file name signature to filter index key)
+
+# spatial
+
+# check that all filter signatures/file names are unique (shouldn't be a problem ... but paranoia)
+if not (
+    len(spatial_filters.keys()) ==
+    len(set(sf.key for sf in spatial_filters.values()))
+    ):
+    raise exc.LGNError('Filter index file name keys are not all unique!!  Must be!')
+
+reverse_spatial_filters = {sf.key: index_key for index_key, sf in spatial_filters.items()}
+"Spatial filter file name key : filter index key"
+
+
+# temporal
+
+# check that all filter signatures/file names are unique (shouldn't be a problem ... but paranoia)
+if not (
+    len(temporal_filters.keys()) ==
+    len(set(tf.key for tf in temporal_filters.values()))
+    ):
+    raise exc.LGNError('Filter index file name keys are not all unique!!  Must be!')
+
+reverse_temporal_filters = {tf.key: index_key for index_key, tf in temporal_filters.items() }
+"Temporal filter file name key : filter index key"
