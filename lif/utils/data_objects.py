@@ -1609,9 +1609,24 @@ class V1Params(ConversionABC):
 # # Simulation
 
 @dataclass
+class MultiStimulusGeneratorParams(ConversionABC):
+    spat_freqs: Iterable[float]
+    temp_freqs: Iterable[float]
+    orientations: Iterable[float]
+    spat_freq_unit: str = 'cpd'
+    temp_freq_unit: str = 'hz'
+    ori_arc_unit: str = 'deg'
+    contrasts: Iterable[Optional[float]] = [None]
+    amplitudes: Iterable[Optional[float]] = [None]
+    DC_vals: Iterable[Optional[float]] = [None]
+
+MultiStimulusParams = Tuple[GratingStimulusParams]
+
+@dataclass
 class SimulationParams(ConversionABC):
-    n: int
+    n_simulations: int
+    "Number of repeat simulations to run with same parameters"
     space_time_params: SpaceTimeParams
-    stim_params: GratingStimulusParams
+    multi_stim_params: MultiStimulusGeneratorParams
     lgn_params: LGNParams
     v1_params: V1Params
