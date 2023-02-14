@@ -217,7 +217,7 @@ class TempFiltParams(ConversionABC):
     """
     data: TempFiltData
     resp_params: TFRespMetaData
-    meta_data: Optional[CitationMetaData] = None
+    meta_data: CitationMetaData
 
 
 @dataclass
@@ -307,13 +307,9 @@ class TQTempFilter(ConversionABC):
     optimisation_result: BasicOptimisationData
 
     @property
-    def key(self) -> Optional[str]:
+    def key(self) -> str:
         "Shortcut to getting key of filter"
-        key: Optional[str] = (
-            self.source_data.meta_data.make_key()
-            if self.source_data.meta_data is not None
-            else None
-            )
+        key: str = self.source_data.meta_data.make_key()
 
         return key
 
@@ -705,13 +701,9 @@ class DOGSpatialFilter(ConversionABC):
     """Values for generating orientation biased version of this filter"""
 
     @property
-    def key(self) -> Optional[str]:
+    def key(self) -> str:
         "Shortcut to getting key of filter"
-        key: Optional[str] = (
-            self.source_data.meta_data.make_key()
-            if self.source_data.meta_data is not None
-            else None
-            )
+        key: str = self.source_data.meta_data.make_key()
 
         return key
 
