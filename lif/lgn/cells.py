@@ -37,7 +37,7 @@ Examples:
 # # Imports
 import random
 from textwrap import dedent
-from typing import List, cast, Dict, Tuple, Sequence
+from typing import List, cast, Dict, Tuple, Sequence, Optional
 from itertools import combinations, combinations_with_replacement
 import json
 from dataclasses import dataclass
@@ -59,7 +59,10 @@ from . import (
     orientation_preferences as rforis)
 
 from ..receptive_field.filters import filters
-from ..receptive_field.filters import filter_functions as ff
+from ..receptive_field.filters import (
+    filter_functions as ff,
+    contrast_correction as cont_corr
+    )
 
 # # spatial and temporal filter dictionaries
 spatial_filters = filters.spatial_filters
@@ -239,9 +242,37 @@ def mk_filters(
 
 def mk_max_f1_amplitudes(
         n: int,
-        f1_amp_params: do.LGNF1AmpDistParams) -> Sequence[do.LGNF1AmpMaxValue]:
+        f1_amp_params: do.LGNF1AmpDistParams,
+        contrast: Optional[do.ContrastValue] = None,
+        contrast_params: Optional[do.ContrastParams] = None
+        ) -> Sequence[do.LGNF1AmpMaxValue]:
+    """Draw max F1 amplitudes from distribution defined by `f1_amp_params`.
+
+    If `contrast` provided, the values will be contrast corrected
+    """
 
     f1_amps = f1_amp_params.draw_f1_amp_vals(n = n)
+
+    if contrast:
+        # get default contrast params if missing
+        if not contrast_params:
+            contrast_params = settings.simulation_params.contrast_params
+
+        contrast_adjusted_f1_amps = tuple(
+            do.LGNF1AmpMaxValue(
+                max_amp = cont_corr.correct_contrast_response_amplitude(
+                    response_amplitude=max_f1_amp.max_amp,
+                    base_contrast=max_f1_amp.contrast,
+                    target_contrast=contrast,
+                    contrast_params=contrast_params
+                ),
+                contrast = contrast
+            )
+            for max_f1_amp in f1_amps
+            )
+
+        return contrast_adjusted_f1_amps
+
 
     return f1_amps
 
@@ -251,8 +282,15 @@ def mk_max_f1_amplitudes(
 def mk_lgn_layer(
         lgn_params: do.LGNParams,
         spat_res: ArcLength[scalar],
+        contrast: do.ContrastValue
         ) -> do.LGNLayer:
+    """Make full lgn layer from params
 
+    `contrast` necessary to correct the amplitude of the target F1 amplitudes.
+    As this will shift the distribution of actual firing rates of the LGN cells, this is quite
+    an important parameter in the simulation, as **this is where the actual contrast** of the
+    simulation is defined and where it affects the LGN layer's response rates.
+    """
     n_cells = lgn_params.n_cells
 
     # orientations
@@ -265,7 +303,10 @@ def mk_lgn_layer(
     # spat_filters
     spat_filts, temp_filts = mk_filters(n_cells, lgn_params.filters)
 
-    f1_max_amps = mk_max_f1_amplitudes(n_cells, lgn_params.F1_amps)
+    f1_max_amps = mk_max_f1_amplitudes(
+        n_cells, lgn_params.F1_amps,
+        contrast=contrast  # contrast provided for contrast correction
+        )
 
     # oriented spat filters
     # let's pre-compute them and have both available
