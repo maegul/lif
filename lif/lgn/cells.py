@@ -281,8 +281,7 @@ def mk_lgn_layer(
     # locations
     rf_distance_scale = rflocs.mk_rf_locations_distance_scale(
         spat_filters=spat_filts, spat_res=spat_res,
-        # >>>! should be in settings?
-        magnitude_ratio_for_diameter=0.2
+        magnitude_ratio_for_diameter=None  # relying on default value in settings
         )
     rf_locations = mk_rf_locations(
         n=n_cells, rf_loc_params=lgn_params.spread,

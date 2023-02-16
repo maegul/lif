@@ -26,12 +26,12 @@ from dataclasses import replace, dataclass, asdict
 # from lif.receptive_field.filters import contrast_correction as cont_cor
 
 
-# > config file names
+# # config file names
 SETTINGS_FILE_NAME = Path('.lif_hws')
 SIMULATION_PARAMS_FILE_NAME = Path('.lif_sim_params')
 
 
-# > Parameters objects
+# # Parameters objects
 class ParamsObj:
     # just in case its helpful to know where these settings objs are from
     _settings_module_path = __file__
@@ -42,7 +42,7 @@ class ParamsObj:
 Param_T = TypeVar('Param_T', bound=ParamsObj)
 
 
-# > Default settings are parameters in these classes
+# # Default settings are parameters in these classes
 
 @dataclass
 class Settings(ParamsObj):
@@ -52,14 +52,17 @@ class Settings(ParamsObj):
 
 
 @dataclass
-class SimulationParams(ParamsObj):
+class SimulationSettings(ParamsObj):
     "General parameters for simulations"
     _file_name: Path = SIMULATION_PARAMS_FILE_NAME
     spat_filt_sd_factor: float = 5
     "By how many times the spatial coordinates should be larger than the largest Std Dev parameter"
     temp_filt_n_tau: float = 10
     "By how many times the temporal coordinates should be larger than the time constant"
-    # contrast_params: do.ContrastParams = cont_cor.ON
+    magnitude_ratio_for_rf_loc_scaling: float = 0.2
+    """What relative magnitude of a spatial filter's maximum should be used to calculate the
+    unit of distance used for the RF locations distribution.
+    """
 
     @property
     def contrast_params(self):
@@ -71,9 +74,9 @@ class SimulationParams(ParamsObj):
         return cont_cor.ON
 
 
-# > updating default settings from config file
+# # updating default settings from config file
 
-# >> update function
+# ## update function
 
 def find_update_parameters_file(
         params_obj: Param_T,
@@ -102,7 +105,7 @@ def find_update_parameters_file(
     return params_obj
 
 
-# >> Doing the actual updating and setting attributes on the module
+# ## Doing the actual updating and setting attributes on the module
 
 cwd = Path.cwd()
 
@@ -110,14 +113,14 @@ cwd = Path.cwd()
 # allowing accessing settings to be possible immediately on import
 # with `settings.simulation_params.PARAMETER`
 settings = Settings()
-simulation_params = SimulationParams()
+simulation_params = SimulationSettings()
 
 # update from file
 settings = find_update_parameters_file(settings, cwd)
 simulation_params = find_update_parameters_file(simulation_params, cwd)
 
 
-# > Utilities for writing out default config files
+# # Utilities for writing out default config files
 
 def get_data_dir() -> Path:
     return Path(settings.data_dir).expanduser()
@@ -147,4 +150,4 @@ def write_default_settings(location: Path, overwrite: bool = False):
 def write_default_simulation_params(location: Path, overwrite: bool = False):
     "Write out default values of simulatin parameters to json file"
 
-    write_default_params_file(location, SimulationParams, overwrite)
+    write_default_params_file(location, SimulationSettings, overwrite)

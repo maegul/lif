@@ -10,7 +10,7 @@ Not great design but I was just trying to be quick and convenient here.
 
 # > Imports
 # +
-from typing import Union, List, Tuple, Iterable, Literal
+from typing import Union, List, Tuple, Iterable, Literal, Optional
 from itertools import combinations_with_replacement
 from dataclasses import dataclass
 import warnings
@@ -1062,7 +1062,7 @@ def avg_largest_pairwise_value(
 def mk_rf_locations_distance_scale(
         spat_filters: Iterable[do.DOGSpatialFilter],
         spat_res: ArcLength[scalar],
-        magnitude_ratio_for_diameter: float = 0.2
+        magnitude_ratio_for_diameter: Optional[float] = None
         ) -> ArcLength[scalar]:
     """For a list of spatial filters, find average largest pairwise diameter
 
@@ -1073,6 +1073,10 @@ def mk_rf_locations_distance_scale(
     Returns as an ArcLength in the same units as `spat_res` (and snapped to the resolution
     grid too) as a `diameter`.
     """
+
+    # If not set, use default value in settings
+    if not magnitude_ratio_for_diameter:
+        magnitude_ratio_for_diameter = settings.simulation_params.magnitude_ratio_for_rf_loc_scaling
 
     coords_for_target_magnitude = [
         spat_filt_coord_at_magnitude_ratio(
