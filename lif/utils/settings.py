@@ -135,7 +135,9 @@ def write_default_params_file(
     params_obj = default_class()
     new_file = location / params_obj._file_name
 
-    if new_file.exists() and not overwrite:
+    if not new_file.exists():
+        new_file.touch()
+    elif new_file.exists() and not overwrite:
         raise ValueError(f'Params file of type {default_class} already exists at {location}')
 
     with new_file.open() as f:
