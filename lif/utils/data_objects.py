@@ -31,6 +31,10 @@ from .units.units import (
     ArcLength, TempFrequency, SpatFrequency, Time
     )
 
+import brian2 as bn
+from brian2 import units as bnun
+
+
 # ## Circular imports
 
 # Likely to be circular, as we're using modules here that also use this one
@@ -645,7 +649,7 @@ class CircularVarianceSDRatioVals(ConversionABC):
             self._mk_interpolated()
 
         # bounds circ_var ratio ( between 0 and 1 )
-        if not (np.all(circ_var >= 0) and np.all(circ_var < 1)):  # type: ignore
+        if not (np.all(circ_var >= 0) and np.all(circ_var <= 1)):  # type: ignore
             raise ValueError(f'Circ var must be between 0 and 1, is {circ_var}')
 
         return self._sd_ratio(circ_var)
@@ -1373,7 +1377,7 @@ class LGNLocationParams(ConversionABC):
     "desired ratio between sigma_x and sigma_y"
     distribution_alias: str
     "key used in rfloc_dist_index file"
-    rotate_locations: bool = False
+    rotate_locations: bool = True
     "Whether to rotate rf locations to `orientation` angle"
     orientation: ArcLength[scalar] = ArcLength(90,'deg')
     "Rotation angle to be applied to locations for HW orientation to be non-vertical"
@@ -1453,7 +1457,11 @@ class LGNParams(ConversionABC):
     spread: LGNLocationParams
     filters: LGNFilterParams
     F1_amps: LGNF1AmpDistParams
-    "Distribution to draw max F1 amplitudes from"
+    """Distribution to draw max F1 amplitudes from.
+
+    Happily rely on default values, as these have been optimised to already
+    match data from a distribution
+    """
     contrast_params: Optional[ContrastParams] = None
     "Params for contrast curve to use for contrast scaling"
 
@@ -1466,7 +1474,7 @@ class LGNLayer(ConversionABC):
 @dataclass
 class LGNLayerResponse(ConversionABC):
     cell_rates: Tuple[np.ndarray]
-    cell_spike_times: Tuple[np.ndarray]
+    cell_spike_times: Tuple[Time[np.ndarray], ...]
 
 # methods and parameters for the generation of LGN cells
 
@@ -1477,7 +1485,14 @@ class SpaceTimeParams(ConversionABC):
     """Define size and resolution of the Spatial and Temporal Canvas
 
     Args:
-        spat_ext:
+        spat_ext: Will be the Diameter of the image canvas
+            Best to ensure that this is large enough to cover the locations and sizes of
+            spatial filters.
+
+            `11 deg` or `660 mnt` works well at the moment (for standard RF location dist),
+            as the required for a worst case scenario is usally around 635 mnt.
+            See `stimulus.estimate_max_stimulus_spatial_ext_for_lgn()`.
+
         spat_res: Must have an integer value, otherwise post_init raises an error
             on instantiation
         temp_ext:
@@ -1598,8 +1613,72 @@ class ConvolutionResponse(ConversionABC):
 
 @dataclass
 class LIFParams(ConversionABC):
-    # See stanley_2012 feedforward lif docs
-    pass
+    """Leaky integrate and fire model parameters
+
+    Default values align with those of Stanley et al 2012 and are a decent starting point
+    """
+    v_rest: float = -70
+    "mV"
+    tau_m: float = 10
+    "ms"
+    v_thres: float = -55
+    "mV"
+    v_reset: float = -65
+    "mV"
+    EPSC: float = 0.05
+    "nA"
+    tau_EPSC: float = 0.85
+    "ms"
+    g_EPSC: float = 14.2
+    "nsiemen"
+
+    def mk_dict_with_units(self):
+
+        brian_units = {
+            'v_rest': bnun.mV,
+            'tau_m': bnun.msecond,
+            'v_thres': bnun.mV,
+            'v_reset': bnun.mV,
+            'EPSC': bnun.nA,
+            'tau_EPSC': bnun.msecond,
+            'g_EPSC': bnun.nsiemens,
+        }
+
+        values = {
+            key: value * brian_units[key]
+            for key, value in self.asdict_().items()
+        }
+
+        return values
+
+@dataclass
+class LIFNetwork(ConversionABC):
+    network: bn.Network
+    "Master network object for managing whole simulation"
+    input_spike_generator: bn.SpikeGeneratorGroup
+    "LGN Spikes providing input the V1 cell"
+    spike_monitor: bn.SpikeMonitor
+    "Spikes"
+    membrane_monitor: bn.StateMonitor
+    "Membrane potential"
+    current_monitor: Optional[bn.StateMonitor] = None
+    "Current, optional as unlikely to be necessary"
+    initial_state_name: str = 'initial'
+    "Name given to the initial state within Brian's state storage system"
+
+    def reset_spikes(
+            self,
+            spike_idxs: np.ndarray, spike_times: Time[np.ndarray]):
+
+        self.network.restore(self.initial_state_name)
+        self.input_spike_generator.set_spikes(
+            indices=spike_idxs,
+            times=spike_times.ms * bnun.msecond
+            )
+
+    def run(self, space_time_params: SpaceTimeParams):
+        self.network.run(space_time_params.temp_ext.s * bnun.second)
+
 
 @dataclass
 class V1Params(ConversionABC):
@@ -1616,9 +1695,10 @@ class MultiStimulusGeneratorParams(ConversionABC):
     spat_freq_unit: str = 'cpd'
     temp_freq_unit: str = 'hz'
     ori_arc_unit: str = 'deg'
-    contrasts: Iterable[Optional[float]] = [None]
-    amplitudes: Iterable[Optional[float]] = [None]
-    DC_vals: Iterable[Optional[float]] = [None]
+    # mutable default value requires this incantation
+    contrasts: Iterable[Optional[float]] = field(default_factory = lambda: [None])
+    amplitudes: Iterable[Optional[float]] = field(default_factory = lambda: [None])
+    DC_vals: Iterable[Optional[float]] = field(default_factory = lambda: [None])
 
 MultiStimulusParams = Tuple[GratingStimulusParams]
 
@@ -1629,4 +1709,4 @@ class SimulationParams(ConversionABC):
     space_time_params: SpaceTimeParams
     multi_stim_params: MultiStimulusGeneratorParams
     lgn_params: LGNParams
-    v1_params: V1Params
+    lif_params: LIFParams
