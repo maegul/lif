@@ -2,10 +2,22 @@
 
 """
 
-from ..utils import data_objects as do
+from textwrap import dedent
+from typing import Sequence
 
+import numpy as np
+
+from ..utils import data_objects as do, exceptions as exc
+
+from ..receptive_field.filters import filter_functions as ff
+
+from ..convolution import convolve
 from ..lgn import cells
-from . import all_filter_actual_max_f1_amp as all_max_f1
+from ..stimulus import stimulus
+from . import (
+    all_filter_actual_max_f1_amp as all_max_f1,
+    leaky_int_fire as lif_model
+    )
 
 
 # def mk_lgn_layer_responses(
@@ -20,23 +32,171 @@ from . import all_filter_actual_max_f1_amp as all_max_f1
 
 
 
-def run_simulation(
-        n: int,
-        space_time_params: do.SpaceTimeParams,
-        stim_params: do.GratingStimulusParams,
-        lgn_params: do.LGNParams,
-        v1_params: do.V1Params):
+def run_simulation(params: do.SimulationParams):
+
+    # ## create stimulus
+
+    # check that st_params spat_ext is sufficient (based on worst case extent)
+    estimated_max_spat_ext = stimulus.estimate_max_stimulus_spatial_ext_for_lgn(
+        params.space_time_params.spat_res, params.lgn_params,
+        n_cells=2000, safety_margin_increment=0.1
+        )
+    print(dedent(
+        f'''\
+        --------
+        Stimulus
+        --------
+
+        Estimated max spatial extent: {estimated_max_spat_ext.mnt:.3f} mnts
+        Current spatial extent:       {params.space_time_params.spat_ext.mnt:.3f} mnts
+        ''')
+    )
+
+    if (params.space_time_params.spat_ext.base < estimated_max_spat_ext.base):
+        raise exc.LGNError(dedent(
+            f'''\
+            Spatial extent of space time params ({params.space_time_params.spat_ext.mnt: .3f} mnts)
+            is less than estimated required maximum ({estimated_max_spat_ext.mnt:.3f} mnts)
+            '''))
+
+    # create all Stimuli necessary
+
+    # Generate all parameters (ie, all combinations of desired parameters)
+    all_stim_params = stimulus.mk_multi_stimulus_params(params.multi_stim_params)
+
+    # Create and save all stimuli arrays if not already generated and saved to file
+    stimulus.mk_stimulus_cache(params.space_time_params, all_stim_params)
+
+    # ## Create V1 LIF network
+    # Should be the same network just with new inputs each time
+    # At some point, multiple sets of inputs may be simulated simultaneously
+    # ... but for now, one at a time.
+    v1_model = lif_model.mk_lif_v1(
+        n_inputs=params.lgn_params.n_cells,
+        lif_params=params.lif_params
+        )
+
+    # ## CRUDE! Final results object
+    # CRUDE but will probably get updated to be what I need
+    # For now: {stim_signature: [v1.spikes]}
+    results = {}
+
+    # ## Loop through each stim_params
 
 
-    actual_max_f1_amps = all_max_f1.mk_actual_max_f1_amps(stim_params=stim_params)
+    for stim_idx, stim_params in enumerate(all_stim_params):
 
-    # probably repeat n times (for each simulation) from here ... but for now, just write flat for 1
+        print(dedent(f'''\
+            STIMULUS {stim_idx}/{len(all_stim_params)}:
+            {stimulus.mk_stim_signature(params.space_time_params, stim_params)}
+            '''))
 
-    lgn = cells.mk_lgn_layer(lgn_params, spat_res=space_time_params.spat_res)
+
+        stimulus_results_key = f'{stimulus.mk_stim_signature(params.space_time_params, stim_params)}'
+        results[stimulus_results_key] = []
+
+        # ### Load Stimulus
+        stim_array = stimulus.load_stimulus_from_params(params.space_time_params, stim_params)
+
+        # ### Actual Max F1 amplitudes
+
+        # Do here, at the "top" so that only have to do once for a simulation
+        # ... but I can't be bothered storing in disk and managing that.
+        actual_max_f1_amps = all_max_f1.mk_actual_max_f1_amps(stim_params=stim_params)
 
 
+        # ### Loop through N sims
 
-    return lgn
+        for sim_idx in range(params.n_simulations):
+
+            print(f'Simulation {sim_idx}/{params.n_simulations} ({sim_idx/params.n_simulations:.2%})')
+
+            # #### LGN Layer
+            # probably repeat n times (for each simulation) from here ...
+            # but for now, just write flat for 1
+
+            lgn = cells.mk_lgn_layer(
+                params.lgn_params,
+                spat_res=params.space_time_params.spat_res,
+                contrast=stim_params.contrast)
+
+            # #### Create Spatial and Temporal Filter arrays
+            spat_filts: Sequence[np.ndarray] = []
+            temp_filts: Sequence[np.ndarray] = []
+            responses: Sequence[do.ConvolutionResponse] = []
+            for cell in lgn.cells:
+                # spatial filter array
+                xc, yc = ff.mk_spat_coords(
+                            params.space_time_params.spat_res,
+                            sd=cell.spat_filt.parameters.max_sd()
+                            )
+                spat_filt = ff.mk_dog_sf(x_coords=xc, y_coords=yc, dog_args=cell.spat_filt)
+                # Rotate array
+                spat_filt = ff.mk_oriented_sf(spat_filt, cell.orientation)
+
+                spat_filts.append(spat_filt)
+
+                # temporal filter array
+                tc = ff.mk_temp_coords(
+                    params.space_time_params.temp_res,
+                    tau=cell.temp_filt.parameters.arguments.tau
+                    )
+                temp_filt = ff.mk_tq_tf(tc, cell.temp_filt)
+                temp_filts.append(temp_filt)
+
+                # slice stimulus
+                spat_slice_idxs = stimulus.mk_rf_stim_spatial_slice_idxs(
+                    params.space_time_params, cell.spat_filt, cell.location)
+                stim_slice = stimulus.mk_stimulus_slice_array(
+                    params.space_time_params, stim_array, spat_slice_idxs)
+
+                # convolve
+                actual_max_f1_amp = all_max_f1.get_cell_actual_max_f1_amp(cell, actual_max_f1_amps)
+                cell_resp = convolve.mk_single_sf_tf_response(
+                        params.space_time_params, cell.spat_filt, cell.temp_filt,
+                        spat_filt, temp_filt,
+                        stim_params, stim_slice,
+                        filter_actual_max_f1_amp=actual_max_f1_amp.value,
+                        target_max_f1_amp=cell.max_f1_amplitude
+                        )
+
+                responses.append(cell_resp)
+
+            # be paranoid and use tuples ... ?
+            spat_filts, temp_filts, responses = (
+                tuple(spat_filts), tuple(temp_filts), tuple(responses)
+                )
+            # #### Poisson spikes for all cells
+            # Sigh ... the array is stored along with the adjustment params in an object
+            # ... and they're all called "response(s)"
+            response_arrays = tuple(
+                    response.response for response in responses
+                )
+            lgn_layer_responses = convolve.mk_lgn_response_spikes(
+                    params.space_time_params, response_arrays
+                )
+
+            # ### Simulate V1 Reponse
+            spike_idxs, spike_times = (
+                lif_model.
+                mk_input_spike_indexed_arrays(lgn_response=lgn_layer_responses) )
+
+            v1_model.reset_spikes(spike_idxs, spike_times)
+
+            v1_model.run(params.space_time_params)
+            results[stimulus_results_key].append(
+                    {
+                    'spikes': v1_model.spike_monitor.spike_trains()[0],
+                    'membrane_potential': v1_model.membrane_monitor.v[0],
+                    'lgn_responses': lgn_layer_responses,
+                    'lgn_spikes': spike_times
+                    }
+                )
+
+
+    # ## return results
+
+    return results
 
 
 
