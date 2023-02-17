@@ -414,15 +414,7 @@ def print_params_for_all_saved_stimuli():
 
 
 def mk_multi_stimulus_params(
-        spat_freqs: Iterable[float],
-        temp_freqs: Iterable[float],
-        orientations: Iterable[float],
-        spat_freq_unit: str = 'cpd',
-        temp_freq_unit: str = 'hz',
-        ori_arc_unit: str = 'deg',
-        contrasts: Iterable[Optional[float]] = [None],
-        amplitudes: Iterable[Optional[float]] = [None],
-        DC_vals: Iterable[Optional[float]] = [None]
+        multi_params: do.MultiStimulusGeneratorParams
         ) -> Tuple[do.GratingStimulusParams]:
     """Make multiple stimulus params from all combinations of parameters provided
 
@@ -432,18 +424,18 @@ def mk_multi_stimulus_params(
 
 
     stim_param_val_combos = itertools.product(
-        spat_freqs,
-        temp_freqs,
-        orientations,
-        contrasts,
-        amplitudes,
-        DC_vals
+        multi_params.spat_freqs,
+        multi_params.temp_freqs,
+        multi_params.orientations,
+        multi_params.contrasts,
+        multi_params.amplitudes,
+        multi_params.DC_vals
         )
     stim_param_combos = tuple(
         do.GratingStimulusParams(
-            spat_freq=SpatFrequency(c[0], spat_freq_unit),
-            temp_freq=TempFrequency(c[1], temp_freq_unit),
-            orientation=ArcLength(c[2], ori_arc_unit),
+            spat_freq=SpatFrequency(c[0], multi_params.spat_freq_unit),
+            temp_freq=TempFrequency(c[1], multi_params.temp_freq_unit),
+            orientation=ArcLength(c[2], multi_params.ori_arc_unit),
             # Use default value as the fall back if value is None
             contrast=(do.ContrastValue(c[3])
                 if c[3] is not None
@@ -466,7 +458,7 @@ def mk_multi_stimulus_params(
 
 def mk_stimulus_cache(
         st_params: do.SpaceTimeParams,
-        multi_stim_params: Tuple[do.GratingStimulusParams],
+        multi_stim_params: do.MultiStimulusParams,
         overwrite: bool = False
         ):
     """Create stimulus arrays and save to file for all parameters provided
