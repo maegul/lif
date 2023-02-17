@@ -3,8 +3,12 @@
 
 # +
 from typing import Optional
+import copy
 
 import numpy as np
+from numpy import fft
+
+from scipy.signal import convolve as signal_convolve
 
 # from lif import *
 from lif.convolution import (
@@ -16,9 +20,15 @@ from lif.utils import data_objects as do
 from lif.utils import settings
 from lif.utils.units.units import ArcLength, SpatFrequency, Time, TempFrequency, scalar
 from lif.receptive_field.filters import (
+    filters,
     contrast_correction as cont_corr,
     filter_functions as ff
     )
+from lif.convolution import estimate_real_amp_from_f1 as est_f1
+
+from lif.stimulus import stimulus
+
+from lif.plot import plot
 
 import plotly.express as px
 import plotly.graph_objects as go
@@ -64,8 +74,11 @@ def write_fig(fig, file_name: str, **kwargs):
 # * These are loaded from file, having been previously fit to data
 
 # +
-tf = do.TQTempFilter.load(do.TQTempFilter.get_saved_filters()[0])
-sf = do.DOGSpatialFilter.load(do.DOGSpatialFilter.get_saved_filters()[0])
+# tf = do.TQTempFilter.load(do.TQTempFilter.get_saved_filters()[0])
+# sf = do.DOGSpatialFilter.load(do.DOGSpatialFilter.get_saved_filters()[0])
+
+tf = filters.temporal_filters['kaplan87']
+sf = filters.spatial_filters['maffei73_2right']
 # -
 
 # ## Space, time and stimulus parameters
@@ -123,6 +136,8 @@ stim_params = do.GratingStimulusParams(
 from scipy.signal import convolve as signal_convolve
 # -
 
+# #### Temporal Demonstration and Test
+
 # Prepare time coords, temp filter and sinusoid
 
 # +
@@ -141,7 +156,7 @@ signal_conv = signal_convolve(signal, temp_filter)[:time_coords.value.size]
 
 # +
 px.line(x=time_coords.ms, y=signal).show()
-# px.line(x=time_coords.ms, y=temp_filter).show()
+px.line(x=time_coords.ms, y=temp_filter).show()
 px.line(signal_conv).show()
 # -
 
@@ -162,7 +177,7 @@ estimated_amplitude = (
                       st_params.temp_res.s
                       )
 estimated_dc = (
-               # ### ! Multiply by the DC ... not the `F1` amplitude
+               # #### ! Multiply by the DC ... not the `F1` amplitude
                stim_params.DC *
                ff.mk_tq_tf_ft(TempFrequency(0), tf.parameters) /
                st_params.temp_res.s
@@ -208,6 +223,143 @@ print(f'est_amp: {estimated_dc:.3f}, actual: {actual_DC:.3f}')
 print(f'Error: {(abs(estimated_dc- actual_DC)/actual_DC):.3%}')
 # -
 
+# * Demonstration with actual stimulus
+
+# +
+stim_array = stimulus.mk_sinstim(st_params, stim_params)
+signal = stim_array[0,0,:]
+# -
+# +
+signal_conv = signal_convolve(signal, temp_filter)[:time_coords.value.size]
+# -
+
+# +
+estimated_amplitude = (
+                      stim_params.amplitude *
+                      ff.mk_tq_tf_ft(stim_params.temp_freq, tf.parameters) /
+                      st_params.temp_res.s
+                      )
+estimated_dc = (
+               # #### ! Multiply by the DC ... not the `F1` amplitude
+               stim_params.DC *
+               ff.mk_tq_tf_ft(TempFrequency(0), tf.parameters) /
+               st_params.temp_res.s
+               )
+
+# remove artefacts from the time constant and "ramping-up" at the beginning of convolution
+stable_conv = signal_conv[signal_conv.size//2:]
+
+# amplitude is half of total min to maximum
+actual_amplitude = (stable_conv.max()-stable_conv.min())/2
+# DC is halfway point between min and max ... or max minus amplitude
+actual_DC = stable_conv.max() - actual_amplitude
+
+print('~~~~~\nActual values and estimated values with percentage errors ...\n')
+print(f'est_amp: {estimated_amplitude:.3f}, actual: {actual_amplitude:.3f}')
+print(f'Error amplitude: {(abs(estimated_amplitude- actual_amplitude)/actual_amplitude):.3%}')
+
+print(f'est_DC: {estimated_dc:.3f}, actual: {actual_DC:.3f}')
+print(f'Error DC: {(abs(estimated_dc- actual_DC)/actual_DC):.3%}')
+# -
+
+
+# #### Spatial Demonstration
+
+# +
+stim_amp=17
+stim_DC=-11
+spat_res=ArcLength(1, 'mnt')
+# trying to fit a small spat filt in
+spat_ext=ArcLength(250, 'mnt')
+temp_res=Time(1, 'ms')
+temp_ext=Time(1000, 'ms')
+
+orientation = ArcLength(90, 'deg')
+temp_freq = TempFrequency(8)
+spat_freq_x = SpatFrequency(2)
+spat_freq_y = SpatFrequency(0)
+# -
+# +
+st_params = do.SpaceTimeParams(
+    spat_ext, spat_res, temp_ext, temp_res,
+    array_dtype='float32')
+stim_params = do.GratingStimulusParams(
+    spat_freq_x, temp_freq,
+    orientation=orientation,
+    amplitude=stim_amp, DC=stim_DC
+)
+# -
+
+
+# +
+xc, yc = ff.mk_spat_coords(spat_res=st_params.spat_res, spat_ext=st_params.spat_ext)
+spat_filt = ff.mk_dog_sf(xc, yc, dog_args=sf)
+# -
+# +
+stim_array = stimulus.mk_sinstim(st_params, stim_params)
+# -
+# +
+# convolution for a single spatial filter location ... done manually
+signal_conv = (spat_filt[..., np.newaxis] * stim_array).sum(axis=(0, 1))
+# signal_conv = signal_convolve(signal, temp_filter)[:time_coords.value.size]
+# -
+show_fig(px.line(signal_conv))
+
+# +
+estimated_amplitude = (
+                      stim_params.amplitude *
+                      ff.mk_dog_sf_ft(
+                        stim_params.spat_freq_x, stim_params.spat_freq_y, sf.parameters) /
+                      (st_params.spat_res.mnt**2)
+                      )
+estimated_dc = (
+               # #### ! Multiply by the DC ... not the `F1` amplitude
+               stim_params.DC *
+               ff.mk_dog_sf_ft(SpatFrequency(0), SpatFrequency(0), sf.parameters) /
+               (st_params.spat_res.mnt**2)
+               )
+
+# remove artefacts from the time constant and "ramping-up" at the beginning of convolution
+# slicing not necessary for spatial ... ?
+stable_conv = signal_conv
+
+# amplitude is half of total min to maximum
+actual_amplitude = (stable_conv.max()-stable_conv.min())/2
+# DC is halfway point between min and max ... or max minus amplitude
+actual_DC = stable_conv.max() - actual_amplitude
+
+print('~~~~~\nActual values and estimated values with percentage errors ...\n')
+print(f'est_amp: {estimated_amplitude:.3f}, actual: {actual_amplitude:.3f}')
+print(f'Error amplitude: {(abs(estimated_amplitude- actual_amplitude)/actual_amplitude):.3%}')
+
+print(f'est_DC: {estimated_dc:.3f}, actual: {actual_DC:.3f}')
+print(f'Error DC: {(abs(estimated_dc- actual_DC)/actual_DC):.3%}')
+# -
+
+# Check convolution estimation functions
+
+# +
+estimated_amplitude = (
+                      stim_params.amplitude *
+                      ff.mk_dog_sf_conv_amp(
+                        stim_params.spat_freq_x, stim_params.spat_freq_y, sf.parameters,
+                        spat_res=st_params.spat_res)
+                      )
+estimated_dc = (
+               # #### ! Multiply by the DC ... not the `F1` amplitude
+               stim_params.DC *
+               ff.mk_dog_sf_conv_amp(
+                SpatFrequency(0), SpatFrequency(0), sf.parameters, st_params.spat_res)
+               )
+
+print('~~~~~\nActual values and estimated values with percentage errors ...\n')
+print(f'est_amp: {estimated_amplitude:.3f}, actual: {actual_amplitude:.3f}')
+print(f'Error amplitude: {(abs(estimated_amplitude- actual_amplitude)/actual_amplitude):.3%}')
+
+print(f'est_DC: {estimated_dc:.3f}, actual: {actual_DC:.3f}')
+print(f'Error DC: {(abs(estimated_dc- actual_DC)/actual_DC):.3%}')
+
+# -
 
 
 
@@ -282,6 +434,317 @@ joint_amp = norm_amp * sf_factor * tf_factor
 
 # * explain what estimate_real... does
 # * how fits into process of correction
+
+# Create Stimulus
+
+# +
+stim_amp=17
+stim_DC=-11
+spat_res=ArcLength(1, 'mnt')
+# trying to fit a small spat filt in
+spat_ext=ArcLength(250, 'mnt')
+temp_res=Time(1, 'ms')
+temp_ext=Time(1000, 'ms')
+
+orientation = ArcLength(90, 'deg')
+temp_freq = TempFrequency(8)
+spat_freq_x = SpatFrequency(2)
+spat_freq_y = SpatFrequency(0)
+# -
+# +
+st_params = do.SpaceTimeParams(
+    spat_ext, spat_res, temp_ext, temp_res,
+    array_dtype='float32')
+stim_params = do.GratingStimulusParams(
+    spat_freq_x, temp_freq,
+    orientation=orientation,
+    amplitude=stim_amp, DC=stim_DC
+)
+# -
+
+
+# +
+stim_array = stimulus.mk_sinstim(st_params, stim_params)
+# -
+# +
+xc, yc = ff.mk_spat_coords(spat_res=st_params.spat_res, spat_ext=st_params.spat_ext)
+spat_filt = ff.mk_dog_sf(xc, yc, dog_args=sf)
+
+time_coords = ff.mk_temp_coords(st_params.temp_res, st_params.temp_ext)
+temp_filt = ff.mk_tq_tf(time_coords, tf.parameters)
+# -
+
+# +
+spat_signal_conv = (spat_filt[..., np.newaxis] * stim_array).sum(axis=(0, 1))
+temp_signal_conv = signal_convolve(spat_signal_conv, temp_filt)[:stim_array.shape[2]]
+signal_conv = temp_signal_conv
+# -
+
+# +
+show_fig(px.line(temp_signal_conv))
+# -
+
+# +
+# remove artefacts from the time constant and "ramping-up" at the beginning of convolution
+stable_conv = signal_conv[signal_conv.size//2:]
+
+# amplitude is half of total min to maximum
+actual_amplitude = (stable_conv.max()-stable_conv.min())/2
+# DC is halfway point between min and max ... or max minus amplitude
+actual_DC = stable_conv.max() - actual_amplitude
+# -
+# show_fig(px.line(stable_conv))
+
+
+
+# #### Going through the whole correction pipeline
+
+# Get an estimate of what amplitudes the convolution process will create
+
+# +
+conv_resp_params = correction.mk_estimate_sf_tf_conv_params(
+    st_params, stim_params, sf, tf)
+estimated_amplitude, estimated_dc = conv_resp_params.amplitude, conv_resp_params.DC
+# -
+
+# Get the joint response of the spatial and temporal filters.
+# **This is the target of the process, to produce these values in the final analysis.**
+
+# +
+joint_resp_params = correction.mk_joint_sf_tf_resp_params(stim_params, sf, tf)
+print(joint_resp_params)
+# -
+# +
+# show_fig(plot.joint_sf_tf_amp(tf, sf))
+# plot.joint_sf_tf_amp(tf, sf).show()
+# -
+
+# Find the necessary amplitude for the above target to be reached by a rectified signal
+# when analysed by an FFT.
+# *In a way*, this is the actual target for the amplitude of the signal, as it's necessary
+# to get the above target after rectification and FFT analysis.
+
+# +
+real_unrect_joint_amp_opt = est_amp.find_real_f1(
+    DC_amp=joint_resp_params.DC,
+    f1_target=joint_resp_params.amplitude
+    )
+real_unrect_joint_amp = real_unrect_joint_amp_opt.x[0]
+print(real_unrect_joint_amp)
+# -
+
+# Find the ratio between the target above and the amplitude of the result of convolution.
+# Similarly, find the DC shift necessary.
+
+# +
+amp_adjustment_factor = real_unrect_joint_amp / conv_resp_params.amplitude
+print(amp_adjustment_factor)
+# -
+# +
+dc_shift_factor = joint_resp_params.DC - (conv_resp_params.DC * amp_adjustment_factor)
+
+adjustment_params = do.ConvRespAdjParams(
+    amplitude=amp_adjustment_factor,
+    DC=dc_shift_factor,
+    max_f1_adj_factor=None,
+    joint_response=joint_resp_params
+    )
+print(adjustment_params)
+# -
+
+# Now, to get the actual amplitude and check its accuracy,
+# we have to measure what our actual target is.
+# That is, the F1 from an FFT of the rectified signal!
+# Looking at the min and max values of the actual RECTIFIED signal would be incorrect,
+# as the F1 amplitude after FFT is the target.
+
+# +
+def check_actual_signal_against_target(
+        time_coords, stim_params,
+        signal_conv, adjustment_params, correct_rectify: bool = False):
+
+    if correct_rectify:
+        # Take the whole signal, as necessary for the FFT to produce an F1 at the temp_freq
+        full_corrected_conv = correction.adjust_conv_resp(signal_conv, adjustment_params)
+        # Rectify
+        full_corrected_conv[full_corrected_conv < 0] = 0
+    else:
+        full_corrected_conv = signal_conv
+
+    # Get FFT ... note the align_freqs argument
+    spec, freq = est_f1.gen_fft(full_corrected_conv, time=time_coords, align_freqs=True)
+    spec = abs(spec)
+
+    # indices and integer temp_freqs should align (as using "align_freqs=True")
+    # this is the F1 amplitude
+    actual_amplitude = spec[int(stim_params.temp_freq.hz)]
+
+    # Get the DC (need unrectified signal)
+    # actual_DC = spec[0]
+    spec_unrect, freq_unrect = est_f1.gen_fft(
+        correction.adjust_conv_resp(signal_conv, adjustment_params),
+        time=time_coords,
+        align_freqs=True)
+    actual_DC = abs(spec_unrect)[0]
+
+    # Pull out the initial targets from above (so not quite "estimated")
+    estimated_amplitude, estimated_dc = joint_resp_params.amplitude, joint_resp_params.DC
+
+
+    print('~~~~~\nActual values and estimated values with percentage errors ...\n')
+    # print(f'{actual_amplitude/1e6:.3g}M ... {actual_DC/1e6:.3g}M')
+    print(f'est_amp: {estimated_amplitude:.3f}, actual: {actual_amplitude:.3f}')
+    print(f'Error amplitude: {(abs(estimated_amplitude- actual_amplitude)/actual_amplitude):.3%}')
+
+    print(f'est_DC: {estimated_dc:.3f}, actual: {actual_DC:.3f}')
+    print(f'Error DC: {(abs(estimated_dc- actual_DC)/actual_DC):.3%}')
+# -
+# +
+check_actual_signal_against_target(
+    time_coords, stim_params, signal_conv, adjustment_params, correct_rectify=True)
+# -
+
+# #### Testing the full convolution function
+
+
+# +
+def actual_f1_amplitude(
+        full_corrected_conv, time_coords):
+
+    spec, _ = est_f1.gen_fft(full_corrected_conv, time=time_coords, align_freqs=True)
+    spec = abs(spec)
+
+    # indices and integer temp_freqs should align (as using "align_freqs=True")
+    # this is the F1 amplitude
+    actual_amplitude = spec[int(stim_params.temp_freq.hz)]
+
+    return actual_amplitude
+
+
+def check_full_convolution_results(
+        st_params, sf, tf, spat_filt, temp_filt, stim_params, stim_array,
+        filter_actual_max_f1_amp: Optional[do.LGNF1AmpMaxValue] = None,
+        target_max_f1_amp: Optional[do.LGNF1AmpMaxValue] = None,
+        ):
+
+    convolution_response = convolve.mk_single_sf_tf_response(
+        st_params, sf, tf, spat_filt, temp_filt, stim_params, stim_array,
+        rectified = False,
+        filter_actual_max_f1_amp=filter_actual_max_f1_amp,
+        target_max_f1_amp=target_max_f1_amp)
+    full_corrected_conv = convolution_response.response.copy()
+    full_corrected_conv[full_corrected_conv<0] = 0
+
+    spec, _ = est_f1.gen_fft(full_corrected_conv, time=time_coords, align_freqs=True)
+    spec = abs(spec)
+
+    # indices and integer temp_freqs should align (as using "align_freqs=True")
+    # this is the F1 amplitude
+    actual_amplitude = spec[int(stim_params.temp_freq.hz)]
+
+    # Get the DC (need unrectified signal)
+    # actual_DC = spec[0]
+    spec_unrect, _ = est_f1.gen_fft(
+        convolution_response.response,
+        time=time_coords,
+        align_freqs=True)
+    actual_DC = abs(spec_unrect)[0]
+
+    # Pull out the initial targets from above (so not quite "estimated")
+    estimated_amplitude, estimated_dc = (
+        convolution_response.adjustment_params.joint_response.amplitude,
+        convolution_response.adjustment_params.joint_response.DC
+        )
+
+    if (max_f1_factor := convolution_response.adjustment_params.max_f1_adj_factor):
+        estimated_amplitude *= max_f1_factor
+
+
+    print('~~~~~\nActual values and estimated values with percentage errors ...\n')
+    # print(f'{actual_amplitude/1e6:.3g}M ... {actual_DC/1e6:.3g}M')
+    print(f'est_amp: {estimated_amplitude:.3f}, actual: {actual_amplitude:.3f}')
+    print(f'Error amplitude: {(abs(estimated_amplitude- actual_amplitude)/actual_amplitude):.3%}')
+
+    print(f'est_DC: {estimated_dc:.3f}, actual: {actual_DC:.3f}')
+    print(f'Error DC: {(abs(estimated_dc- actual_DC)/actual_DC):.3%}')
+
+    return convolution_response
+# -
+
+# +
+convolution_response = convolve.mk_single_sf_tf_response(
+    st_params, sf, tf, spat_filt, temp_filt, stim_params, stim_array, rectified=False)
+print(convolution_response.adjustment_params)
+# -
+# +
+conv_resp_obj = check_full_convolution_results(
+    st_params, sf, tf, spat_filt, temp_filt, stim_params, stim_array)
+# -
+
+# Trying different controls over the amplitude of the response
+
+# +
+stim_params = do.GratingStimulusParams(
+    spat_freq_x, temp_freq,
+    orientation=orientation,
+    amplitude=stim_amp, DC=stim_DC,
+    contrast=do.ContrastValue(contrast=0.3)
+)
+# -
+# +
+conv_resp_obj = check_full_convolution_results(
+    st_params, sf, tf, spat_filt, temp_filt, stim_params, stim_array)
+# -
+
+# Max F1 Value scaling
+
+
+# +
+conv_resp_obj = check_full_convolution_results(
+    st_params, sf, tf, spat_filt, temp_filt, stim_params, stim_array)
+# -
+# +
+cell_max_f1 = correction.mk_actual_filter_max_amp(sf, tf, stim_params.contrast)
+cell_max_f1_val = cell_max_f1.value
+print(cell_max_f1_val)
+# -
+
+# Try differnt target max_f1 values
+# There's likely to always be a bit of error in the F1 ressponse
+# as the first part of the signal is a little wobbly
+# but it is kept because the whole signal is needed for the FFT to estimate the F1
+
+# +
+target_max_f1_amp = do.LGNF1AmpMaxValue(95, contrast=stim_params.contrast)
+conv_resp_obj = check_full_convolution_results(
+    st_params, sf, tf, spat_filt, temp_filt, stim_params, stim_array,
+    filter_actual_max_f1_amp=cell_max_f1_val,
+    target_max_f1_amp=target_max_f1_amp
+    )
+# -
+# +
+for f1_max_val in [10, 30, 50, 70, 90]:
+    print(f'\n\n******* {f1_max_val=}\n')
+    target_max_f1_amp = do.LGNF1AmpMaxValue(f1_max_val, contrast=stim_params.contrast)
+    conv_resp_obj = check_full_convolution_results(
+        st_params, sf, tf, spat_filt, temp_filt, stim_params, stim_array,
+        filter_actual_max_f1_amp=cell_max_f1_val,
+        target_max_f1_amp=target_max_f1_amp
+        )
+# -
+
+# #### Distribution of Max Responses
+
+
+
+# +
+test = do.LGNF1AmpDistParams().draw_f1_amp_vals(1000)
+px.histogram([t.max_amp for t in test]).show()
+np.mean([t.max_amp for t in test])
+# 45
+
+# -
+
 
 # ### But how account for differences in contrast?
 

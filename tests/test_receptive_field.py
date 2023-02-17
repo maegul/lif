@@ -466,7 +466,7 @@ def test_spat_coords_span_sufficient_sd_multiples(
         )
 
     # times 2 as it is a radial factor ... diameter (ie, full size of coords) is double
-    minimum_sd_multiples = settings.SimulationParams.spat_filt_sd_factor * 2
+    minimum_sd_multiples = settings.SimulationSettings.spat_filt_sd_factor * 2
     actual_sd_multiples = ((coords.mnt[-1] - coords.mnt[0]) / sf_max_sd)
 
     # event(f'n_multiples: {actual_sd_multiples}')

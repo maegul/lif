@@ -1075,7 +1075,7 @@ def mk_rf_locations_distance_scale(
     """
 
     # If not set, use default value in settings
-    if not magnitude_ratio_for_diameter:
+    if magnitude_ratio_for_diameter is None:
         magnitude_ratio_for_diameter = settings.simulation_params.magnitude_ratio_for_rf_loc_scaling
 
     coords_for_target_magnitude = [

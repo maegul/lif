@@ -62,6 +62,7 @@ class SimulationSettings(ParamsObj):
     magnitude_ratio_for_rf_loc_scaling: float = 0.2
     """What relative magnitude of a spatial filter's maximum should be used to calculate the
     unit of distance used for the RF locations distribution.
+    This value of `0.2` matches what was used in the Jin et al 2011 paper.
     """
 
     @property

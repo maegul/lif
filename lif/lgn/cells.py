@@ -33,7 +33,6 @@ Examples:
             )
     # -
 """
-
 # # Imports
 import random
 from textwrap import dedent
@@ -282,7 +281,7 @@ def mk_max_f1_amplitudes(
 def mk_lgn_layer(
         lgn_params: do.LGNParams,
         spat_res: ArcLength[scalar],
-        contrast: do.ContrastValue
+        contrast: Optional[do.ContrastValue] = None
         ) -> do.LGNLayer:
     """Make full lgn layer from params
 

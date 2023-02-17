@@ -122,12 +122,12 @@ def mk_lgn_response_spikes(
     spike_times = spikes.spike_trains()
 
     # convert to native object type (native to this code base)
-    all_cell_spike_times = []
+    all_cell_spike_times: Sequence[Time[np.ndarray]] = []
     cell_indices = sorted(list(spike_times.keys()))
     for ci in cell_indices:
         # convert to aboslute time values (as will be a Time quantity)
         # Use seconds to convert and then to store
-        cell_spike_times = Time(spike_times[ci] / bn.second, 's')
+        cell_spike_times: Time[np.ndarray] = Time(spike_times[ci] / bn.second, 's')
         all_cell_spike_times.append(cell_spike_times)
 
     all_cell_spike_times = tuple(all_cell_spike_times)

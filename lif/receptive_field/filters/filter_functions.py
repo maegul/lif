@@ -1075,6 +1075,7 @@ def mk_ori_biased_spatfilt_params_from_spat_filt(
 
     Args:
         circ_var: the circular variance that the new parameters will have
+
         method:
             which method of measuring/defining circular variance should be used.
             Passed directly to filter's methods.
