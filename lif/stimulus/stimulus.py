@@ -427,9 +427,18 @@ def mk_multi_stimulus_params(
         multi_params.spat_freqs,
         multi_params.temp_freqs,
         multi_params.orientations,
-        multi_params.contrasts,
-        multi_params.amplitudes,
+        # None is default.  If None, make an iterable of default value
+        multi_params.contrasts
+            if multi_params.contrasts is not None
+            # take default.contrast to get float to line up with the type that the user would provide
+            # in a MultiStimulusGeneratorParams object (where values are just floats)
+            else [ do.GratingStimulusParams.__dataclass_fields__['contrast'].default.contrast ],
+        multi_params.amplitudes
+            if multi_params.amplitudes is not None
+            else [ do.GratingStimulusParams.__dataclass_fields__['amplitude'].default ],
         multi_params.DC_vals
+            if multi_params.DC_vals is not None
+            else [ do.GratingStimulusParams.__dataclass_fields__['DC'].default ],
         )
     stim_param_combos = tuple(
         do.GratingStimulusParams(
@@ -437,18 +446,9 @@ def mk_multi_stimulus_params(
             temp_freq=TempFrequency(c[1], multi_params.temp_freq_unit),
             orientation=ArcLength(c[2], multi_params.ori_arc_unit),
             # Use default value as the fall back if value is None
-            contrast=(do.ContrastValue(c[3])
-                if c[3] is not None
-                else do.GratingStimulusParams.__dataclass_fields__['contrast'].default
-                ),
-            amplitude=(c[4]
-                if c[4] is not None
-                else do.GratingStimulusParams.__dataclass_fields__['amplitude'].default
-                ),
-            DC=(c[5]
-                if c[5] is not None
-                else do.GratingStimulusParams.__dataclass_fields__['DC'].default
-                ),
+            contrast=(do.ContrastValue(c[3]) ),
+            amplitude=(c[4] ),
+            DC=(c[5]),
             )
         for c in  stim_param_val_combos
     )

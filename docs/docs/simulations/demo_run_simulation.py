@@ -199,11 +199,11 @@ for f in pkl_files:
 # Make some stim caches ... but keep it small
 
 # +
-spat_ext=ArcLength(500, 'mnt')
+spat_ext=ArcLength(660, 'mnt')
 spat_res=ArcLength(1, 'mnt')
 # spat_ext = ff.round_coord_to_res(ArcLength(max_spat_ext.base * 1.1), spat_res, high=True)
 temp_res=Time(1, 'ms')
-temp_ext=Time(500, 'ms')
+temp_ext=Time(1000, 'ms')
 
 st_params = do.SpaceTimeParams(
 	spat_ext, spat_res, temp_ext, temp_res,
@@ -212,7 +212,7 @@ st_params = do.SpaceTimeParams(
 
 multi_stim_params = stimulus.mk_multi_stimulus_params(
 	do.MultiStimulusGeneratorParams(
-		spat_freqs=[4], temp_freqs=[2], orientations=[0],
+		spat_freqs=[2], temp_freqs=[4], orientations=[90],
 		)
 	)
 # -
@@ -647,6 +647,34 @@ sim_params = do.SimulationParams(
 	lif_params = lif_params
 	)
 # -
+
+# ### Pickling Prototyping
+
+# +
+import pickle
+
+with open('/tmp/test.pkl', 'wb') as f:
+	pickle.dump(sim_params, f)
+
+example_lgn = cells.mk_lgn_layer(lgn_params, st_params.spat_res, do.ContrastValue(0.3))
+
+with open('/tmp/test_lgn.pkl', 'wb') as f:
+	pickle.dump(example_lgn, f)
+
+example_lgn.cells[0].asdict_()
+
+example_cell = example_lgn.cells[0]
+
+
+with open('/tmp/test_lgn_cell.pkl', 'wb') as f:
+	pickle.dump(example_cell, f)
+
+example_cell.spat_filt.ori_bias_params = None
+with open('/tmp/test_lgn_cell_no_ori_bias_params.pkl', 'wb') as f:
+	pickle.dump(example_cell, f)
+
+# -
+
 
 # +
 results = run.run_simulation(sim_params)
