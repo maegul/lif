@@ -37,6 +37,7 @@ Examples:
 import random
 from textwrap import dedent
 from typing import List, cast, Dict, Tuple, Sequence, Optional
+from collections import abc
 from itertools import combinations, combinations_with_replacement
 import json
 from dataclasses import dataclass
@@ -187,6 +188,41 @@ def mk_rf_locations(
 
 # -
 
+
+def calculate_max_spatial_ext_of_all_spatial_filters(
+        spat_res: ArcLength[int],
+        lgn_params: do.LGNParams,
+        safety_margin_increment: float = 0
+        ) -> ArcLength[scalar]:
+
+
+    max_spat_ext = (
+        2  # to make an extent and not radial
+        *
+        settings.simulation_params.spat_filt_sd_factor
+        *
+        max(
+            (sf.parameters.max_sd().mnt
+                for key, sf in spatial_filters.items()
+                if (
+                    # if not a list, than must be "all", so use this filter
+                    not isinstance(lgn_params.filters.spat_filters, abc.Sequence)
+                    or
+                    # if is a sequence, then check if key is in provided list
+                    key in lgn_params.filters.spat_filters
+                    )
+                ) )
+    )
+
+    max_spat_ext = ff.round_coord_to_res(
+        ArcLength(max_spat_ext * (1 + safety_margin_increment), 'mnt'),
+        spat_res, high=True
+        )
+
+    # use unit of 'mnt' as that's used in the calculation above for `max_sd()`.
+    return max_spat_ext
+
+
 # ## Make filters
 
 def mk_filters(
@@ -281,7 +317,8 @@ def mk_max_f1_amplitudes(
 def mk_lgn_layer(
         lgn_params: do.LGNParams,
         spat_res: ArcLength[scalar],
-        contrast: Optional[do.ContrastValue] = None
+        contrast: Optional[do.ContrastValue] = None,
+        force_central: bool = False
         ) -> do.LGNLayer:
     """Make full lgn layer from params
 
@@ -289,6 +326,8 @@ def mk_lgn_layer(
     As this will shift the distribution of actual firing rates of the LGN cells, this is quite
     an important parameter in the simulation, as **this is where the actual contrast** of the
     simulation is defined and where it affects the LGN layer's response rates.
+
+    `force_central`, if `True` will artificially place all RF Locations at `0,0`.
     """
     n_cells = lgn_params.n_cells
 
@@ -319,14 +358,27 @@ def mk_lgn_layer(
         )
 
     # locations
-    rf_distance_scale = rflocs.mk_rf_locations_distance_scale(
-        spat_filters=spat_filts, spat_res=spat_res,
-        magnitude_ratio_for_diameter=None  # relying on default value in settings
-        )
-    rf_locations = mk_rf_locations(
-        n=n_cells, rf_loc_params=lgn_params.spread,
-        distance_scale=rf_distance_scale
-        )
+    # artificially put all RF locations at 0 by using the distance_scale, as it is multiplied
+    if force_central:
+        locations = tuple(
+                do.RFLocation(x=ArcLength(0), y=ArcLength(0))
+                    for _ in range(n_cells)
+            )
+        rf_distance_scale = None  # as overwritten
+        rf_locations = do.LGNRFLocations(locations)
+
+    else:
+        rf_distance_scale = rflocs.mk_rf_locations_distance_scale(
+            spat_filters=spat_filts, spat_res=spat_res,
+            # This uses the mean ... more correlated to actual SFs and their sizes
+            # should smooth out irregular scaling of distance
+            use_median_for_pairwise_avg=False,
+            magnitude_ratio_for_diameter=None  # relying on default value in settings
+            )
+        rf_locations = mk_rf_locations(
+            n=n_cells, rf_loc_params=lgn_params.spread,
+            distance_scale=rf_distance_scale
+            )
 
     lgn_cells = tuple(
             do.LGNCell(
@@ -341,6 +393,7 @@ def mk_lgn_layer(
             for i in range(lgn_params.n_cells)
         )
 
-    lgn_layer = do.LGNLayer(cells=lgn_cells, params=lgn_params)
+    lgn_layer = do.LGNLayer(cells=lgn_cells, params=lgn_params,
+        rf_distance_scale=rf_distance_scale)
 
     return lgn_layer
