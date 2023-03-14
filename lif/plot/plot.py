@@ -1,9 +1,10 @@
-from typing import Optional, Tuple, Union, Dict, Sequence
+from typing import Optional, Tuple, Union, Dict, Sequence, Literal
 
 import brian2
 from scipy.ndimage.filters import gaussian_filter1d
 
 from ..receptive_field.filters import (
+    filters,
     filter_functions as ff,
     cv_von_mises as cvvm)
 from ..receptive_field.filters.filter_functions import (
@@ -18,6 +19,14 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 import numpy as np
+
+# # Utility Color Objects
+
+
+spat_filt_colors = {
+        key: px.colors.qualitative.Dark24[i]
+        for i, key in enumerate(filters.spatial_filters.keys())
+    }
 
 # > Filters
 
@@ -237,7 +246,11 @@ def tq_temp_filt_fit(
 def spat_filt_fit(
         fit_filter: do.DOGSpatialFilter,
         n_spat_freqs: int = 50,
-        use_log_xaxis: bool = True, use_log_freqs: bool = True
+        normalise_magnitude: bool = False,
+        use_log_xaxis: bool = True, use_log_freqs: bool = True,
+        hi_res_fit_only: bool = False,
+        min_freq_bound: Optional[SpatFrequency[scalar]] = None,
+        max_freq_bound: Optional[SpatFrequency[scalar]] = None
         ):
 
     # render the filter in frequency domain (as the original data)
@@ -245,7 +258,13 @@ def spat_filt_fit(
     sf_ft = ff.mk_dog_sf_ft_1d(freqs=freqs, dog_args=fit_filter.parameters)
 
     # render high-resolution filter in the frequency domain
-    min_freq, max_freq = freqs.base.min(), freqs.base.max()
+    if min_freq_bound is None or max_freq_bound is None:
+        min_freq, max_freq = freqs.base.min(), freqs.base.max()
+    elif (min_freq_bound is None or max_freq_bound is None) and not (min_freq_bound and max_freq_bound):
+        raise ValueError('Must provide both min and max freq')
+    else:
+        min_freq, max_freq = min_freq_bound.base, max_freq_bound.base
+
     if use_log_freqs:
         min_exp, max_exp = (np.log10(v) for v in (min_freq, max_freq))
         freqs_hres = SpatFrequency(10**np.linspace(min_exp, max_exp, n_spat_freqs))
@@ -253,31 +272,262 @@ def spat_filt_fit(
         freqs_hres = SpatFrequency(np.linspace(min_freq, max_freq, n_spat_freqs))
 
     sf_ft_hres = ff.mk_dog_sf_ft_1d(freqs=freqs_hres, dog_args=fit_filter.parameters)
+    source_ft = fit_filter.source_data.data.amplitudes
+
+    if normalise_magnitude:
+        norm_factor = sf_ft_hres.max()
+        sf_ft_hres = sf_ft_hres / norm_factor
+        sf_ft = sf_ft / norm_factor
+        source_ft = source_ft / norm_factor
 
     fig = go.Figure()
-    fig.add_trace(
-        go.Scatter(
-            name='spat_filter_hres',
-            x=freqs_hres.cpd, y=sf_ft_hres,
-            line={'color': 'grey', 'dash': '3px,1px'})
-        )
-    fig.add_trace(
-        go.Scatter(
-            name='spat_filter',
-            x=freqs.cpd, y=sf_ft)
-        )
-    fig.add_trace(
-        go.Scatter(
-            name='source',
-            x=freqs.cpd, y=fit_filter.source_data.data.amplitudes)
-        )
+
+    if hi_res_fit_only:
+        fig.add_trace(
+            go.Scatter(
+                name='spat_filter_hres',
+                x=freqs_hres.cpd, y=sf_ft_hres,
+                line={'dash': '3px,1px'})
+            )
+    else:
+        fig.add_trace(
+            go.Scatter(
+                name='spat_filter_hres',
+                x=freqs_hres.cpd, y=sf_ft_hres,
+                line={'color': 'grey', 'dash': '3px,1px'})
+            )
+        fig.add_trace(
+            go.Scatter(
+                name='spat_filter',
+                x=freqs.cpd, y=sf_ft)
+            )
+        fig.add_trace(
+            go.Scatter(
+                name='source',
+                x=freqs.cpd, y=source_ft)
+            )
+
     fig.update_layout(
-        xaxis_title='Spatial Freq (CPD)', yaxis_title='Amplitude')
+        xaxis_title='Spatial Freq (CPD)',
+        yaxis_title='Amplitude' if not normalise_magnitude else 'Amplitude (normalised to hres)')
 
     if use_log_xaxis:
         fig.update_layout(xaxis_type='log')
 
     return fig
+
+
+def multi_spat_filt_fit(
+        fit_filters: Sequence[do.DOGSpatialFilter],
+        n_spat_freqs: int = 50,
+        normalise_magnitude: bool = True,
+        use_log_xaxis: bool = True, use_log_freqs: bool = True,
+        share_freq_bounds: bool = False,
+        ):
+
+    # Calculate all min and max freqs
+    if share_freq_bounds:
+        collective_min_freq = SpatFrequency(
+                min(
+                    fit_filter.source_data.data.frequencies.base.min()
+                    for fit_filter in fit_filters
+                )
+            )
+        collective_max_freq = SpatFrequency(
+                max(
+                    fit_filter.source_data.data.frequencies.base.max()
+                    for fit_filter in fit_filters
+                )
+            )
+    else:
+        # reset to values expected in lower function
+        collective_min_freq, collective_max_freq = None, None
+
+    fig = go.Figure()
+
+    for sf in fit_filters:
+        index_key = filters.reverse_spatial_filters[sf.key]
+        new_graph = spat_filt_fit(sf, n_spat_freqs,
+            normalise_magnitude,
+            use_log_xaxis, use_log_freqs,
+            hi_res_fit_only=True,
+            min_freq_bound=collective_min_freq, max_freq_bound=collective_max_freq
+            )
+        fig.add_trace(
+            new_graph.update_traces(
+                    name=index_key,
+                    line={'dash': 'solid'}
+                ).data[0]
+            )
+
+    if use_log_xaxis:
+        fig.update_layout(xaxis_type='log')
+
+    fig.update_layout(
+        xaxis_title='Spatial Freq (CPD)',
+        yaxis_title='Amplitude' if not normalise_magnitude else 'Amplitude (normalised to hres)')
+
+    return fig
+
+
+def lgn_cell_locations(lgn_layer: do.LGNLayer):
+
+    x_locs = [c.location.x.mnt for c in lgn_layer.cells]
+    y_locs = [c.location.y.mnt for c in lgn_layer.cells]
+
+    fig = (
+        px
+        .scatter(x=x_locs, y=y_locs)
+        .update_yaxes(scaleanchor = "x", scaleratio = 1)
+        .update_layout(xaxis_constrain='domain', yaxis_constrain='domain')
+        )
+
+    return fig
+
+
+def mk_ellipse_arc(
+        x_center: float=0, y_center: float=0, a: float=1., b: float=1.,
+        ori: ArcLength[scalar] = ArcLength(0), N=20
+        ) -> Tuple[np.ndarray, np.ndarray]:
+
+    phi = np.linspace(0, np.pi*2, N)
+    theta = ori.rad
+    x = x_center + a*np.cos(phi)*np.cos(theta) - b*np.sin(phi)*np.sin(theta)
+    y = y_center + a*np.cos(phi)*np.sin(theta) + b*np.sin(phi)*np.cos(theta)
+
+    return x, y
+
+
+def lgn_sf_locations_and_shapes(
+    lgn_layer: do.LGNLayer,
+    showlegend: bool = False,
+    highlight_idxs: Optional[Sequence[int]] = None,
+    color_ellipses: bool = False,
+    coords_at_magnitude: Optional[dict] = None
+    ):
+
+    highlight_idxs_set = set(highlight_idxs) if highlight_idxs else set()  # empty set works for lookup
+
+    fig = (
+        go.Figure()
+        .update_yaxes(scaleanchor = "x", scaleratio = 1)  # type: ignore
+        .update_layout(xaxis_constrain='domain', yaxis_constrain='domain', showlegend=showlegend)
+        )
+    for i, c in enumerate(lgn_layer.cells):
+        x_loc = c.location.x.mnt
+        y_loc = c.location.y.mnt
+        key = filters.reverse_spatial_filters[c.spat_filt.key]
+
+        if i in highlight_idxs_set:
+            color='red'
+            line_color=color  # for ellipses
+            size=14
+        else:
+            color=spat_filt_colors[key]
+            line_color = color if color_ellipses else 'black'
+            size=10
+
+        fig.add_scatter(
+            x=[x_loc], y=[y_loc],
+            mode='markers',
+            hovertext=key,
+            marker_color=color, marker_size=size,
+            name=key
+            )
+
+        if coords_at_magnitude:
+            # infer shape and dimensions of major/minor axes from ratio of oriented/circular
+            h_sd_factor = (
+                c.oriented_spat_filt_params.cent.arguments.h_sd.base /
+                c.spat_filt.parameters.cent.arguments.h_sd.base
+                )
+            v_sd_factor = (
+                c.oriented_spat_filt_params.cent.arguments.v_sd.base /
+                c.spat_filt.parameters.cent.arguments.v_sd.base
+                )
+
+            h_sd, v_sd = (
+                coords_at_magnitude[c.spat_filt.key].mnt * h_sd_factor,
+                coords_at_magnitude[c.spat_filt.key].mnt * v_sd_factor,
+                )
+        else:
+            # if no coords provided, revert simply to 2sd of center
+            h_sd, v_sd = (
+                2 * c.oriented_spat_filt_params.parameters.cent.arguments.h_sd.mnt,
+                2 * c.oriented_spat_filt_params.parameters.cent.arguments.v_sd.mnt
+                )
+        x_sf, y_sf = mk_ellipse_arc(x_loc, y_loc, a=h_sd, b=v_sd, ori=c.orientation)
+
+        fig.add_scatter(
+            x=x_sf, y=y_sf,
+            mode='lines',
+            hovertext=key,
+            line_color=line_color,
+            name=key
+            )
+
+    return fig
+
+    # x_locs = [c.location.x.mnt for c in lgn_layer.cells]
+    # y_locs = [c.location.y.mnt for c in lgn_layer.cells]
+    # keys = [filters.reverse_spatial_filters[c.spat_filt.key] for c in lgn_layer.cells]
+
+    # if highlight_idxs:
+    #     highlight_idxs_set = set(highlight_idxs)
+    #     colors = [
+    #         spat_filt_colors[k] if not (i in highlight_idxs_set) else
+    #             'red'
+    #             for i, k in enumerate(keys)
+    #         ]
+    #     sizes = [
+    #         10 if not (i in highlight_idxs_set) else
+    #             14
+    #         for i, _ in enumerate(keys)
+    #         ]
+    # else:
+    #     colors = [spat_filt_colors[k] for k in keys]
+    #     sizes = [10 for _ in lgn_layer.cells]
+
+    # fig=go.Figure()
+    # fig = (
+    #     fig
+    #     .add_scatter(
+    #         x=x_locs, y=y_locs,
+    #         hovertext=keys,
+    #         mode='markers',
+    #         marker_color=colors,
+    #         marker_size=sizes
+    #         )
+    #     .update_yaxes(scaleanchor = "x", scaleratio = 1)
+    #     .update_layout(xaxis_constrain='domain', yaxis_constrain='domain')
+    #     )
+
+    # for i, c in enumerate(lgn_layer.cells):
+
+    #     rf_line_color='black'
+
+    #     x_loc, y_loc = c.location.x.mnt, c.location.y.mnt
+    #     h_sd, v_sd = (
+    #         c.oriented_spat_filt_params.parameters.cent.arguments.h_sd.mnt,
+    #         c.oriented_spat_filt_params.parameters.cent.arguments.v_sd.mnt
+    #         # c.spat_filt.parameters.cent.arguments.h_sd.mnt,
+    #         # c.spat_filt.parameters.cent.arguments.v_sd.mnt
+    #         )
+
+    #     x0=x_loc-(2*h_sd)
+    #     x1=x_loc+(2*h_sd)
+    #     y0=y_loc-(2*v_sd)
+    #     y1=y_loc+(2*v_sd)
+
+    #     fig.add_shape(
+    #         type="circle",
+    #         xref="x", yref="y",
+    #         x0=x0, x1=x1,
+    #         y0=y0, y1=y1,
+    #         line_color=rf_line_color,
+    #         )
+
+    # return fig
 
 
 def tq_temp_filt_profile(
