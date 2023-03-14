@@ -8,10 +8,11 @@ are commented out to be run manually whenever needed.
 Not great design but I was just trying to be quick and convenient here.
 """
 
-# > Imports
+# # Imports
 # +
-from typing import Union, List, Tuple, Iterable, Literal, Optional
-from itertools import combinations_with_replacement
+from typing import Union, List, Tuple, Iterable, Sequence, Dict, Optional
+from itertools import combinations_with_replacement, combinations
+import random
 from dataclasses import dataclass
 import warnings
 from textwrap import dedent
@@ -31,15 +32,17 @@ import plotly.graph_objects as go
 import plotly.subplots as spl
 # -
 # +
+from . import cells
+
 from ..utils.units.units import val_gen, scalar, ArcLength
-from ..receptive_field.filters import filter_functions as ff
+from ..receptive_field.filters import filter_functions as ff, filters
 
 from ..utils import (
     data_objects as do,
     settings,
     exceptions as exc)
 # -
-# > Core Distributions (Jin et al)
+# # Core Distributions (Jin et al)
 
 # +
 # Initial curve
@@ -71,11 +74,11 @@ def jin_pdf_adj(x):
     return jin_pdf_est  + (1 - np.sum(jin_pdf_est)) / jin_pdf_est.size
 # -
 
-# > Pair wise distances
+# # Pair wise distances
 
-# >> Statistical Functions
+# ## Statistical Functions
 
-# >>> Exponential (?)
+# ### Exponential (?)
 
 # Take the exponential curves from Jin et al as distributions and fit to these
 
@@ -89,7 +92,7 @@ def jin_pdf_adj(x):
 # ... equation for the pairwise distances between locations drawn from a bivariate dist.
 
 
-# >>> Bivariate Gaussian
+# ### Bivariate Gaussian
 
 # +
 def bivariate_gauss_radius_pdf(r: val_gen, gauss_params: do.BivariateGaussParams, ) -> val_gen:
@@ -192,7 +195,7 @@ def bivariate_guass_radius_probability_array(
     return probabilities
 # -
 
-# >> jin data
+# ## jin data
 
 # data from tracey mctraceface
 # +
@@ -268,7 +271,6 @@ def _make_jin_data_object():
     raw_off_count = np.array([320,192,204,126,80,61,18,6,10,3,1,4,2])
     raw_off_norm_freq = np.array([1,0.6,0.6375,0.39375,0.25,0.190625,0.05625,
                                     0.01875,0.03125,0.009375,0.003125,0.0125,0.00625])
-
     raw_on_counts = np.array([193,156,96,56,51,26,19,12,7,2,2,2,0])
     raw_on_norm_freq = np.array([1,0.808290155440414,0.49740932642487,0.290155440414508,
                                 0.264248704663212,0.134715025906736,0.0984455958549223,
@@ -292,7 +294,7 @@ def _make_jin_data_object():
     return jin_data
 # -
 # +
-# > set as MODULE VARIABLE
+# # set as MODULE VARIABLE
 jin_data = _make_jin_data_object()
 # -
 
@@ -335,7 +337,7 @@ def plot_jin_data_with_raw_data(jin_data: _JinData):
 # -
 
 
-# >> Objective Function and Fitting to Data
+# ## Objective Function and Fitting to Data
 
 # +
 def bivariate_gauss_pairwise_distance_probability_residuals(
@@ -367,7 +369,7 @@ def bivariate_gauss_pairwise_distance_probability_residuals(
         * Variances are linear for gaussian variables under addition/subtraction.
         * Thus, the variance of the gaussian distribution of distances/differences
         along an axis (`x`/`y`) for an initial distribution with **variance** `s^2`
-        will be `2s^s`.
+        will be `2s^2`.
         * The standard deviation will then be `(2^0.5)s`.
     """
     gauss_params = do.BivariateGaussParams(sigma_x=x[0], ratio=ratio)
@@ -384,7 +386,7 @@ def bivariate_gauss_pairwise_distance_probability_residuals(
     return residuals
 # -
 
-# >>> Optimisation and Fitting
+# ### Optimisation and Fitting
 # +
 def mk_optimasation_sigma_x_for_ratio(
         ratio: float,
@@ -461,7 +463,7 @@ def plot_sigma_x_ratio_lookup(lookup_vals: do.RatioSigmaXOptLookUpVals):
     return fig
 # -
 
-# >>> Characterise Error function
+# ### Characterise Error function
 # +
 def characterise_pairwise_distance_distribution_residuals(
         data_bins: np.ndarray, data_prob: np.ndarray,
@@ -698,7 +700,7 @@ def plot_profile_rf_locations_object(
     return fig
 # -
 
-# > Rf Loc objects
+# # Rf Loc objects
 
 
 # +
@@ -727,7 +729,8 @@ def mk_rf_ratio_loc_sigma_lookup_tables(
 
 # -
 
-# >> Demo
+# ## Demo
+
 # +
 # off_raw_luv = mk_rf_ratio_loc_sigma_lookup_tables(
 #     metadata = do.RFLocMetaData('personal_email_from_alonso', 'regarding jin_et_al'),
@@ -741,7 +744,8 @@ def mk_rf_ratio_loc_sigma_lookup_tables(
 #     )
 # -
 
-# >> comparing raw with paper data
+# ## comparing raw with paper data
+
 # +
 # off_luv = do.RFLocationSigmaRatio2SigmaVals.load('RfLoc_Generator_jin_etal-fig_5C_OFF.pkl')
 # on_luv = do.RFLocationSigmaRatio2SigmaVals.load('RfLoc_Generator_jin_etal-fig_5C_ON.pkl')
@@ -761,7 +765,7 @@ def mk_rf_ratio_loc_sigma_lookup_tables(
 # fig.show()
 # -
 
-# >> Generic make all necessary objects
+# ## Generic make all necessary objects
 
 # +
 def mk_all_ratio_rf_loc_objects(jin_data: _JinData, overwrite: bool = False):
@@ -925,19 +929,293 @@ def mk_all_ratio_rf_loc_objects(jin_data: _JinData, overwrite: bool = False):
 
     else:
         print(f'{putative_file_name} alread exists and overwrite not set')
+
+
+    # with 0.2-0.4 bin ... not 0 - 0.4 bin
+
+    # OFF Data Raw from Email ... with 0.2-0.4 bin
+    print('Making RF location lookup object for raw (Alonso email) OFF data with 0.2-0.4 bin')
+    data_bins = jin_data.distance_vals_insert_lower('off_raw', value=0.2)
+    data_prob = jin_data.dist_vals_off_raw[:,1]
+    meta_data = do.RFLocMetaData('jin_etal', 'alonso_email_raw_data_off_w_02_bin')
+
+    putative_file_name = (
+        do.RFLocationSigmaRatio2SigmaVals._filename_template(meta_data.mk_key()))
+    if (not (data_dir / putative_file_name).exists() or overwrite):
+        rf_locs = mk_rf_ratio_loc_sigma_lookup_tables(
+            metadata=meta_data,
+            data_bins=data_bins, data_prob=data_prob, ratios=ratios
+            )
+
+        try:
+            rf_locs.save(overwrite=overwrite)
+            print(f'Saved file: {rf_locs._mk_filename()}')
+        except FileExistsError:
+            print(f"File {rf_locs._mk_filename()} already exists, must set overwrite to True overwirite")
+
+    else:
+        print(f'{putative_file_name} already exists and overwrite not set')
+
+
+
+    # ON Raw data from email
+    print('Making RF location lookup object for raw ON data from Alonso email with 0.2-0.4 bin')
+    data_bins = jin_data.distance_vals_insert_lower('on_raw', value=0.2)
+    data_prob = jin_data.dist_vals_on_raw[:,1]
+    meta_data = do.RFLocMetaData('jin_etal', 'alonso_email_raw_data_on_w_02_bin')
+    putative_file_name = (
+        do.RFLocationSigmaRatio2SigmaVals._filename_template(meta_data.mk_key()))
+    if (not (data_dir / putative_file_name).exists() or overwrite):
+
+        rf_locs = mk_rf_ratio_loc_sigma_lookup_tables(
+            metadata=meta_data,
+            data_bins=data_bins, data_prob=data_prob, ratios=ratios
+            )
+
+        try:
+            rf_locs.save(overwrite=overwrite)
+            print(f'Saved file: {rf_locs._mk_filename()}')
+        except FileExistsError:
+            print(f"File {rf_locs._mk_filename()} already exists, must set overwrite to True overwirite")
+
+    else:
+        print(f'{putative_file_name} exists and overwrite not set')
+
+
+    # AVG of raw ON and OFF data from Alonso's email
+    print('Making RF location lookup object for average of raw (from email) ON and OFF data')
+    data_prob = (
+        np
+        .vstack(
+            (jin_data.dist_vals_on_raw[:,1], jin_data.dist_vals_off_raw[:,1])
+            )
+        .mean(axis=0)
+        )
+
+    # either would work as they're the same bins
+    data_bins = jin_data.distance_vals_insert_lower('on_raw', value=0.2)
+    meta_data = do.RFLocMetaData('jin_etal', 'alonso_email_raw_data_avg_ON_and_OFF_w_02_bin')
+
+    putative_file_name = (
+        do.RFLocationSigmaRatio2SigmaVals._filename_template(meta_data.mk_key()))
+    if (not (data_dir / putative_file_name).exists() or overwrite):
+
+
+        rf_locs = mk_rf_ratio_loc_sigma_lookup_tables(
+            metadata=meta_data,
+            data_bins=data_bins, data_prob=data_prob, ratios=ratios
+            )
+
+        try:
+            rf_locs.save(overwrite=overwrite)
+            print(f'Saved file: {rf_locs._mk_filename()}')
+        except FileExistsError:
+            print(f"File {rf_locs._mk_filename()} already exists, must set overwrite to True overwirite")
+
+    else:
+        print(f'{putative_file_name} alread exists and overwrite not set')
+
 # -
 
-# >>! Making and Saving the objects
+
+# ## RF Dist Scaling Coefficient
+
+# Best way to scale the RF locations is not by the average size of the spatial filters.
+# This leads to excessive distances.
+# The best way is to scale the locations on an RF by RF basis according to the RF's spatial filter's
+# size.
+# Computationally, this turns out to be no more intense, if anything, less (as estimating the
+# average size in all pairs was painful).
+
+# But, while it makes rough intuitive/mathematical sense, I don't have an analytical solution
+# to how this scaling should be done and how that analytical equation could be fit to the jin data.
+# Instead, here, I'm going to multiply the size of each RF by a coefficient that will be optimised
+# so as to result in a pairwise distance distribution that fits the data as best as possible.
+# Quick prototyping indicates that when the spatial filter's size at `20%` of max magnitude is used,
+# as is used by jin et al, this coefficient works well at about `1.1 - 1.25`.
+# That this is above `1` makes intutive sense, as the jin et al data is normalised to the size of
+# the bigger RF in any pair, whereas here I'm scaling each RF's location by its own size.
+# A coefficient above 1 seems necessary then to compensate for the lesser scaling of smaller RFs.
+# For instance, the optimal coefficient is lower when there is less variation in the sizes of
+# the RFs.
+
+def rf_pairwise_distances(
+        lgn_layer: do.LGNLayer,
+        spat_res: ArcLength[scalar],
+        norm_by_largest: Optional[bool] = True,
+        magnitude_ratio_for_diameter: Optional[float] = None,
+        coords_at_target_magnitude: Optional[Dict[str, ArcLength]] = None
+        ) -> np.ndarray:
+
+    if magnitude_ratio_for_diameter is None:
+        magnitude_ratio_for_diameter = settings.simulation_params.magnitude_ratio_for_rf_loc_scaling
+
+    unique_spat_filt_keys = set([
+            c.spat_filt.key
+            for c in lgn_layer.cells
+        ])
+
+    if coords_at_target_magnitude is not None:
+        coords_for_target_magnitude = coords_at_target_magnitude
+    else:
+        coords_for_target_magnitude = {
+                key: spat_filt_coord_at_magnitude_ratio(
+                    spat_filt=filters.spatial_filters[filters.reverse_spatial_filters[key]].parameters,
+                    target_ratio=magnitude_ratio_for_diameter,
+                    spat_res=spat_res, round=True)
+                for key in unique_spat_filt_keys
+            }
+
+    x_locs = np.array([c.location.x.mnt for c in lgn_layer.cells])
+    y_locs = np.array([c.location.y.mnt for c in lgn_layer.cells])
+
+    actual_pairwise_dists = pdist(X=np.vstack((x_locs,y_locs)).T, metric='euclidean')
+
+    if norm_by_largest:
+
+        all_pairs_cell_idxs = tuple(combinations(range(len(lgn_layer.cells)), r=2))
+        all_pair_max_diam = np.array([
+            2 *  # as coord is radial, need to normalise by a diameter
+            max(
+                coords_for_target_magnitude[lgn_layer.cells[a].spat_filt.key].mnt,
+                coords_for_target_magnitude[lgn_layer.cells[b].spat_filt.key].mnt,
+                )
+            for a,b in all_pairs_cell_idxs
+            ])
+
+        return actual_pairwise_dists / all_pair_max_diam
+
+    else:
+        return actual_pairwise_dists
+
+
+
+
+def rf_dist_rescaling_residuals(
+        a: float,
+        n_cells: int,
+        spat_filts_keys: Sequence[str],
+        data_bins: np.ndarray, data_prob_vals: np.ndarray,
+        coords_for_target_magnitude: Dict[str, ArcLength[scalar]],
+        location_params: do.LGNLocationParams,
+        return_hist_data: bool = False,
+        return_all_dists: bool = False):
+
+    sf_keys = random.choices(spat_filts_keys, k=n_cells)
+    sfs = tuple(filters.spatial_filters[filters.reverse_spatial_filters[sfk]] for sfk in sf_keys)
+
+    rf_distance_scale = np.array([
+        # using unit mnt ... must be consistent throughout code
+        a*coords_for_target_magnitude[sf.key].mnt
+        for sf in sfs
+        ])
+
+    rf_loc_gen = cells.rf_dists.get(location_params.distribution_alias)
+    if not rf_loc_gen:
+        raise exc.LGNError(f'bad rf loc dist alias')
+
+    x_locs, y_locs = cells.rflocs.mk_unitless_rf_locations(
+                        n=n_cells, rf_loc_gen=rf_loc_gen,
+                        ratio = location_params.ratio
+                        )
+    x_locs, y_locs = x_locs * rf_distance_scale, y_locs * rf_distance_scale
+
+    actual_pairwise_dists = pdist(X=np.vstack((x_locs,y_locs)).T, metric='euclidean')
+
+    all_pairs_cell_idxs = combinations(range(n_cells), r=2)
+    # all_pairs_cell_idxs = tuple(combinations(range(n_cells), r=2))
+    all_pair_max_diam = np.array([
+        2 *  # coord vals are radial, must double to be a diameter as in jin et al
+        max(
+            coords_for_target_magnitude[sfs[a].key].mnt,  # using mnt unit as above to be consistent
+            coords_for_target_magnitude[sfs[b].key].mnt,
+            )
+        for a,b in all_pairs_cell_idxs
+        ])
+
+    # all_actual_pairwise_dists[n*n_combs: (n*n_combs)+n_combs] = (actual_pairwise_dists)
+    all_jin_etal_pairwise_dists = actual_pairwise_dists/all_pair_max_diam
+
+    jin_etal_cnts, _ = np.histogram(all_jin_etal_pairwise_dists, bins=data_bins)
+
+    if return_all_dists:
+        return all_jin_etal_pairwise_dists
+    elif return_hist_data:
+        return jin_etal_cnts
+    else:
+        return sum(np.abs((jin_etal_cnts/jin_etal_cnts.sum()) - data_prob_vals))
+
+
+def mk_rf_loc_scaling_coefficient_lookup_tables(
+        spat_filt_keys: Sequence[str],
+        ratios: np.ndarray,
+        data_bins: np.ndarray, data_prob_values: np.ndarray,
+        location_params: do.LGNLocationParams,
+        spat_res: ArcLength[scalar],
+        meta_data: do.RFLocMetaData,
+        n_cells: int = 350,
+        magnitude_ratio_for_diameter: Optional[float] = None
+        ) -> do.RFLocationScalingCoefficientVals:
+
+    if magnitude_ratio_for_diameter is None:
+        magnitude_ratio_for_diameter = settings.simulation_params.magnitude_ratio_for_rf_loc_scaling
+
+    coords_for_target_magnitude = {
+            key: spat_filt_coord_at_magnitude_ratio(
+                spat_filt=filters.spatial_filters[filters.reverse_spatial_filters[key]].parameters,
+                target_ratio=magnitude_ratio_for_diameter,
+                spat_res=spat_res, round=True)
+            for key in spat_filt_keys
+        }
+
+    coefficients = []
+    for r in ratios:
+        print(f'Optimising scalaing coefficient for ration {r}')
+
+        location_params.ratio = r
+
+        opt_res = opt.minimize_scalar(
+            rf_dist_rescaling_residuals, method='Brent',
+            args=(
+                350,
+                spat_filt_keys,
+                data_bins, data_prob_values,
+                coords_for_target_magnitude,
+                location_params
+                )
+            )
+        if not opt_res.success:
+            print(f'Failed to optimise coefficient for ratio {r}')
+        else:
+            coefficients.append(opt_res.x)
+
+    luv = do.RFLocationScalingCoefficiantLUV(ratios=ratios, coefficients=np.array(coefficients))
+    coefficient_vals = do.RFLocationScalingCoefficientVals(
+            spat_filt_keys=set(spat_filt_keys),
+            lookup_vals=luv,
+            meta_data=meta_data,
+            data_bins=data_bins,
+            data_prob=data_prob_values,
+        )
+
+    return coefficient_vals
+
+
+
+# ##! Making and Saving the objects
 # run this to create the necessary objects whenever a change is made to the data
 # +
 # mk_all_ratio_rf_loc_objects(jin_data=jin_data)
 # -
+# +
+# rf_locs.mk_all_ratio_rf_loc_objects(jin_data=jin_data)
+# -
 
-# > RF Loc tools
+# # RF Loc tools
 
-# >> Scaling Pairwise distance unit
+# ## Scaling Pairwise distance unit
 
-# >>> Diameter of RF (according to jin et al protocol)
+# ### Diameter of RF (according to jin et al protocol)
 
 # +
 def spat_filt_max_magnitude(spat_filt: do.DOGSpatFiltArgs) -> float:
@@ -1034,10 +1312,51 @@ def spat_filt_coord_at_magnitude_ratio(
         return target_coord
 # -
 
+def mk_spat_filt_coords_at_target_magnitude(
+        spat_filts: Sequence[do.DOGSpatialFilter],
+        spat_res: ArcLength,
+        magnitude_ratio: Optional[float] = None,
+        round: bool = True
+        ) -> List[ArcLength[scalar]]:
+
+    if not magnitude_ratio:
+        magnitude_ratio = settings.simulation_params.magnitude_ratio_for_rf_loc_scaling
+
+    coords_for_target_magnitude = [
+        spat_filt_coord_at_magnitude_ratio(
+                    spat_filt=sf.parameters, target_ratio=magnitude_ratio,
+                    spat_res=spat_res, round=round)
+            for sf in spat_filts
+        ]
+
+    return coords_for_target_magnitude
+
+
+def mk_all_coords_at_target_magnitude(
+        spat_res: ArcLength,
+        magnitude_ratio: Optional[float] = None,
+        round: bool = True
+        ) -> Dict[str, ArcLength[scalar]]:
+
+    if not magnitude_ratio:
+        magnitude_ratio = settings.simulation_params.magnitude_ratio_for_rf_loc_scaling
+
+    coords_for_target_magnitude = {
+        sf.key: spat_filt_coord_at_magnitude_ratio(
+                    spat_filt=sf.parameters, target_ratio=magnitude_ratio,
+                    spat_res=spat_res, round=round)
+            for sf in filters.spatial_filters.values()
+        }
+
+    return coords_for_target_magnitude
+
+
+
 # +
 def avg_largest_pairwise_value(
         values: Iterable[float],
-        use_median: bool = True
+        use_median: bool = True,
+        use_with_replacement: bool = True
         ) -> float:
     """For set of values, average largest value of all pairings
 
@@ -1047,7 +1366,11 @@ def avg_largest_pairwise_value(
     can occur more than once in an LGN layer ... which is true
     """
 
-    pairings = combinations_with_replacement(values, r=2)
+    pairings = (
+        combinations_with_replacement(values, r=2)
+            if use_with_replacement else
+            combinations(values, r=2)
+        )
     largest_value_of_each_pair = list(max(p) for p in pairings)
     # >>> !Use median instead of mean?
     avg_largest_value: float = (
@@ -1060,8 +1383,10 @@ def avg_largest_pairwise_value(
 # -
 # +
 def mk_rf_locations_distance_scale(
-        spat_filters: Iterable[do.DOGSpatialFilter],
+        spat_filters: Sequence[do.DOGSpatialFilter],
         spat_res: ArcLength[scalar],
+        use_median_for_pairwise_avg: bool = True,
+        use_with_replacement: bool = True,
         magnitude_ratio_for_diameter: Optional[float] = None
         ) -> ArcLength[scalar]:
     """For a list of spatial filters, find average largest pairwise diameter
@@ -1072,18 +1397,19 @@ def mk_rf_locations_distance_scale(
     of each pair and the average of these largest values.
     Returns as an ArcLength in the same units as `spat_res` (and snapped to the resolution
     grid too) as a `diameter`.
+
+    `use_median_for_pairwise_avg` is passed onto `avg_largest_pairwise_value`.  If false, mean
+    is used instead.
     """
 
     # If not set, use default value in settings
     if magnitude_ratio_for_diameter is None:
         magnitude_ratio_for_diameter = settings.simulation_params.magnitude_ratio_for_rf_loc_scaling
 
-    coords_for_target_magnitude = [
-        spat_filt_coord_at_magnitude_ratio(
-            spat_filt=sf.parameters, target_ratio=magnitude_ratio_for_diameter,
-            spat_res=spat_res, round=True)
-        for sf in spat_filters
-    ]
+    coords_for_target_magnitude = mk_spat_filt_coords_at_target_magnitude(
+            spat_filts = spat_filters, spat_res = spat_res,
+            magnitude_ratio = None  # use default in settings
+        )
 
     spat_filt_diameters = [
         # double for diameter
@@ -1093,7 +1419,9 @@ def mk_rf_locations_distance_scale(
 
     # use same unit as spat res for easy conversion back to an arclength
     avg_biggest_diameter_value = avg_largest_pairwise_value(
-        [d[spat_res.unit] for d in spat_filt_diameters] )
+        [d[spat_res.unit] for d in spat_filt_diameters],
+        use_median=use_median_for_pairwise_avg,
+        use_with_replacement=use_with_replacement)
     avg_biggest_diameter = ArcLength(avg_biggest_diameter_value, spat_res.unit )
 
     return avg_biggest_diameter
@@ -1196,7 +1524,7 @@ def apply_distance_scale_to_rf_locations(
 
 
 
-# > Plot RF Locations
+# # Plot RF Locations
 # ... prototypes here
 # +
 def plot_unitless_rf_locations(locs: tuple):
@@ -1235,7 +1563,7 @@ def plot_unitless_rf_locations(locs: tuple):
 # -
 # +
 def plot_rf_locations(
-        rf_locations: Tuple[Tuple[ArcLength, ArcLength]],
+        rf_locations: Tuple[do.RFLocation],
         distance_scale: ArcLength,
         unit: str = 'mnt'
         ):
@@ -1248,7 +1576,8 @@ def plot_rf_locations(
     putative_rf_radius = distance_scale[unit] / 2
 
     xmins, xmaxs, ymins, ymaxs = [], [], [], []
-    for x_loc, y_loc in rf_locations:
+    for loc in rf_locations:
+        x_loc, y_loc = loc.x, loc.y
         # locations are in units of rf diameter
         x0, x1 = x_loc[unit]-putative_rf_radius, x_loc[unit]+putative_rf_radius
         y0, y1 = y_loc[unit]-putative_rf_radius, y_loc[unit]+putative_rf_radius
