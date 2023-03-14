@@ -1063,6 +1063,134 @@ class RFLocationSigmaRatio2SigmaVals:
         return rf_loc_generator
 # -
 
+@dataclass
+class RFLocationScalingCoefficiantLUV:
+    ratios: np.ndarray
+    coefficients: np.ndarray
+
+@dataclass
+class RFLocationScalingCoefficientVals:
+    spat_filt_keys: Set[str]
+    "The spatial filters for which these lookup vals are optimised"
+    lookup_vals: RFLocationScalingCoefficiantLUV
+    "Raw discrete look up vals to interpolate in providing a coefficient for a given ratio"
+    meta_data: RFLocMetaData
+    "Source of data to which lookup vals were fit"
+    data_bins: np.ndarray
+    "Bins of the histogram of data that was optimised to"
+    data_prob: np.ndarray
+    "Values, as probabilities, of the data that was fit to"
+
+    def check_spat_filt_match(self, spat_filt_keys: Sequence[str]) -> bool:
+        '''Check that the provided spatial filters match those for which these LUVs were optimised
+        '''
+
+        if self.spat_filt_keys == set(spat_filt_keys):
+            return True
+        else:
+            return False
+
+    def ratio2coefficient(self, ratio: float) -> float:
+        """Provide bivariate sigma values optimised to provided ratio
+        """
+        if not hasattr(self, '_coefficient'):
+            self._mk_interpolated()
+
+        coefficient_val = self._coefficient(ratio)
+        return coefficient_val
+
+    def _mk_interpolated(self):
+        """Add methods for interpolation"""
+        self._coefficient = interp1d(x=self.lookup_vals.ratios, y=self.lookup_vals.coefficients)
+
+    @classmethod
+    @property
+    def _filename_template(cls) -> Callable:
+        """Returns format function of `"RfLoc_Generator_{}.pkl"`"""
+        return 'RfLoc_scaling_coefficients_{}.pkl'.format
+
+    def _mk_filename(self) -> Path:
+        "Filename for this object to be saved to and identifiable from"
+
+        file_name = Path(self._filename_template(self.meta_data.mk_key()))
+        return file_name
+
+    def _mk_data_path(self) -> Path:
+        "Use settings to retrieve the path for saving/loading data"
+        data_dir = settings.get_data_dir()
+        if not data_dir.exists():
+            data_dir.mkdir()
+
+        file_name = self._mk_filename()
+        data_file = data_dir / file_name
+
+        return data_file
+
+    def save(self, overwrite: bool = False):
+        "Save this object to file"
+
+        data_file = self._mk_data_path()
+
+        if data_file.exists():
+            if not overwrite:
+                raise FileExistsError('Must passe overwrite=True to overwrite')
+
+        with open(data_file, 'wb') as f:
+            try:
+                pkl.dump(self, f, protocol=4)
+            except Exception as e:
+                # don't want bad file floating around
+                # if overwrite ... well bad luck
+                data_file.unlink()
+                raise e
+
+    def __getstate__(self):
+        '''Don't want to save the interpolation functions, they are created automatically
+
+        This dunder method interfaces with the pickle library.
+        The object returned is what actually gets pickled
+        '''
+        interp_func_name = '_coefficient'
+        state = self.__dict__.copy()
+        if interp_func_name in state:
+            del state[interp_func_name]
+        return state
+
+    def __setstate__(self, state):
+        '''How loading from pickle works ... here lets just recreate the interpolation'''
+        self.__dict__.update(state)
+        self._mk_interpolated()
+
+
+    @classmethod
+    def get_saved_rf_loc_generators(cls) -> List[Path]:
+        """Return list of location generator objects saved in data directory"""
+
+        data_dir = settings.get_data_dir()
+        pattern = cls._filename_template('*')  # glob what is supposed to be the key
+        saved_filters = list(data_dir.glob(pattern))
+
+        return saved_filters
+
+    @staticmethod
+    def load(path: Union[str, Path]) -> RFLocationSigmaRatio2SigmaVals:
+        "Load pickle from path"
+        data_dir = settings.get_data_dir()
+        data_path = data_dir / path
+
+        if not (data_path.exists() and data_path.is_file()):
+            raise FileNotFoundError(
+                f'File {path} is not found in data dir {data_dir}')
+
+        with open(data_path, 'rb') as f:
+            rf_loc_generator = pkl.load(f)
+
+        if not isinstance(rf_loc_generator, RFLocationSigmaRatio2SigmaVals):
+            raise ValueError(
+                f'Provided path ({path}) does not contain a RF Locations object of type {RFLocationSigmaRatio2SigmaVals}')
+
+        return rf_loc_generator
+
 # ## Orientations and Circular Variance
 
 @dataclass
@@ -1443,9 +1571,9 @@ class LGNRFLocations:
 
 @dataclass
 class LGNFilterParams(ConversionABC):
-    spat_filters: Union[Literal['all'], List[str]]
+    spat_filters: Union[Literal['all'], Sequence[str]]
     "pick randomly from set or take 'all' if specified"
-    temp_filters: Union[Literal['all'], List[str]]
+    temp_filters: Union[Literal['all'], Sequence[str]]
     "pick randomly from set or take 'all' if specified"
 
 @dataclass
@@ -1467,8 +1595,10 @@ class LGNParams(ConversionABC):
 
 @dataclass
 class LGNLayer(ConversionABC):
-    cells: Tuple[LGNCell]
+    cells: Tuple[LGNCell, ...]
     params: LGNParams
+    rf_distance_scale: Union[None, float, ArcLength[scalar]] = None
+    "if a float, represents the coefficient used to scale another metric"
 
 
 @dataclass
@@ -1696,9 +1826,9 @@ class MultiStimulusGeneratorParams(ConversionABC):
     temp_freq_unit: str = 'hz'
     ori_arc_unit: str = 'deg'
     # mutable default value requires this incantation
-    contrasts: Iterable[Optional[float]] = field(default_factory = lambda: [None])
-    amplitudes: Iterable[Optional[float]] = field(default_factory = lambda: [None])
-    DC_vals: Iterable[Optional[float]] = field(default_factory = lambda: [None])
+    contrasts: Optional[Iterable[float]] = None
+    amplitudes: Optional[Iterable[float]] = None
+    DC_vals: Optional[Iterable[float]] = None
 
 MultiStimulusParams = Tuple[GratingStimulusParams]
 
