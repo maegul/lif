@@ -36,7 +36,7 @@ Examples:
 # # Imports
 import random
 from textwrap import dedent
-from typing import List, cast, Dict, Tuple, Sequence, Optional
+from typing import List, cast, Dict, Tuple, Sequence, Optional, Callable
 from collections import abc
 from itertools import combinations, combinations_with_replacement
 import json
@@ -149,13 +149,27 @@ def mk_circ_var_values(
 
 # +
 def mk_rf_locations(
-        n: int,
+        spat_res: ArcLength[scalar],
+        spat_filts: Sequence[do.DOGSpatialFilter],
         rf_loc_params: do.LGNLocationParams,
-        distance_scale: ArcLength[scalar],
+        pairwise_distance_coefficient: Optional[float] = None,
+        rf_dist_scale: Optional[ArcLength[scalar]] = None
         ) -> do.LGNRFLocations:
     """Generate x,y coordinates for RF Locations
 
+    Either pairwise_distance_coefficient or rf_dist_scale must be provided.
+    But not both.
+    Whichever is provided determines which method of scaling is employed
+
     """
+    # One but not both
+    assert (
+        (pairwise_distance_coefficient or rf_dist_scale)
+        and not
+        (pairwise_distance_coefficient and rf_dist_scale)
+        ), 'Must provide only one of "pairwise_distance_coefficient" and "rf_dist_scale"'
+
+    n = len(spat_filts)
 
     rf_loc_gen = rf_dists.get(rf_loc_params.distribution_alias)
     if not rf_loc_gen:
@@ -173,15 +187,46 @@ def mk_rf_locations(
         raise exc.LGNError(
             f'X and Y location coordinates are not of the same size ({x_locs.shape, y_locs.shape})')
 
-    location_coords = tuple(
-        (
-            do.RFLocation(
-                x=ArcLength(x_locs[i] * distance_scale.value, distance_scale.unit),
-                y=ArcLength(y_locs[i] * distance_scale.value, distance_scale.unit)
-                )
+
+    # scale by each spat_filts size
+
+    if pairwise_distance_coefficient:
+        coords_for_target_magnitude = rflocs.mk_spat_filt_coords_at_target_magnitude(
+                spat_filts = spat_filts,
+                magnitude_ratio = None,  # rely on settings
+                spat_res=spat_res, round=True
+            )
+        # use a list below ... relying on python dict insertion order guarantee!
+
+        # at this point, where the size of the spat filt is used to scale the location
+        # the locations are no longer random but bound to the spatial filter that occurs in the same
+        # location in the sequence passed in as an argument
+        location_coords = tuple(
+            (
+                do.RFLocation(
+                    x=ArcLength(x * (scale.value * pairwise_distance_coefficient), scale.unit),
+                    y=ArcLength(y * (scale.value * pairwise_distance_coefficient), scale.unit)
+                    )
+            )
+            for x,y, scale in zip(x_locs, y_locs, coords_for_target_magnitude)
         )
-        for i in range(len(x_locs))
-    )
+
+    # or, if provided, use the general rf_dist_scale
+
+    elif rf_dist_scale:
+        location_coords = tuple(
+            (
+                do.RFLocation(
+                    x=ArcLength(x * rf_dist_scale.value, rf_dist_scale.unit),
+                    y=ArcLength(y * rf_dist_scale.value, rf_dist_scale.unit)
+                    )
+            )
+            for x,y in zip(x_locs, y_locs)
+        )
+
+    # given assert at the top, it should always be defined
+    location_coords = cast(Tuple[do.RFLocation], location_coords)  # type: ignore
+
     rf_locations = do.LGNRFLocations(locations = location_coords)
 
     return rf_locations
@@ -318,7 +363,10 @@ def mk_lgn_layer(
         lgn_params: do.LGNParams,
         spat_res: ArcLength[scalar],
         contrast: Optional[do.ContrastValue] = None,
-        force_central: bool = False
+        use_dist_scale: bool = True,
+        use_spat_filt_size_coefficient: bool = False,
+        force_central: bool = False,
+        rf_dist_scale_func: Optional[Callable] = None
         ) -> do.LGNLayer:
     """Make full lgn layer from params
 
@@ -365,20 +413,45 @@ def mk_lgn_layer(
                     for _ in range(n_cells)
             )
         rf_distance_scale = None  # as overwritten
+        scale_val = rf_distance_scale
         rf_locations = do.LGNRFLocations(locations)
 
     else:
-        rf_distance_scale = rflocs.mk_rf_locations_distance_scale(
-            spat_filters=spat_filts, spat_res=spat_res,
-            # This uses the mean ... more correlated to actual SFs and their sizes
-            # should smooth out irregular scaling of distance
-            use_median_for_pairwise_avg=False,
-            magnitude_ratio_for_diameter=None  # relying on default value in settings
-            )
-        rf_locations = mk_rf_locations(
-            n=n_cells, rf_loc_params=lgn_params.spread,
-            distance_scale=rf_distance_scale
-            )
+        if rf_dist_scale_func:
+            rf_distance_scale = rf_dist_scale_func(spat_filts, spat_res)
+            scale_val = rf_distance_scale
+
+            rf_locations = mk_rf_locations(spat_res=spat_res,
+                spat_filts = spat_filts,
+                rf_loc_params=lgn_params.spread,
+                rf_dist_scale=rf_distance_scale
+                )
+
+        elif use_dist_scale:
+            rf_distance_scale = rflocs.mk_rf_locations_distance_scale(
+                spat_filters=spat_filts, spat_res=spat_res,
+                # This uses the mean ... more correlated to actual SFs and their sizes
+                # should smooth out irregular scaling of distance
+                use_median_for_pairwise_avg=False,
+                magnitude_ratio_for_diameter=None  # relying on default value in settings
+                )
+            scale_val = rf_distance_scale
+
+            rf_locations = mk_rf_locations(spat_res=spat_res,
+                spat_filts = spat_filts,
+                rf_loc_params=lgn_params.spread,
+                rf_dist_scale=rf_distance_scale
+                )
+
+        elif use_spat_filt_size_coefficient:
+            scale_val = 2.55  # just hardcoding for now
+            rf_locations = mk_rf_locations(spat_res=spat_res,
+                spat_filts = spat_filts,
+                rf_loc_params=lgn_params.spread,
+                pairwise_distance_coefficient=scale_val
+                )
+        else:
+            raise ValueError('must use either rf_dist_scale or pairwise size coefficient')
 
     lgn_cells = tuple(
             do.LGNCell(
@@ -394,6 +467,7 @@ def mk_lgn_layer(
         )
 
     lgn_layer = do.LGNLayer(cells=lgn_cells, params=lgn_params,
-        rf_distance_scale=rf_distance_scale)
+        rf_distance_scale=scale_val
+        )
 
     return lgn_layer
