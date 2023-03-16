@@ -20,7 +20,7 @@ from lif.convolution import convolve
 from lif.simulation import all_filter_actual_max_f1_amp as all_max_f1
 
 from lif.utils import data_objects as do
-from lif.utils.units.units import ArcLength, SpatFrequency, TempFrequency
+from lif.utils.units.units import ArcLength, SpatFrequency, TempFrequency, Time
 
 app = Dash(__name__)
 
@@ -37,6 +37,10 @@ spat_filt_colors = plot.spat_filt_colors
 
 
 # # Dummy LGN
+demo_stparams = do.SpaceTimeParams(
+    spat_ext=ArcLength(660, 'mnt'), spat_res=ArcLength(1, 'mnt'), 
+	temp_ext=Time(1, 's'), temp_res=Time(1, 'ms'), 
+	array_dtype='float32')
 
 lgn = cells.mk_lgn_layer(demo_lgnparams, demo_stparams.spat_res, force_central=False)
 
@@ -223,19 +227,22 @@ lgn_params_dials = html.Div(children = [
 # # Stim Params
 
 lgn_stim_dials = html.Div(children = [
-		html.Button('New LGN Layer',
+		html.Button('Convolve!',
 			id='convolve_with_stim', n_clicks=0),
 		html.Div(children=[
 			html.Span('Spat Freq', style=lgn_params_dial_label_style),
-			dcc.Slider(0, 10, 0.1, value=2, id='lgn_stim_params_sf'),
+            dcc.Slider(0, 10, 0.1, value=0.8, id='lgn_stim_params_sf', 
+                marks=None, tooltip={"placement": "bottom", "always_visible": True}),
 		]),
 		html.Div(children=[
 			html.Span('Temp Freq', style=lgn_params_dial_label_style),
-			dcc.Slider(0, 10, 4, value=1, id='lgn_stim_params_tf'),
+			dcc.Slider(0, 10, 0.1, value=4, id='lgn_stim_params_tf',
+                marks=None, tooltip={"placement": "bottom", "always_visible": True}),
 		]),
 		html.Div(children=[
 			html.Span('Orientation', style=lgn_params_dial_label_style),
-			dcc.Slider(0, 180, 1, value=90, id='lgn_stim_params_ori'),
+			dcc.Slider(0, 180, 1, value=90, id='lgn_stim_params_ori',
+                marks=None, tooltip={"placement": "bottom", "always_visible": True}),
 		]),
 		html.Div(children=[
 			html.Span('Amp', style=lgn_params_dial_label_style),
@@ -247,7 +254,7 @@ lgn_stim_dials = html.Div(children = [
 		]),
 		html.Div(children=[
 			html.Span('Contrast', style=lgn_params_dial_label_style),
-			dcc.Input(id='lgn_stim_params_cont', type='number', min=0, max=1, step=0.1, value=0.3),
+			dcc.Input(id='lgn_stim_params_cont', type='number', min=0, max=1, step=0.1, value=0.4),
 		]),
 	])
 
@@ -352,7 +359,7 @@ def reload_lgn_rec_fields(
 # # Rate Curves and Stimulus
 @app.callback(
 	Output('lgn_response', 'figure'),
-	Input('reload_lgn_rec_fields_button', 'n_clicks'),
+	Input('convolve_with_stim', 'n_clicks'),
 	State('lgn_stim_params_sf', 'value'),
 	State('lgn_stim_params_tf', 'value'),
 	State('lgn_stim_params_ori', 'value'),
@@ -370,6 +377,11 @@ def make_lgn_stimulus_response(
 		lgn_stim_params_cont,
 		):
 
+#    input_trigger_id = ctx.triggered_id
+#    if input_trigger_id == 'reload_':
+
+	print(f'Convolve clicked: {n_clicks}')
+
 	stim_params = do.GratingStimulusParams(
 		SpatFrequency(lgn_stim_params_sf, 'cpd'),
 		TempFrequency(lgn_stim_params_tf, 'hz'),
@@ -378,6 +390,9 @@ def make_lgn_stimulus_response(
 		DC=lgn_stim_params_dc,
 		contrast=do.ContrastValue(lgn_stim_params_cont)
 		)
+
+	# just make the stimulus if not created already
+	stimulus.mk_stimulus_cache(demo_stparams, tuple([stim_params]))
 
 	spat_filts: Sequence[np.ndarray] = []
 	temp_filts: Sequence[np.ndarray] = []
@@ -459,10 +474,12 @@ app.layout = (
 		html.Div(children = [
 			lgn_rec_fields_fig,
 			lgn_rec_fields_reload,
-			lgn_params_dials
+			lgn_params_dials,
+            lgn_stim_dials,
+            lgn_response_fig
 		]),
 		lgn_layer_cell_list,
-		lgn_rec_pwds
+		lgn_rec_pwds,
 	],
 	style={'display': 'flex'}
 	)
@@ -470,4 +487,4 @@ app.layout = (
 
 if __name__ == '__main__':
 	# app.run_server(debug=True)
-	app.run()
+	app.run(debug=True)
