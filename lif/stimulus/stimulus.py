@@ -352,7 +352,10 @@ def load_stim_array_from_file(
     return stimulus_array
 
 
-def load_stimulus_from_params(st_params, stim_params) -> np.ndarray:
+def load_stimulus_from_params(
+        st_params: do.SpaceTimeParams,
+        stim_params: do.GratingStimulusParams
+        ) -> np.ndarray:
     """Load from data directory based on params ... presumes already cached
     """
 
