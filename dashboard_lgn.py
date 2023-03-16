@@ -3,6 +3,7 @@ from typing import Sequence, List, Dict, Optional
 
 from dash import Dash, html, dcc, Input, Output, State, ctx
 import plotly.express as px
+import plotly.graph_objects as go
 import numpy as np
 import pandas as pd
 
@@ -15,8 +16,11 @@ from lif.lgn import demo_lgnparams, demo_stparams, rf_locations as rf_locs
 
 from lif.lgn import cells
 from lif.stimulus import stimulus
+from lif.convolution import convolve
+from lif.simulation import all_filter_actual_max_f1_amp as all_max_f1
+
 from lif.utils import data_objects as do
-from lif.utils.units.units import ArcLength
+from lif.utils.units.units import ArcLength, SpatFrequency, TempFrequency
 
 app = Dash(__name__)
 
@@ -59,6 +63,12 @@ def make_rec_pwds_fig(lgn, spat_res, all_coords):
 lgn_rec_pwds = dcc.Graph(
 	figure = make_rec_pwds_fig(lgn, demo_stparams.spat_res, all_coords_at_magnitude),
 	id='lgn_rec_field_pwds',
+	style={'width': '70vh', 'height': '70vh'}
+	)
+
+lgn_response_fig = dcc.Graph(
+	id='lgn_response',
+	figure=go.Figure(),
 	style={'width': '70vh', 'height': '70vh'}
 	)
 
@@ -210,6 +220,37 @@ lgn_params_dials = html.Div(children = [
 	])
 
 
+# # Stim Params
+
+lgn_stim_dials = html.Div(children = [
+		html.Button('New LGN Layer',
+			id='convolve_with_stim', n_clicks=0),
+		html.Div(children=[
+			html.Span('Spat Freq', style=lgn_params_dial_label_style),
+			dcc.Slider(0, 10, 0.1, value=2, id='lgn_stim_params_sf'),
+		]),
+		html.Div(children=[
+			html.Span('Temp Freq', style=lgn_params_dial_label_style),
+			dcc.Slider(0, 10, 4, value=1, id='lgn_stim_params_tf'),
+		]),
+		html.Div(children=[
+			html.Span('Orientation', style=lgn_params_dial_label_style),
+			dcc.Slider(0, 180, 1, value=90, id='lgn_stim_params_ori'),
+		]),
+		html.Div(children=[
+			html.Span('Amp', style=lgn_params_dial_label_style),
+			dcc.Input(id='lgn_stim_params_amp', type='number', min=0, max=10, step=0.2, value=1),
+		]),
+		html.Div(children=[
+			html.Span('DC', style=lgn_params_dial_label_style),
+			dcc.Input(id='lgn_stim_params_dc', type='number', min=0, max=10, step=0.2, value=1),
+		]),
+		html.Div(children=[
+			html.Span('Contrast', style=lgn_params_dial_label_style),
+			dcc.Input(id='lgn_stim_params_cont', type='number', min=0, max=1, step=0.1, value=0.3),
+		]),
+	])
+
 # # New Figure Callback
 
 @app.callback(
@@ -309,13 +350,40 @@ def reload_lgn_rec_fields(
 
 
 # # Rate Curves and Stimulus
-
+@app.callback(
+	Output('lgn_response', 'figure'),
+	Input('reload_lgn_rec_fields_button', 'n_clicks'),
+	State('lgn_stim_params_sf', 'value'),
+	State('lgn_stim_params_tf', 'value'),
+	State('lgn_stim_params_ori', 'value'),
+	State('lgn_stim_params_amp', 'value'),
+	State('lgn_stim_params_dc', 'value'),
+	State('lgn_stim_params_cont', 'value'),
+	)
 def make_lgn_stimulus_response(
-		stim_params: do.GratingStimulusParams
+		n_clicks,
+		lgn_stim_params_sf,
+		lgn_stim_params_tf,
+		lgn_stim_params_ori,
+		lgn_stim_params_amp,
+		lgn_stim_params_dc,
+		lgn_stim_params_cont,
 		):
+
+	stim_params = do.GratingStimulusParams(
+		SpatFrequency(lgn_stim_params_sf, 'cpd'),
+		TempFrequency(lgn_stim_params_tf, 'hz'),
+		ArcLength(lgn_stim_params_ori, 'deg'),
+		amplitude=lgn_stim_params_amp,
+		DC=lgn_stim_params_dc,
+		contrast=do.ContrastValue(lgn_stim_params_cont)
+		)
+
 	spat_filts: Sequence[np.ndarray] = []
 	temp_filts: Sequence[np.ndarray] = []
 	responses: Sequence[do.ConvolutionResponse] = []
+
+	actual_max_f1_amps = all_max_f1.mk_actual_max_f1_amps(stim_params=stim_params)
 
 	stim_array = stimulus.load_stimulus_from_params(demo_stparams, stim_params)
 
@@ -359,18 +427,29 @@ def make_lgn_stimulus_response(
 		responses.append(cell_resp)
 
 	# be paranoid and use tuples ... ?
-	spat_filts, temp_filts, responses = (
-		tuple(spat_filts), tuple(temp_filts), tuple(responses)
-		)
+	# spat_filts, temp_filts, responses = (
+	# 	tuple(spat_filts), tuple(temp_filts), tuple(responses)
+	# 	)
+
 	# #### Poisson spikes for all cells
 	# Sigh ... the array is stored along with the adjustment params in an object
 	# ... and they're all called "response(s)"
 	response_arrays = tuple(
 			response.response for response in responses
 		)
-	lgn_layer_responses = convolve.mk_lgn_response_spikes(
-			demo_stparams, response_arrays
-		)
+	# lgn_layer_responses = convolve.mk_lgn_response_spikes(
+	# 		demo_stparams, response_arrays
+	# 	)
+
+	fig = go.Figure()
+
+	for r in response_arrays:
+		fig.add_scatter(
+			mode='lines',
+			y=r
+			)
+
+	return fig
 
 
 # # Layout
@@ -390,5 +469,5 @@ app.layout = (
 )
 
 if __name__ == '__main__':
-	app.run_server(debug=True)
+	# app.run_server(debug=True)
 	app.run()
