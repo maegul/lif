@@ -39,7 +39,7 @@ spat_filt_colors = plot.spat_filt_colors
 # # Dummy LGN
 demo_stparams = do.SpaceTimeParams(
     spat_ext=ArcLength(660, 'mnt'), spat_res=ArcLength(1, 'mnt'), 
-	temp_ext=Time(1, 's'), temp_res=Time(1, 'ms'), 
+	temp_ext=Time(0.5, 's'), temp_res=Time(1, 'ms'), 
 	array_dtype='float32')
 
 lgn = cells.mk_lgn_layer(demo_lgnparams, demo_stparams.spat_res, force_central=False)
@@ -391,6 +391,9 @@ def make_lgn_stimulus_response(
 		contrast=do.ContrastValue(lgn_stim_params_cont)
 		)
 
+	# delete previous stim array to manage memory issues causing crashing?
+	if 'stim_array' in locals():
+		del stim_array
 	# just make the stimulus if not created already
 	stimulus.mk_stimulus_cache(demo_stparams, tuple([stim_params]))
 
