@@ -461,10 +461,19 @@ def make_lgn_stimulus_response(
 
 	fig = go.Figure()
 
-	for r in response_arrays:
+	for i, r in enumerate(response_arrays):
+		spat_filt_index_key = filters.reverse_spatial_filters[lgn.cells[i].spat_filt.key]
+		temp_filt_index_key = filters.reverse_temporal_filters[lgn.cells[i].temp_filt.key]
+		name = (
+			f'{i} {spat_filt_index_key} {temp_filt_index_key}'
+			)
 		fig.add_scatter(
 			mode='lines',
-			y=r
+			y=r,
+			color=plot.spat_filt_colors[
+				filters.reverse_spatial_filters[lgn.cells[i].spat_filt.key]
+				],
+			name=name
 			)
 
 	return fig
