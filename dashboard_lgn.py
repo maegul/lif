@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Sequence, List, Dict, Optional
 
-from dash import Dash, html, dcc, Input, Output, State, ctx
+from dash import Dash, html, dcc, Input, Output, State, ctx, dash_table
 import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
@@ -76,6 +76,28 @@ lgn_response_fig = dcc.Graph(
 	style={'width': '70vh', 'height': '70vh'}
 	)
 
+def make_lgn_data_records(lgn: do.LGNLayer):
+
+	records = [
+		{
+			'sf': filters.reverse_spatial_filters[c.spat_filt.key],
+			'tf': filters.reverse_temporal_filters[c.temp_filt.key],
+			'x': round(c.location.x.mnt, 2),
+			'y': round(c.location.y.mnt, 2),
+			'ori': f'{c.orientation.deg:.1f}',
+			'cv': f'{c.circ_var:.2f}',
+			'max_f1': f'{c.max_f1_amplitude.max_amp:.1f}'
+		}
+		for c in lgn.cells
+	]
+
+	return records
+
+lgn_data_table = dash_table.DataTable(
+		data=make_lgn_data_records(lgn),
+		sort_action="native",
+		id='lgn_data_table'
+	)
 
 # # Reload a new LGN
 
@@ -215,7 +237,10 @@ lgn_params_dials = html.Div(children = [
 						key=lambda k: filters.spatial_filters[k].parameters.cent.array()[-1]
 						)
 					),
-				value=['all'],
+				value=[
+					'soodak87_1', 'maffei73_2right', 'so81_5', 'berardi84_5a', 'so81_2bottom',
+					'berardi84_5b', 'maffei73_2mid', 'berardi84_6'
+				],
 				inline=False,
 				style={'display': 'flex', 'flex-direction': 'column'},
 				id='lgn_params_spatial_filters'
@@ -265,6 +290,7 @@ lgn_stim_dials = html.Div(children = [
 	Output('lgn_layer_cell_list', 'options'),
 	Output('lgn_layer_cell_list', 'value'),
 	Output('lgn_rec_field_pwds', 'figure'),
+	Output('lgn_data_table', 'data'),
 	Input('reload_lgn_rec_fields_button', 'n_clicks'),
 	Input('lgn_layer_cell_list', 'value'),
 	Input('lgn_params_rf_line_color', 'value'),
@@ -353,20 +379,23 @@ def reload_lgn_rec_fields(
 
 	cell_list_opts = make_cell_list_options(lgn)
 
-	return fig, cell_list_opts, cell_list_value, fig_pwds
+	data_table_records = make_lgn_data_records(lgn)
+
+	return fig, cell_list_opts, cell_list_value, fig_pwds, data_table_records
 
 
 # # Rate Curves and Stimulus
-@app.callback(
-	Output('lgn_response', 'figure'),
-	Input('convolve_with_stim', 'n_clicks'),
-	State('lgn_stim_params_sf', 'value'),
-	State('lgn_stim_params_tf', 'value'),
-	State('lgn_stim_params_ori', 'value'),
-	State('lgn_stim_params_amp', 'value'),
-	State('lgn_stim_params_dc', 'value'),
-	State('lgn_stim_params_cont', 'value'),
-	)
+# @app.callback(
+# 	Output('lgn_response', 'figure'),
+# 	Input('convolve_with_stim', 'n_clicks'),
+# 	State('lgn_stim_params_sf', 'value'),
+# 	State('lgn_stim_params_tf', 'value'),
+# 	State('lgn_stim_params_ori', 'value'),
+# 	State('lgn_stim_params_amp', 'value'),
+# 	State('lgn_stim_params_dc', 'value'),
+# 	State('lgn_stim_params_cont', 'value'),
+# 	prevent_initial_callback=True
+# 	)
 def make_lgn_stimulus_response(
 		n_clicks,
 		lgn_stim_params_sf,
@@ -390,6 +419,10 @@ def make_lgn_stimulus_response(
 		DC=lgn_stim_params_dc,
 		contrast=do.ContrastValue(lgn_stim_params_cont)
 		)
+
+	# another way of precventing this from running initially
+	if n_clicks == 0:
+		return go.Figure()
 
 	# delete previous stim array to manage memory issues causing crashing?
 	if 'stim_array' in locals():
@@ -462,8 +495,9 @@ def make_lgn_stimulus_response(
 	fig = go.Figure()
 
 	for i, r in enumerate(response_arrays):
-		spat_filt_index_key = filters.reverse_spatial_filters[lgn.cells[i].spat_filt.key]
-		temp_filt_index_key = filters.reverse_temporal_filters[lgn.cells[i].temp_filt.key]
+		cell = lgn.cells[i]
+		spat_filt_index_key = filters.reverse_spatial_filters[cell.spat_filt.key]
+		temp_filt_index_key = filters.reverse_temporal_filters[cell.temp_filt.key]
 		name = (
 			f'{i} {spat_filt_index_key} {temp_filt_index_key}'
 			)
@@ -471,7 +505,7 @@ def make_lgn_stimulus_response(
 			mode='lines',
 			y=r,
 			color=plot.spat_filt_colors[
-				filters.reverse_spatial_filters[lgn.cells[i].spat_filt.key]
+				filters.reverse_spatial_filters[cell.spat_filt.key]
 				],
 			name=name
 			)
@@ -482,18 +516,30 @@ def make_lgn_stimulus_response(
 # # Layout
 
 app.layout = (
-	html.Div(children = [
-		html.Div(children = [
-			lgn_rec_fields_fig,
+	html.Div(
+		children = [
+			html.Div(
+				children = [
+					lgn_rec_fields_fig,
+					lgn_layer_cell_list,
+					lgn_rec_pwds,
+					],
+				style={'display': 'flex'}
+				),
+
 			lgn_rec_fields_reload,
-			lgn_params_dials,
-            lgn_stim_dials,
-            lgn_response_fig
-		]),
-		lgn_layer_cell_list,
-		lgn_rec_pwds,
-	],
-	style={'display': 'flex'}
+
+			html.Div(
+				children = [
+					lgn_params_dials,
+					lgn_data_table
+					],
+				style={'display': 'flex'}
+				),
+
+			lgn_stim_dials,
+			lgn_response_fig
+			],
 	)
 )
 
