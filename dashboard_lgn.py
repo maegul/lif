@@ -80,6 +80,7 @@ def make_lgn_data_records(lgn: do.LGNLayer):
 
 	records = [
 		{
+            'idx': i,
 			'sf': filters.reverse_spatial_filters[c.spat_filt.key],
 			'tf': filters.reverse_temporal_filters[c.temp_filt.key],
 			'x': round(c.location.x.mnt, 2),
@@ -88,7 +89,7 @@ def make_lgn_data_records(lgn: do.LGNLayer):
 			'cv': f'{c.circ_var:.2f}',
 			'max_f1': f'{c.max_f1_amplitude.max_amp:.1f}'
 		}
-		for c in lgn.cells
+		for i, c in enumerate(lgn.cells)
 	]
 
 	return records
@@ -385,17 +386,17 @@ def reload_lgn_rec_fields(
 
 
 # # Rate Curves and Stimulus
-# @app.callback(
-# 	Output('lgn_response', 'figure'),
-# 	Input('convolve_with_stim', 'n_clicks'),
-# 	State('lgn_stim_params_sf', 'value'),
-# 	State('lgn_stim_params_tf', 'value'),
-# 	State('lgn_stim_params_ori', 'value'),
-# 	State('lgn_stim_params_amp', 'value'),
-# 	State('lgn_stim_params_dc', 'value'),
-# 	State('lgn_stim_params_cont', 'value'),
-# 	prevent_initial_callback=True
-# 	)
+@app.callback(
+	Output('lgn_response', 'figure'),
+	Input('convolve_with_stim', 'n_clicks'),
+	State('lgn_stim_params_sf', 'value'),
+	State('lgn_stim_params_tf', 'value'),
+	State('lgn_stim_params_ori', 'value'),
+	State('lgn_stim_params_amp', 'value'),
+	State('lgn_stim_params_dc', 'value'),
+	State('lgn_stim_params_cont', 'value'),
+	prevent_initial_callback=True
+	)
 def make_lgn_stimulus_response(
 		n_clicks,
 		lgn_stim_params_sf,
@@ -445,7 +446,8 @@ def make_lgn_stimulus_response(
 					demo_stparams.spat_res,
 					sd=cell.spat_filt.parameters.max_sd()
 					)
-		spat_filt = ff.mk_dog_sf(x_coords=xc, y_coords=yc, dog_args=cell.spat_filt)
+		cell_sf = cell.oriented_spat_filt_params
+		spat_filt = ff.mk_dog_sf(x_coords=xc, y_coords=yc, dog_args=cell_sf)
 		# Rotate array
 		spat_filt = ff.mk_oriented_sf(spat_filt, cell.orientation)
 
@@ -461,14 +463,14 @@ def make_lgn_stimulus_response(
 
 		# slice stimulus
 		spat_slice_idxs = stimulus.mk_rf_stim_spatial_slice_idxs(
-			demo_stparams, cell.spat_filt, cell.location)
+			demo_stparams, cell_sf, cell.location)
 		stim_slice = stimulus.mk_stimulus_slice_array(
 			demo_stparams, stim_array, spat_slice_idxs)
 
 		# convolve
 		actual_max_f1_amp = all_max_f1.get_cell_actual_max_f1_amp(cell, actual_max_f1_amps)
 		cell_resp = convolve.mk_single_sf_tf_response(
-				demo_stparams, cell.spat_filt, cell.temp_filt,
+				demo_stparams, cell_sf, cell.temp_filt,
 				spat_filt, temp_filt,
 				stim_params, stim_slice,
 				filter_actual_max_f1_amp=actual_max_f1_amp.value,
@@ -504,7 +506,7 @@ def make_lgn_stimulus_response(
 		fig.add_scatter(
 			mode='lines',
 			y=r,
-			color=plot.spat_filt_colors[
+			line_color=plot.spat_filt_colors[
 				filters.reverse_spatial_filters[cell.spat_filt.key]
 				],
 			name=name
