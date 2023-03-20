@@ -1427,6 +1427,19 @@ class LGNCell(ConversionABC):
     location: RFLocation
     "location coordinates for the center of the spatial filter from the center"
 
+    def mk_oriented_spat_filt(self) -> DOGSpatialFilter:
+        "New SpatFilter object with oriented params in place of ordinary params"
+
+        new_sf = DOGSpatialFilter(
+            parameters=self.oriented_spat_filt_params,
+            optimisation_result=self.spat_filt.optimisation_result,
+            ori_bias_params=self.spat_filt.ori_bias_params,
+            source_data=self.spat_filt.source_data
+            )
+
+        return new_sf
+
+
     # need to rotate to orientation and get spatial_filter at specified circ_var
     # best (?):
         # rotation is a filter_function (as acts on actual array)
