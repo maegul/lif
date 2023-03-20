@@ -446,7 +446,7 @@ def make_lgn_stimulus_response(
 					demo_stparams.spat_res,
 					sd=cell.spat_filt.parameters.max_sd()
 					)
-		cell_sf = cell.oriented_spat_filt_params
+		cell_sf = cell.mk_oriented_spat_filt()
 		spat_filt = ff.mk_dog_sf(x_coords=xc, y_coords=yc, dog_args=cell_sf)
 		# Rotate array
 		spat_filt = ff.mk_oriented_sf(spat_filt, cell.orientation)
