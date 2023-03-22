@@ -547,15 +547,15 @@ def make_lgn_stimulus_response(
 			name=name
 			)
 
-		fig = (
-			fig
-			.add_scatter(
-				mode='lines',
-				y=avg_resp,
-				name='avg',
-				line_color='red',line_dash='3 1'
-				)
+	fig = (
+		fig
+		.add_scatter(
+			mode='lines',
+			y=avg_resp,
+			name='avg',
+			line_color='red',line_dash='3 1'
 			)
+		)
 
 	# stim figs
 
