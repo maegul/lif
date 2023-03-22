@@ -44,8 +44,9 @@ demo_stparams = do.SpaceTimeParams(
 
 lgn = cells.mk_lgn_layer(demo_lgnparams, demo_stparams.spat_res, force_central=False)
 
+lgn_initial_rec_field_fig = plot.lgn_sf_locations_and_shapes(lgn)
 lgn_rec_fields_fig = dcc.Graph(
-	figure = plot.lgn_sf_locations_and_shapes(lgn),
+	figure = lgn_initial_rec_field_fig,
 	id='lgn_rec_fields',
 	style={'width': '70vh', 'height': '70vh'}
 	)
@@ -103,6 +104,33 @@ lgn_data_table = dash_table.DataTable(
 # # Reload a new LGN
 
 lgn_rec_fields_reload = html.Button('New LGN Layer', id='reload_lgn_rec_fields_button', n_clicks=0)
+
+# # Stim and response graphs
+
+stim_temp_slice_fig = dcc.Graph(
+	id='stim_temp_slice_fig',
+	figure=go.Figure(),
+	style={'width': '70vh', 'height': '70vh'}
+	)
+
+stim_x_slice_fig = dcc.Graph(
+	id='stim_x_slice_fig',
+	figure=go.Figure(),
+	style={'width': '70vh', 'height': '70vh'}
+	)
+
+stim_y_slice_fig = dcc.Graph(
+	id='stim_y_slice_fig',
+	figure=go.Figure(),
+	style={'width': '70vh', 'height': '70vh'}
+	)
+
+# Duplicate for comparing to stimuli graphs
+lgn_rec_fields_fig_2 = dcc.Graph(
+	figure = lgn_initial_rec_field_fig,
+	id='lgn_rec_fields2',
+	style={'width': '70vh', 'height': '70vh'}
+	)
 
 # # List Cells
 
@@ -288,6 +316,7 @@ lgn_stim_dials = html.Div(children = [
 
 @app.callback(
 	Output('lgn_rec_fields', 'figure'),
+	Output('lgn_rec_fields2', 'figure'),
 	Output('lgn_layer_cell_list', 'options'),
 	Output('lgn_layer_cell_list', 'value'),
 	Output('lgn_rec_field_pwds', 'figure'),
@@ -382,12 +411,16 @@ def reload_lgn_rec_fields(
 
 	data_table_records = make_lgn_data_records(lgn)
 
-	return fig, cell_list_opts, cell_list_value, fig_pwds, data_table_records
+	# repeat fig, as duplicated in the dashboard (hopefully fine?)
+	return fig, fig, cell_list_opts, cell_list_value, fig_pwds, data_table_records
 
 
 # # Rate Curves and Stimulus
 @app.callback(
 	Output('lgn_response', 'figure'),
+	Output('stim_temp_slice_fig', 'figure'),
+	Output('stim_x_slice_fig', 'figure'),
+	Output('stim_y_slice_fig', 'figure'),
 	Input('convolve_with_stim', 'n_clicks'),
 	State('lgn_stim_params_sf', 'value'),
 	State('lgn_stim_params_tf', 'value'),
@@ -511,8 +544,32 @@ def make_lgn_stimulus_response(
 				],
 			name=name
 			)
+	# stim figs
 
-	return fig
+	stim_c = stim_array.shape[0]//2
+	fig_stim_temp = (
+		go.Figure()
+		.add_scatter(
+			mode='lines',
+			y=stim_array[stim_c, stim_c, :]
+			)
+		)
+	fig_stim_x = (
+		go.Figure()
+		.add_scatter(
+			mode='lines',
+			y=stim_array[stim_c, :, 0]
+			)
+		)
+	fig_stim_y = (
+		go.Figure()
+		.add_scatter(
+			mode='lines',
+			y=stim_array[:, stim_c, 0]
+			)
+		)
+
+	return fig, fig_stim_temp, fig_stim_x, fig_stim_y
 
 
 # # Layout
@@ -540,7 +597,16 @@ app.layout = (
 				),
 
 			lgn_stim_dials,
-			lgn_response_fig
+			lgn_response_fig,
+			stim_temp_slice_fig,
+			lgn_rec_fields_fig_2,
+			html.Div(
+				children = [
+					stim_x_slice_fig,
+					stim_y_slice_fig,
+				],
+				style={'display': 'flex'}
+				)
 			],
 	)
 )
