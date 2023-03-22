@@ -566,6 +566,7 @@ def make_lgn_stimulus_response(
 			mode='lines',
 			y=stim_array[stim_c, stim_c, :]
 			)
+		.update_layout(title='stim_temp')
 		)
 	fig_stim_x = (
 		go.Figure()
@@ -573,13 +574,15 @@ def make_lgn_stimulus_response(
 			mode='lines',
 			y=stim_array[stim_c, :, 0]
 			)
+		.update_layout(title='stim_x')
 		)
 	fig_stim_y = (
 		go.Figure()
 		.add_scatter(
 			mode='lines',
-			y=stim_array[:, stim_c, 0]
+			x=stim_array[:, stim_c, 0]
 			)
+		.update_layout(title='stim_y')
 		)
 
 	return fig, fig_stim_temp, fig_stim_x, fig_stim_y
@@ -612,14 +615,14 @@ app.layout = (
 			lgn_stim_dials,
 			lgn_response_fig,
 			stim_temp_slice_fig,
-			lgn_rec_fields_fig_2,
 			html.Div(
 				children = [
-					stim_x_slice_fig,
+					lgn_rec_fields_fig_2,
 					stim_y_slice_fig,
 				],
 				style={'display': 'flex'}
-				)
+				),
+			stim_x_slice_fig,
 			],
 	)
 )
