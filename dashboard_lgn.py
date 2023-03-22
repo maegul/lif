@@ -529,6 +529,8 @@ def make_lgn_stimulus_response(
 
 	fig = go.Figure()
 
+	avg_resp = np.mean(response_arrays, axis=0)
+
 	for i, r in enumerate(response_arrays):
 		cell = lgn.cells[i]
 		spat_filt_index_key = filters.reverse_spatial_filters[cell.spat_filt.key]
@@ -544,6 +546,17 @@ def make_lgn_stimulus_response(
 				],
 			name=name
 			)
+
+		fig = (
+			fig
+			.add_scatter(
+				mode='lines',
+				y=avg_resp,
+				name='avg',
+				line_color='red',line_dash='3 1'
+				)
+			)
+
 	# stim figs
 
 	stim_c = stim_array.shape[0]//2
