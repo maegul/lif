@@ -1769,14 +1769,18 @@ class LIFParams(ConversionABC):
     "mV"
     v_reset: float = -65
     "mV"
-    EPSC: float = 0.05
-    "nA"
+    total_EPSC: float = 2.5
+    "nA, nA x n_inputs (50 was Stanley default)"
     tau_EPSC: float = 0.85
     "ms"
     g_EPSC: float = 14.2
     "nsiemen"
 
-    def mk_dict_with_units(self):
+    def get_EPSC(self, n_inputs: int) -> float:
+
+        return self.total_EPSC / n_inputs
+
+    def mk_dict_with_units(self, n_inputs: int):
 
         brian_units = {
             'v_rest': bnun.mV,
@@ -1788,10 +1792,14 @@ class LIFParams(ConversionABC):
             'g_EPSC': bnun.nsiemens,
         }
 
-        values = {
-            key: value * brian_units[key]
-            for key, value in self.asdict_().items()
-        }
+        values = {}
+        for key, value in self.asdict_().items():
+            # handle total_EPSC ... need to create EPSC variable manually
+            if key == 'total_EPSC':
+                values['EPSC'] = self.get_EPSC(n_inputs) * brian_units['EPSC']
+            else:
+                values[key] = value * brian_units[key]
+
 
         return values
 

@@ -40,7 +40,7 @@ def mk_lif_v1(
 	threshold = 'v>v_thres'
 	reset =     'v = v_reset'
 
-	lif_params_w_units = lif_params.mk_dict_with_units()
+	lif_params_w_units = lif_params.mk_dict_with_units(n_inputs=n_inputs)
 	G = bn.NeuronGroup(
 		1,
 		eqs,
@@ -61,7 +61,7 @@ def mk_lif_v1(
 		dummy_spk_times,
 		sorted=True)
 
-	S = bn.Synapses(PS, G, on_pre=on_pre, namespace=lif_params.mk_dict_with_units())
+	S = bn.Synapses(PS, G, on_pre=on_pre, namespace=lif_params_w_units)
 	S.connect(i=np.arange(n_inputs), j=0)
 
 	M = bn.StateMonitor(G, 'v', record=True)
