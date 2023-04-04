@@ -242,6 +242,8 @@ def circ_var_sd_ratio_naito(
     """
 
     # make new sf parameters with prescribed ratio
+    # new params have a longer vertical sd & shorter horizontal sd
+    # (as first sd from `mk_ori_biased_sd_factors` is the longest)
     new_sf_params = sf_args.mk_ori_biased_duplicate(
             *mk_ori_biased_sd_factors(ratio)
         )

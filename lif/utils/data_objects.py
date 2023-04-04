@@ -1273,6 +1273,7 @@ class AllCircVarianceDistributions:
     "All distribution objects created in this module"
     naito_lg_highsf: CircVarianceDistribution
     naito_opt_highsf: CircVarianceDistribution
+    naito_lg_optsf: CircVarianceDistribution
     shou_xcells: CircVarianceDistribution
 
     def get_distribution(self, alias: str) -> CircVarianceDistribution:

@@ -1,4 +1,4 @@
-# > Imports
+# # Imports
 from typing import List, cast, Protocol, Any, Optional, overload, Union
 from dataclasses import dataclass
 
@@ -19,7 +19,7 @@ from ..utils.units.units import (
 from ..receptive_field.filters import cv_von_mises as cvvm
 
 
-# > Orientations
+# # Orientations
 
 # +
 def _mk_angle_probs(vm_params: do.VonMisesParams, n_angle_increments: int = 1000):
@@ -36,7 +36,7 @@ def _mk_angle_probs(vm_params: do.VonMisesParams, n_angle_increments: int = 1000
 
 # -
 
-# >>> Demo
+# ### Demo
 # +
 # mk_orientations(
 #     20,
@@ -48,9 +48,9 @@ def _mk_angle_probs(vm_params: do.VonMisesParams, n_angle_increments: int = 1000
 # -
 
 
-# > Circular Variance Distribution
+# # Circular Variance Distribution
 
-# >> Core functions and dataclasses
+# ## Core functions and dataclasses
 
 #
 
@@ -98,10 +98,10 @@ def cv_hist_gamma_residuals(x, circvar_hist_data: do.CircVarHistData):
 # Get Distributions fron Naito, Shou and anywhere else a definition of circ_var
 # ... has been taken from
 
-# >> Data Objects
+# ## Data Objects
 
 
-# >> Raw Data and fits to Distribution
+# ## Raw Data and fits to Distribution
 
 # +
 _naito_lg_highsf = do.CircVarHistData(
@@ -118,12 +118,30 @@ _naito_opt_highsf = do.CircVarHistData(
     )
 # -
 # +
+_naito_lg_optsf = do.CircVarHistData(
+    hist_mp = np.array([0.05,0.15,0.25,0.35,0.45,0.55,0.65]),
+    count = np.array([67.35664375206306,12.30769498680405,5.4825147274736965,1.4545427166938294,
+        1.3426573369266224, 0, 1.4545427166938294]),
+    )
+# -
+# +
 _shou_x_cells = do.CircVarHistData(
     hist_mp= np.array([0.025,0.075,0.125, 0.175,0.225,0.275, 0.325,0.375,0.425, 0.475,0.525]),
     count = np.array([49.63351155757312,117.17277509497397,124.71204150837673,
         90.78533689606057,59.68586294077425,24.81675577878656,11.62305105933935,
         8.79582615431332,9.42408301675343,3.141376344261262,1.570688172130631])
     )
+# -
+# +
+# fig = (
+#     go.Figure()
+#     .add_bar(
+#         x=_naito_lg_optsf.hist_mp, y=_naito_lg_optsf.probs, name='large',
+#         width=0.1,
+#         offset=-0.05
+#         )
+#     )
+# fig.show()
 # -
 # +
 # fig = (
@@ -145,19 +163,24 @@ _shou_x_cells = do.CircVarHistData(
 # fig.show()
 # # -
 
-# >> Final Distribution Objects
+# ## Final Distribution Objects
 
 # +
 circ_var_distributions = do.AllCircVarianceDistributions(
     naito_lg_highsf=do.CircVarianceDistribution(
-        name='naito_large_stim_highsf', source='Naito_et_al_2013', specific='fig4.4',
+        name='naito_large_stim_highsf', source='Naito_et_al_2013', specific='fig2.4',
         distribution=stats.gamma(a=2.97082993, scale= 1/13.50320706),
         raw_data = _naito_lg_highsf
         ),
     naito_opt_highsf=do.CircVarianceDistribution(
-        name='naito_opt_size_highsf', source='Naito_et_al_2013', specific='fig4.4',
+        name='naito_opt_size_highsf', source='Naito_et_al_2013', specific='fig2.3',
         distribution=stats.gamma(a=1.1910443, scale=1/6.6238885),
         raw_data = _naito_opt_highsf
+        ),
+    naito_lg_optsf=do.CircVarianceDistribution(
+        name='naito_large_size_optsf', source='Naito_et_al_2013', specific='fig2.2',
+        distribution=stats.gamma(a=0.45080026, scale=1/5.95344415),
+        raw_data = _naito_lg_optsf
         ),
     shou_xcells=do.CircVarianceDistribution(
         name='shou_x_cells', source='shou_leventhal_1989', specific='fig3A',
@@ -169,7 +192,7 @@ circ_var_distributions = do.AllCircVarianceDistributions(
 
 
 
-# >> Plotting
+# ## Plotting
 # +
 def plot_circ_var_distribution(cvdist: do.CircVarianceDistribution):
 
@@ -208,22 +231,40 @@ def plot_circ_var_distribution(cvdist: do.CircVarianceDistribution):
             x=x, y=y, name='pdf',
             row=2, col=1
             )
+        .update_layout(title=cvdist.name)
 
         )
 
     return fig
 # -
 # +
+def plot_all_circ_var_distributions(only_return_figs: bool = False):
+
+    figs = []
+    for cvd_name in circ_var_distributions.__dataclass_fields__.keys():
+        cvd = circ_var_distributions.get_distribution(cvd_name)
+        fig = plot_circ_var_distribution(cvd)
+        if only_return_figs:
+            figs.append(fig)
+            continue
+        else:
+            fig.show()
+
+    if only_return_figs:
+        return figs
+# -
+# +
 # plot_circ_var_distribution(circ_var_distributions.naito_lg_highsf).show()
 # plot_circ_var_distribution(circ_var_distributions.naito_opt_highsf).show()
+# plot_circ_var_distribution(circ_var_distributions.naito_lg_optsf).show()
 # plot_circ_var_distribution(circ_var_distributions.shou_xcells).show()
 # -
 
-# >> Manual optimisation of Gamma to distributions
+# ## Manual optimisation of Gamma to distributions
 
 # should only need to be done once with results encoded in objects above
 
-# >>> naito_lg_highsf
+# ### naito_lg_highsf
 # +
 # opt = least_squares(
 #         fun=cv_hist_gamma_residuals, x0=[1, 4], bounds=([0,0], [np.inf,np.inf]),
@@ -253,7 +294,7 @@ def plot_circ_var_distribution(cvdist: do.CircVarianceDistribution):
  #           x: array([ 2.97082993, 13.50320706])
 # -
 
-# >>> naito_opt_highsf
+# ### naito_opt_highsf
 # +
 # opt = least_squares(
 #         fun=cv_hist_gamma_residuals, x0=[1, 4], bounds=([0,0], [np.inf,np.inf]),
@@ -281,7 +322,37 @@ def plot_circ_var_distribution(cvdist: do.CircVarianceDistribution):
            # x: array([1.1910443, 6.6238885])
 # -
 
-# >>> Shou Leventhal X Cells
+# ### naito_lg_optsf
+# +
+# opt = least_squares(
+#         fun=cv_hist_gamma_residuals, x0=[1, 4], bounds=([0,0], [np.inf,np.inf]),
+#         args=(_naito_lg_optsf,))
+# -
+# +
+# opt
+ # active_mask: array([0, 0])
+ #        cost: 0.00016636011320908477
+ #         fun: array([ 0.00040864,  0.00109219, -0.00458465,  0.00958108, -0.00263859,
+ #        0.00610347, -0.0132034 ])
+ #        grad: array([7.13352601e-10, 3.23354748e-10])
+ #         jac: array([[-0.59012648,  0.03731321],
+ #       [ 0.28320999, -0.00919341],
+ #       [ 0.14709441, -0.00950581],
+ #       [ 0.07604468, -0.00692957],
+ #       [ 0.03960359, -0.00456016],
+ #       [ 0.02077051, -0.00285964],
+ #       [ 0.010956  , -0.00174401]])
+ #     message: '`gtol` termination condition is satisfied.'
+ #        nfev: 9
+ #        njev: 9
+ #  optimality: 1.925074432787063e-09
+ #      status: 1
+ #     success: True
+ #           x: array([0.45080026, 5.95344415])
+# -
+
+
+# ### Shou Leventhal X Cells
 # +
 # opt = least_squares(
 #         fun=cv_hist_gamma_residuals, x0=[1, 4], bounds=([0,0], [np.inf,np.inf]),

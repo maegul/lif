@@ -3,7 +3,7 @@
 """
 
 from textwrap import dedent
-from typing import Sequence
+from typing import Sequence, Dict, Tuple
 
 import numpy as np
 
@@ -32,15 +32,24 @@ from . import (
 
 
 
-def run_simulation(params: do.SimulationParams):
+def run_simulation(
+    params: do.SimulationParams,
+    force_central_rf_locations: bool = False):
 
     # ## create stimulus
 
     # check that st_params spat_ext is sufficient (based on worst case extent)
-    estimated_max_spat_ext = stimulus.estimate_max_stimulus_spatial_ext_for_lgn(
-        params.space_time_params.spat_res, params.lgn_params,
-        n_cells=2000, safety_margin_increment=0.1
-        )
+    if not force_central_rf_locations:
+        estimated_max_spat_ext = stimulus.estimate_max_stimulus_spatial_ext_for_lgn(
+            params.space_time_params.spat_res, params.lgn_params,
+            n_cells=2000, safety_margin_increment=0.1
+            )
+    else:
+        estimated_max_spat_ext = cells.calculate_max_spatial_ext_of_all_spatial_filters(
+                spat_res=params.space_time_params.spat_res,
+                lgn_params=params.lgn_params,
+                safety_margin_increment=0  # shouldn't be necessary if they're centered
+            )
     print(dedent(
         f'''\
         --------
@@ -67,6 +76,62 @@ def run_simulation(params: do.SimulationParams):
     # Create and save all stimuli arrays if not already generated and saved to file
     stimulus.mk_stimulus_cache(params.space_time_params, all_stim_params)
 
+    # ## Create all LGN layers
+    # Do this ahead of time so that exactly the same layer can be stimulated with all stimuli
+    # The number of LGN layers is controlled by the `params.n_simulations`
+
+    # As lgn layer depends on contrast, handle whether multiple contrasts set or just default
+    #                        V--> Can use ContrastValue as key as it's frozen
+    all_lgn_layers: Dict[do.ContrastValue, Tuple[do.LGNLayer]]  # key is contrast
+
+    # need stim contrasts for creating max amplitude corrections in the lgn layer
+    # So manage if there are multiple contrasts in the multi stim params
+    multi_stim_contrasts = params.multi_stim_params.contrasts
+
+    print(dedent(
+        f'''\
+        --------
+        LGN Layers
+        --------
+
+        Making all LGN layers: {params.n_simulations} layers
+        ''') )
+
+    # none defined in multi stim, so use default from grating stim class
+    # ... should really have used stim settings for a default contrast ... oh well!!
+    if multi_stim_contrasts is None:
+        stim_contrast: do.ContrastValue = (
+            do.GratingStimulusParams.__dataclass_fields__['contrast'].default )
+        all_lgn_layers = {
+            stim_contrast:
+            tuple(
+                cells.mk_lgn_layer(
+                    params.lgn_params,
+                    spat_res=params.space_time_params.spat_res,
+                    contrast=stim_contrast,
+                    force_central=force_central_rf_locations)
+                for _ in range(params.n_simulations)
+            )
+        }
+    # If contrasts are defined, create an LGN layer for each
+    # (shouldn't be too much memory as each LGN layer isn't too big)
+    # elif multi_stim_contrasts is not None:
+    else:
+        all_stim_contrasts = tuple(do.ContrastValue(c) for c in multi_stim_contrasts)
+
+        all_lgn_layers = {
+            stim_contrast:
+            tuple(
+                cells.mk_lgn_layer(
+                    params.lgn_params,
+                    spat_res=params.space_time_params.spat_res,
+                    contrast=stim_contrast,
+                    force_central=force_central_rf_locations)
+                for _ in range(params.n_simulations)
+            )
+            for stim_contrast in all_stim_contrasts
+        }
+
     # ## Create V1 LIF network
     # Should be the same network just with new inputs each time
     # At some point, multiple sets of inputs may be simulated simultaneously
@@ -80,6 +145,7 @@ def run_simulation(params: do.SimulationParams):
     # CRUDE but will probably get updated to be what I need
     # For now: {stim_signature: [v1.spikes]}
     results = {}
+
 
     # ## Loop through each stim_params
 
@@ -112,18 +178,22 @@ def run_simulation(params: do.SimulationParams):
             print(f'Simulation {sim_idx}/{params.n_simulations} ({sim_idx/params.n_simulations:.2%})')
 
             # #### LGN Layer
-            # probably repeat n times (for each simulation) from here ...
-            # but for now, just write flat for 1
 
-            lgn = cells.mk_lgn_layer(
-                params.lgn_params,
-                spat_res=params.space_time_params.spat_res,
-                contrast=stim_params.contrast)
+            # Pull from cache of all LGN layers
+            # depends on contrast of this stimulus and simulation number
+            lgn = all_lgn_layers[stim_params.contrast][sim_idx]
+
+            # lgn = cells.mk_lgn_layer(
+            #     params.lgn_params,
+            #     spat_res=params.space_time_params.spat_res,
+            #     contrast=stim_params.contrast)
 
             # #### Create Spatial and Temporal Filter arrays
             spat_filts: Sequence[np.ndarray] = []
             temp_filts: Sequence[np.ndarray] = []
             responses: Sequence[do.ConvolutionResponse] = []
+
+            # ##### Loop through LGN cells
             for cell in lgn.cells:
                 # spatial filter array
                 xc, yc = ff.mk_spat_coords(

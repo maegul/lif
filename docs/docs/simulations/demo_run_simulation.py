@@ -562,15 +562,24 @@ lif_params.mk_dict_with_units()
 
 # Initial network just with dummy spikes
 # +
-ntwk = lifv1.mk_lif_v1(20, lif_params)
+ntwk = lifv1.mk_lif_v1(2, lif_params)
 # -
 # +
 ntwk.network.run(0.1*lifv1.bn.second)
 # -
 # +
+ntwk.input_spike_generator._spike_time, ntwk.input_spike_generator._neuron_index
+# -
+# +
 px.line(ntwk.membrane_monitor.v[0]).show()
 # -
 
+# +
+ntwk.network.restore(ntwk.initial_state_name)
+# -
+# +
+ntwk.membrane_monitor.v.shape
+# -
 
 # Update the spikes
 # Note that the number of inputs has to stay the same (max of indices)
@@ -581,16 +590,41 @@ px.line(ntwk.membrane_monitor.v[0]).show()
 
 # creating spike times and indices
 # +
+time_shift = 40
 all_spike_times = (
-		np.arange(20),  # cell 1
-		np.arange(30)   # cell 2
+		Time(np.arange(20)+time_shift, 'ms'),  # cell 1
+		Time(np.arange(30)+time_shift, 'ms')   # cell 2
 	)
 # -
 # +
 spike_idxs, spike_times = lifv1.mk_input_spike_indexed_arrays(all_spike_times)
 # -
 # +
+len(np.unique(spike_idxs))
+# -
+# +
 spike_idxs, spike_times
+# -
+# +
+ntwk.reset_spikes(spike_idxs, spike_times)
+# -
+# +
+ntwk.network.restore(ntwk.initial_state_name)
+ntwk.input_spike_generator.set_spikes(
+	indices=spike_idxs,
+	times=spike_times.ms * lifv1.bnun.msecond
+	)
+# -
+
+# ## Replacing the lgn layer input Spike Generator object
+# THis is necessary for doing synchrony, as the number of synchronous poisson inputs will vary
+# from layer to layer
+
+# Can just make a new ntwk object (which isn't really expensive??) and alter the number of inputs
+# to that of the number of independent spiking elements in the LGN.
+
+# +
+
 # -
 
 
@@ -623,7 +657,7 @@ st_params = do.SpaceTimeParams(
 # -
 # +
 multi_stim_params = do.MultiStimulusGeneratorParams(
-	spat_freqs=[2], temp_freqs=[4], orientations=[90]
+	spat_freqs=[2], temp_freqs=[4], orientations=[90], contrasts=[0.3, 0.6]
 	)
 lgn_params = do.LGNParams(
 	n_cells=20,
@@ -635,7 +669,7 @@ lgn_params = do.LGNParams(
 	)
 lif_params = do.LIFParams()
 # -
-# stimulus.mk_multi_stimulus_params(multi_stim_params)
+stimulus.mk_multi_stimulus_params(multi_stim_params)
 
 
 # +
@@ -675,6 +709,591 @@ with open('/tmp/test_lgn_cell_no_ori_bias_params.pkl', 'wb') as f:
 
 # -
 
+# ### Multi LGN Layers
+# so that can return to the same layer for different stimuli
+
+# +
+example_lgn = cells.mk_lgn_layer(lgn_params, st_params.spat_res, do.ContrastValue(0.3))
+# -
+# +
+multi_example_lgn = [
+	cells.mk_lgn_layer(lgn_params, st_params.spat_res, do.ContrastValue(0.3))
+	for _ in range(1000)
+	]
+
+# -
+
+# ### can the spike generator group of a network be changed after formation??
+
+
+# ### Forcing RF Locs to be central
+
+# +
+example_lgn = cells.mk_lgn_layer(lgn_params, st_params.spat_res, force_central=True)
+all(c.location.x.mnt == c.location.y.mnt == 0 for c in example_lgn.cells)
+# -
+# +
+example_lgn = cells.mk_lgn_layer(lgn_params, st_params.spat_res, force_central=False)
+all(c.location.x.mnt == c.location.y.mnt == 0 for c in example_lgn.cells)
+# -
+# +
+# for c in example_lgn.cells:
+# 	print(c.location.x.mnt, c.location.y.mnt)
+# -
+
+settings.simulation_params.spat_filt_sd_factor
+
+# #### Greatest Spat Filt Ext?
+
+# Which Spat FIlts are the largest ?
+# +
+for k, sf in sorted(
+		cells.spatial_filters.items(),
+		key = lambda x: x[1].parameters.max_sd().mnt
+	):
+	print(f'{k:<15} ... {sf.parameters.max_sd().mnt:.3f}')
+# -
+
+# Max Spat Ext required if all are centered?
+
+# +
+print(
+	2
+	*
+	settings.simulation_params.spat_filt_sd_factor
+	*
+	max((sf.parameters.max_sd().mnt for sf in cells.spatial_filters.values()) )
+)
+# -
+# +
+stimulus.print_params_for_all_saved_stimuli()
+# -
+
+# If all RFs are centered, at the moment, max required is 475.2 mnts of spat_ext ... quite large!
+# ... getting into 1G for `1000ms` of stimulus.
+
+# Could limit the spat filts to the smaller ones:
+
+# +
+selected_spat_filts = (
+	"maffei73_2right", "so81_2bottom", "berardi84_6", "soodak87_3", "maffei73_2mid", "so81_5",
+	)
+# -
+# +
+lgn_params_selected_sfs = do.LGNParams(
+	n_cells=20,
+	orientation = do.LGNOrientationParams(ArcLength(0), circ_var=0.5),
+	circ_var = do.LGNCircVarParams('naito_lg_highsf', 'naito'),
+	spread = do.LGNLocationParams(2, 'jin_etal_on'),
+	filters = do.LGNFilterParams(
+		spat_filters=selected_spat_filts,
+		temp_filters='all'),
+	F1_amps = do.LGNF1AmpDistParams()
+	)
+# -
+
+# For worst case scenario
+
+# +
+stimulus.estimate_max_stimulus_spatial_ext_for_lgn(spat_res, lgn_params_selected_sfs, n_cells=5000)
+# stimulus.estimate_max_stimulus_spatial_ext_for_lgn(spat_res, lgn_params, n_cells=1000)
+# -
+
+# ... `344 mnts`
+
+# For all centered
+# +
+max_spat_ext = (
+	2
+	*
+	settings.simulation_params.spat_filt_sd_factor
+	*
+	max(
+		(sf.parameters.max_sd().mnt
+			for key, sf in cells.spatial_filters.items()
+			if key in lgn_params_selected_sfs.filters.spat_filters
+			) )
+)
+# -
+
+# ... `238 mnts`.
+# Where `250 mnts`, `1000 ms` provides `256M` sized stimuli ... workable for testing
+
+
+# ## Actual Run of a limited spatial extent
+
+
+# Selecting only these spatial filters reduces the spatial extent necessary, especially if
+# they're all centered.
+
+# +
+selected_spat_filts = (
+	"maffei73_2right", "so81_2bottom", "berardi84_6", "soodak87_3", "maffei73_2mid", "so81_5",
+	)
+# -
+# +
+lgn_params = do.LGNParams(
+	n_cells=20,
+	orientation = do.LGNOrientationParams(ArcLength(0), circ_var=0.5),
+	circ_var = do.LGNCircVarParams('naito_lg_highsf', 'naito'),
+	spread = do.LGNLocationParams(2, 'jin_etal_on'),
+	filters = do.LGNFilterParams(
+		spat_filters=selected_spat_filts,
+		temp_filters='all'),
+	F1_amps = do.LGNF1AmpDistParams()
+	)
+# -
+
+# +
+spat_ext=ArcLength(250, 'mnt')
+spat_res=ArcLength(1, 'mnt')
+# spat_ext = ff.round_coord_to_res(ArcLength(max_spat_ext.base * 1.1), spat_res, high=True)
+temp_res=Time(1, 'ms')
+temp_ext=Time(1000, 'ms')
+
+st_params = do.SpaceTimeParams(
+	spat_ext, spat_res, temp_ext, temp_res,
+	array_dtype='float32'
+	)
+
+# Stimulus parameters
+multi_stim_params = do.MultiStimulusGeneratorParams(
+		spat_freqs=[2], temp_freqs=[4], orientations=[90],
+	)
+
+lif_params = do.LIFParams()
+# -
+# +
+sim_params = do.SimulationParams(
+	n_simulations=1,
+	space_time_params=st_params,
+	multi_stim_params=multi_stim_params,
+	lgn_params=lgn_params,
+	lif_params = lif_params
+	)
+# -
+# +
+results = run.run_simulation(
+	sim_params,
+	force_central_rf_locations=True
+	)
+# -
+
+# +
+new_graph = plot.spat_filt_fit(
+	filters.spatial_filters['so81_5'],
+	hi_res_fit_only=False,
+	normalise_magnitude=True,
+	min_freq_bound=SpatFrequency(0.01), max_freq_bound=SpatFrequency(6)
+	)
+new_graph.show()
+# -
+new_graph.update_traces(name='hello').data[0]
+
+plot.multi_spat_filt_fit(
+	list(filters.spatial_filters.values()),
+	share_freq_bounds=True
+	).show()
+
+reload(plot)
+
+# ### Results analysis
+
+# +
+rks = list(results.keys())
+result = results[rks[0]][0]
+result.keys()
+# -
+
+# Plotting the LGN spiking rates
+
+# +
+fig = go.Figure()
+for i, r in enumerate(result['lgn_responses'].cell_rates):
+	fig.add_scatter(y=r, mode='lines', name=f'cell {i}')
+fig.show()
+# -
+
+
+# ### LGN Dashboard
+
+# Intended to help understand the result of a particular simulation
+
+# Create an LGN layer
+
+# +
+spat_ext=ArcLength(250, 'mnt')
+spat_res=ArcLength(1, 'mnt')
+# spat_ext = ff.round_coord_to_res(ArcLength(max_spat_ext.base * 1.1), spat_res, high=True)
+temp_res=Time(1, 'ms')
+temp_ext=Time(1000, 'ms')
+
+st_params = do.SpaceTimeParams(
+	spat_ext, spat_res, temp_ext, temp_res,
+	array_dtype='float32'
+	)
+
+lgn_params = do.LGNParams(
+	n_cells=20,
+	orientation = do.LGNOrientationParams(ArcLength(0), circ_var=0.5),
+	circ_var = do.LGNCircVarParams('naito_lg_highsf', 'naito'),
+	spread = do.LGNLocationParams(2, 'jin_etal_on'),
+	filters = do.LGNFilterParams(spat_filters='all', temp_filters='all'),
+	F1_amps = do.LGNF1AmpDistParams()
+	)
+# -
+# +
+lgn = cells.mk_lgn_layer(lgn_params, st_params.spat_res, force_central=False)
+# -
+
+# #### Spat Filt locations and chapes
+
+# Locations
+# +
+def lgn_cell_locations(lgn_layer: do.LGNLayer):
+
+	x_locs = [c.location.x.mnt for c in lgn_layer.cells]
+	y_locs = [c.location.y.mnt for c in lgn_layer.cells]
+
+	fig = (
+		px
+		.scatter(x=x_locs, y=y_locs)
+		.update_yaxes(scaleanchor = "x", scaleratio = 1)
+		.update_layout(xaxis_constrain='domain', yaxis_constrain='domain')
+		)
+
+	return fig
+# -
+# +
+lgn_cell_locations(lgn).show()
+# -
+# +
+# cell_loc_params = []
+
+fig=lgn_cell_locations(lgn)
+
+for c in lgn.cells:
+	x_loc, y_loc = c.location.x.mnt, c.location.y.mnt
+	h_sd, v_sd = (
+		c.oriented_spat_filt_params.parameters.cent.arguments.h_sd.mnt,
+		c.oriented_spat_filt_params.parameters.cent.arguments.v_sd.mnt
+		# c.spat_filt.parameters.cent.arguments.h_sd.mnt,
+		# c.spat_filt.parameters.cent.arguments.v_sd.mnt
+		)
+
+	fig.add_shape(
+		type="circle",
+		xref="x", yref="y",
+		x0=x_loc-(2*h_sd), x1=x_loc+(2*h_sd),
+		y0=y_loc-(2*v_sd), y1=y_loc+(2*v_sd),
+		line_color="black",
+		)
+fig.show()
+
+	# cell_loc_params.append({'x':x_loc, 'y':y_loc, 'h': 2*h_sd, v_sd})
+# -
+# +
+def lgn_sf_locations_and_shapes(lgn_layer: do.LGNLayer):
+
+	x_locs = [c.location.x.mnt for c in lgn_layer.cells]
+	y_locs = [c.location.y.mnt for c in lgn_layer.cells]
+
+	fig = (
+		px
+		.scatter(x=x_locs, y=y_locs)
+		.update_yaxes(scaleanchor = "x", scaleratio = 1)
+		.update_layout(xaxis_constrain='domain', yaxis_constrain='domain')
+		)
+
+	for c in lgn.cells:
+		x_loc, y_loc = c.location.x.mnt, c.location.y.mnt
+		h_sd, v_sd = (
+			c.oriented_spat_filt_params.parameters.cent.arguments.h_sd.mnt,
+			c.oriented_spat_filt_params.parameters.cent.arguments.v_sd.mnt
+			# c.spat_filt.parameters.cent.arguments.h_sd.mnt,
+			# c.spat_filt.parameters.cent.arguments.v_sd.mnt
+			)
+
+		x0=x_loc-(2*h_sd)
+		x1=x_loc+(2*h_sd)
+		y0=y_loc-(2*v_sd)
+		y1=y_loc+(2*v_sd)
+
+		fig.add_shape(
+			type="circle",
+			xref="x", yref="y",
+			x0=x0, x1=x1,
+			y0=y0, y1=y1,
+			line_color="black",
+			)
+
+	return fig
+# -
+# +
+fig = lgn_sf_locations_and_shapes(lgn)
+# -
+# +
+for i, s in enumerate(fig.layout.shapes):
+	if i == 5:
+		s.line.color = 'red'
+
+# -
+
+
+# Sorting LGN cells
+# +
+for c in sorted(lgn.cells, key=lambda c: c.location.y.mnt, reverse=True):
+	print(f'{c.location.x.mnt:.2f}, {c.location.y.mnt:.2f}')
+	# print(filters.reverse_spatial_filters[c.spat_filt.key])
+# -
+
+# Rotate ellipses by using bezier paths??
+
+# ... sighs ... just draw them out
+
+# +
+fig = go.Figure()
+fig.update_layout(
+	shapes=[
+		# Quadratic Bezier Curves
+		dict(
+			type="path",
+			path="M1,5 A 5 3 20 0 1 8 8",
+			line_color="RoyalBlue",
+			),
+		])
+fig.show()
+# -
+# +
+x_center=0
+y_center=0
+a=1.
+b =1.
+t = np.linspace(0, 2*np.pi, 20)
+x = x_center + a*np.cos(t)
+y = y_center + b*np.sin(t)
+path = f'M {x[0]}, {y[0]}'
+
+for k in range(1, len(t)):
+	path += f'L{x[k]}, {y[k]}'
+print(path)
+# -
+# +
+%%timeit
+path = f'M {x[0]}, {y[0]}'
+for k in range(1, len(t)):
+	path += f'L{x[k]}, {y[k]}'
+# -
+# +
+import numpy as np
+import plotly.graph_objects as go
+
+def ellipse_arc(
+		x_center=0, y_center=0, a=1., b =1.,
+		ori=0,
+		start_angle=0, end_angle=2*np.pi,
+		N=20,
+		):
+	t = np.linspace(start_angle, end_angle, N)
+	x = x_center + a*np.cos(t + np.radians(ori))
+	# y = y_center + b*np.sin(t)
+	y = y_center + b*np.sin(t + np.radians(ori))
+	path = f'M {x[0]}, {y[0]}'
+	for k in range(1, len(t)):
+		path += f'L{x[k]}, {y[k]}'
+	path += ' Z'
+	return path
+# -
+# +
+fig = go.Figure()
+
+# Create a minimal trace
+fig.add_trace(go.Scatter(
+	x=[0],
+	y=[0.2],
+	marker_size=0.1
+	));
+
+fig.update_layout(width =600, height=400,
+	xaxis_range=[-5.2, 5.2],
+	yaxis_range=[-3.2, 3.2],
+	shapes=[
+	# dict(type="path",
+	# 	path= ellipse_arc(a=5, b=3, start_angle=-np.pi/6, end_angle=3*np.pi/2, N=60),
+	# 	line_color="RoyalBlue"),
+	dict(type="path",
+		path = ellipse_arc(x_center=0, y_center=0, a= 1, b= 3, ori=95),
+		# fillcolor="LightPink",
+		line_color="Crimson")
+	]
+	);
+fig.show()
+# -
+# +
+# Define ellipse parameters
+x0 = 0  # x-coordinate of center
+y0 = 0  # y-coordinate of center
+a = 3   # major axis length
+b = 1   # minor axis length
+
+fig = (
+	go.Figure()
+	.update_yaxes(scaleanchor = "x", scaleratio = 1)
+	.update_layout(xaxis_constrain='domain', yaxis_constrain='domain')
+	)
+
+# Generate array of angles
+phi = np.linspace(0, 2*np.pi, 100)
+for th in np.linspace(0, 180, 7, endpoint=False):
+
+	theta = np.radians(th)  # rotation angle in radians
+
+
+	# Calculate Cartesian coordinates of ellipse points
+	x = x0 + a*np.cos(phi)*np.cos(theta) - b*np.sin(phi)*np.sin(theta)
+	y = y0 + a*np.cos(phi)*np.sin(theta) + b*np.sin(phi)*np.cos(theta)
+
+	fig.add_scatter(x=x, y=y, mode='lines', name=f'{th}')
+
+fig.show()
+# -
+
+# # RF Pairwise Distance scale
+
+# Use the mean or median of the max rf size of all possible pairs
+
+# +
+sfilts, tfilts = cells.mk_filters(20, lgn_params.filters)
+rf_dist_scale = cells.rflocs.mk_rf_locations_distance_scale(
+		sfilts, ArcLength(1, 'mnt')
+	)
+cent_sds = [sfilt.parameters.cent.arguments.h_sd.mnt for sfilt in sfilts]
+print(rf_dist_scale)
+print(np.mean(cent_sds), np.median(cent_sds))
+for sfilt in sorted(sfilts, key=lambda sf: sf.parameters.cent.arguments.h_sd.mnt):
+	print(sfilt.parameters.cent.arguments.h_sd.mnt)
+# -
+
+
+# +
+n=300
+rf_dist_scales=[None for _ in range(n)]
+sf_sds_medians=[None for _ in range(n)]
+sf_sds_means=[None for _ in range(n)]
+for i in range(n):
+	print(i, end='\r')
+	sfilts, tfilts = cells.mk_filters(20, lgn_params.filters)
+	rf_dist_scale = cells.rflocs.mk_rf_locations_distance_scale(
+			sfilts, ArcLength(1, 'mnt'),
+			use_median_for_pairwise_avg=False
+		)
+	cent_sds = [sfilt.parameters.cent.arguments.h_sd.mnt for sfilt in sfilts]
+
+	rf_dist_scales[i] = rf_dist_scale.mnt
+	sf_sds_medians[i] = np.median(cent_sds)
+	sf_sds_means[i] = np.mean(cent_sds)
+
+print(np.mean(rf_dist_scales), np.median(rf_dist_scales))
+# -
+# +
+fig = (
+	go.Figure()
+	.add_scatter(
+		x=sf_sds_medians, y=rf_dist_scales, mode='markers', name='sf_sd_medians')
+	.add_scatter(
+		x=sf_sds_means, y=rf_dist_scales, mode='markers', name='sf_sd_means')
+	.update_layout(
+		title='Mean used for avg pairwise max RF Size',
+		xaxis_title='spat filt sd average', yaxis_title='RF pairwise distance scale')
+	)
+fig.show()
+
+px.histogram(rf_dist_scales, title='RF Dist Scale (Mean avg)').show()
+# -
+# +
+n=300
+rf_dist_scales=[None for _ in range(n)]
+sf_sds_medians=[None for _ in range(n)]
+sf_sds_means=[None for _ in range(n)]
+for i in range(n):
+	print(i, end='\r')
+	sfilts, tfilts = cells.mk_filters(20, lgn_params.filters)
+	rf_dist_scale = cells.rflocs.mk_rf_locations_distance_scale(
+			sfilts, ArcLength(1, 'mnt'),
+			use_median_for_pairwise_avg=True
+		)
+	cent_sds = [sfilt.parameters.cent.arguments.h_sd.mnt for sfilt in sfilts]
+
+	rf_dist_scales[i] = rf_dist_scale.mnt
+	sf_sds_medians[i] = np.median(cent_sds)
+	sf_sds_means[i] = np.mean(cent_sds)
+
+print(np.mean(rf_dist_scales), np.median(rf_dist_scales))
+# -
+# +
+fig = (
+	go.Figure()
+	.add_scatter(
+		x=sf_sds_medians, y=rf_dist_scales, mode='markers', name='sf_sd_medians')
+	.add_scatter(
+		x=sf_sds_means, y=rf_dist_scales, mode='markers', name='sf_sd_means')
+	.update_layout(title='Median used for avg pairwise max RF Size',
+		xaxis_title='spat filt sd average', yaxis_title='RF pairwise distance scale')
+	)
+fig.show()
+
+px.histogram(rf_dist_scales, title='RF Dist Scale (Median avg)').show()
+# -
+
+
+# Yea ... just use the mean ... cleaner and probably more accurate.
+
+# +
+dist_factor_coords = [
+	cells.rflocs.spat_filt_coord_at_magnitude_ratio(
+		spat_filt=sf.parameters, target_ratio=0.2, spat_res=spat_res)
+	for sf in filters.spatial_filters.values()
+]
+# -
+# +
+px.scatter(
+	y=[dfc.mnt for dfc in dist_factor_coords],
+	x=[2 * sf.parameters.cent.arguments.h_sd.mnt for sf in filters.spatial_filters.values()],
+	).update_layout(
+		yaxis_title="radius at which amplitude is 20% of max",
+		xaxis_title="2 Std Devs of center Gaussian"
+	).add_scatter(
+		mode='lines',
+		x=[0, 35],y=[0, 0.8*35], line_color='#888'
+	).show()
+# -
+
+
+# +
+from itertools import combinations_with_replacement, combinations
+# -
+# +
+sfilts, tfilts = cells.mk_filters(20, lgn_params.filters)
+rf_dist_scale = cells.rflocs.mk_rf_locations_distance_scale(
+		sfilts, ArcLength(1, 'mnt')
+	)
+# -
+# +
+for sf in sfilts:
+	print(filters.reverse_spatial_filters[sf.key])
+# -
+# +
+sfsds = [sf.parameters.cent.arguments.array()[-1] for sf in sfilts]
+# -
+# +
+sfsd_combs = list(combinations_with_replacement(sfsds, r=2))
+len(sfsd_combs)
+# -
+# +
+sfsd_combs = list(combinations(sfsds, r=2))
+len(sfsd_combs)
+# -
+# ## Actual Run
 
 # +
 results = run.run_simulation(sim_params)
