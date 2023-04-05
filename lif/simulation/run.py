@@ -138,14 +138,18 @@ def run_simulation(
 
     # ### Delete all ori bias params
     # just take up unneeded space ... all needed for is to create ori biased versions
-    # can remove here
     # estimates (from pickling) layer goes from 911kb to 32kb in size when removing ori_bias_params
+    # ACTUALLY ... this doesn't make sense because ... each repeat of the spat filt is a reference
+    # ... to the same object (same object id) all the way in the filters module ...
+    # ... so this breaks things (HARD) ... and is unnecessary
+    # ... for saving on RAM.  Might be necessary to save on disk space for pickling though.
+    # but ... how do without breaking things for the run time!!
 
-    print('!!! Deleting all ori_bias_params from all spatial filters ... no longer necessary for simulation!!!')
-    for _, layers in all_lgn_layers.items():
-        for layer in layers:
-            for cell in layer.cells:
-                del cell.spat_filt.ori_bias_params
+    # print('!!! Deleting all ori_bias_params from all spatial filters ... no longer necessary for simulation!!!')
+    # for _, layers in all_lgn_layers.items():
+    #     for layer in layers:
+    #         for cell in layer.cells:
+    #             del cell.spat_filt.ori_bias_params
 
 
     # ## Create V1 LIF network
@@ -184,6 +188,8 @@ def run_simulation(
 
         # Do here, at the "top" so that only have to do once for a simulation
         # ... but I can't be bothered storing in disk and managing that.
+
+        #
         actual_max_f1_amps = all_max_f1.mk_actual_max_f1_amps(stim_params=stim_params)
 
 

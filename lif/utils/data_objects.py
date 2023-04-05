@@ -1379,7 +1379,7 @@ class LGNActualF1AmpMax(ConversionABC):
 class LGNF1AmpDistParams(ConversionABC):
     """Distribution for Max F1 amplitude of LGN cells
 
-    Drawn, approximately, from Table 2 of Saul and Humphrey 1990
+    Default values are fine ... Drawn, approximately, from Table 2 of Saul and Humphrey 1990
 
     Default parameters approximately the data for a modulating spot in table 2
     """

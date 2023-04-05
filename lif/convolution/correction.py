@@ -320,7 +320,7 @@ def mk_conv_resp_adjustment_params(
     Thus, the factor returned is the theoretical amplitude / convolutional amplitude.
 
     """
-    # Handle if max_f1 passed in or not
+    # Handle if max_f1 passed in or not ... need neither or both (not just one)
     if (
             (target_max_f1_amp or filter_actual_max_f1_amp) # at least one
             and not
