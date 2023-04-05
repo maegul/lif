@@ -39,12 +39,14 @@ def run_simulation(
     # ## create stimulus
 
     # check that st_params spat_ext is sufficient (based on worst case extent)
+    # ... only one space_time params for all the stimuli ... so only check once
     if not force_central_rf_locations:
         estimated_max_spat_ext = stimulus.estimate_max_stimulus_spatial_ext_for_lgn(
             params.space_time_params.spat_res, params.lgn_params,
             n_cells=2000, safety_margin_increment=0.1
             )
     else:
+        # just use largest spatial filter as max required extent
         estimated_max_spat_ext = cells.calculate_max_spatial_ext_of_all_spatial_filters(
                 spat_res=params.space_time_params.spat_res,
                 lgn_params=params.lgn_params,
@@ -132,6 +134,20 @@ def run_simulation(
             for stim_contrast in all_stim_contrasts
         }
 
+    # maybe save first?
+
+    # ### Delete all ori bias params
+    # just take up unneeded space ... all needed for is to create ori biased versions
+    # can remove here
+    # estimates (from pickling) layer goes from 911kb to 32kb in size when removing ori_bias_params
+
+    print('!!! Deleting all ori_bias_params from all spatial filters ... no longer necessary for simulation!!!')
+    for _, layers in all_lgn_layers.items():
+        for layer in layers:
+            for cell in layer.cells:
+                del cell.spat_filt.ori_bias_params
+
+
     # ## Create V1 LIF network
     # Should be the same network just with new inputs each time
     # At some point, multiple sets of inputs may be simulated simultaneously
@@ -200,7 +216,11 @@ def run_simulation(
                             params.space_time_params.spat_res,
                             sd=cell.spat_filt.parameters.max_sd()
                             )
-                spat_filt = ff.mk_dog_sf(x_coords=xc, y_coords=yc, dog_args=cell.spat_filt)
+
+                spat_filt = ff.mk_dog_sf(
+                    x_coords=xc, y_coords=yc,
+                    dog_args=cell.oriented_spat_filt_params  # use oriented params
+                    )
                 # Rotate array
                 spat_filt = ff.mk_oriented_sf(spat_filt, cell.orientation)
 
@@ -254,6 +274,7 @@ def run_simulation(
             v1_model.reset_spikes(spike_idxs, spike_times)
 
             v1_model.run(params.space_time_params)
+
             results[stimulus_results_key].append(
                     {
                     'spikes': v1_model.spike_monitor.spike_trains()[0],
