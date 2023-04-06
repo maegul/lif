@@ -12,7 +12,7 @@ from typing import (
     overload, cast,
     Callable, Protocol
     )
-from dataclasses import dataclass, astuple, asdict, field, replace
+from dataclasses import dataclass, astuple, asdict, field, replace, is_dataclass
 from textwrap import dedent
 import datetime as dt
 from pathlib import Path
@@ -80,15 +80,27 @@ def _cv_von_mises_module():
 
 PI: float = np.pi  # type: ignore
 
+def is_dataclass_instance(obj):
+
+    return (is_dataclass(obj) and not isinstance(obj, type))
+
 
 class ConversionABC:
     """ABC for adding as dict and tuple methods from dataclasses module"""
 
     def asdict_(self) -> Dict[str, Any]:
-        return asdict(self)
+        # intended to always used on data classes ... so just ignore here
+        if not is_dataclass_instance(self):
+            raise ValueError('Object is not a dataclass instance')
+        else:
+            return asdict(self)  # type: ignore
 
     def astuple_(self) -> Tuple[Any, ...]:
-        return astuple(self)
+        # intended to always used on data classes ... so just ignore here
+        if not is_dataclass_instance(self):
+            raise ValueError('Object is not a dataclass instance')
+        else:
+            return astuple(self)  # type: ignore
 
 
 @dataclass
@@ -1410,6 +1422,25 @@ class LGNF1AmpDistParams(ConversionABC):
 # ## Full LGN Cell
 
 @dataclass
+class LGNCellRecord(ConversionABC):
+    """For storing an LGN Cell on disk, easily rendered as a full cell"""
+    spat_filt: str
+    "key to actual spatial filter file name"
+    oriented_spat_filt_params: DOGSpatFiltArgs
+    "spat filt params with gauss params adjusted to have anisotropy to circ_var"
+    temp_filt: str
+    "key to actual temp filter file name"
+    max_f1_amplitude: LGNF1AmpMaxValue
+    "Maximum amplitude of the F1 response after convolution"
+    orientation: ArcLength[scalar]
+    "orientation for the spatial filter when made anisotropic"
+    circ_var: float
+    "circular variance of the degree of orientation bias"
+    location: RFLocation
+    "location coordinates for the center of the spatial filter from the center"
+
+
+@dataclass
 class LGNCell(ConversionABC):
     """Single LGN Cell that provides input to a V1 Cell"""
 
@@ -1606,6 +1637,16 @@ class LGNParams(ConversionABC):
     """
     contrast_params: Optional[ContrastParams] = None
     "Params for contrast curve to use for contrast scaling"
+
+
+@dataclass
+class LGNLayerRecord(ConversionABC):
+    """Replace cells with cellrecords for smaller disk storage"""
+    cells: Tuple[LGNCellRecord, ...]
+    params: LGNParams
+    rf_distance_scale: Union[None, float, ArcLength[scalar]] = None
+    "if a float, represents the coefficient used to scale another metric"
+
 
 @dataclass
 class LGNLayer(ConversionABC):

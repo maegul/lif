@@ -36,7 +36,7 @@ Examples:
 # # Imports
 import random
 from textwrap import dedent
-from typing import List, cast, Dict, Tuple, Sequence, Optional, Callable
+from typing import List, cast, Dict, Tuple, Sequence, Optional, Callable, Any
 from collections import abc
 from itertools import combinations, combinations_with_replacement
 import json
@@ -471,3 +471,74 @@ def mk_lgn_layer(
         )
 
     return lgn_layer
+
+
+
+# # Recreating Objects from records of cell/lgn objects
+
+# could make a protocol to type annotate for a dataclass instance ... but not necessary here
+def _mk_dataclass_fields_dict(dataclass_instance) -> Dict[str, Any]:
+    """dict of only the first level of fields/parameters"""
+
+    try:
+        fields = dataclass_instance.__dataclass_fields__.keys()
+    except AttributeError as e:
+        raise ValueError('passed argument is not an instance of a dataclass') from e
+
+    parameters = {f: dataclass_instance.__getattribute__(f) for f in fields}
+
+    return parameters
+
+
+def mk_lgn_cell_record(lgn_cell: do.LGNCell) -> do.LGNCellRecord:
+
+    # main thing is to avoid saving the whole filter object as it carries a bit
+    # ... of baggage ... so just store the keys and load from file/(filters module)
+    # ... when necessary.
+
+    parameters = _mk_dataclass_fields_dict(lgn_cell)
+    parameters['spat_filt'] = lgn_cell.spat_filt.key
+    parameters['temp_filt'] = lgn_cell.temp_filt.key
+
+    record = do.LGNCellRecord(**parameters)
+
+    return record
+
+def mk_cell_from_record(record: do.LGNCellRecord) -> do.LGNCell:
+
+    parameters = _mk_dataclass_fields_dict(record)
+    parameters['spat_filt'] = spatial_filters[filters.reverse_spatial_filters[record.spat_filt]]
+    parameters['temp_filt'] = temporal_filters[filters.reverse_temporal_filters[record.temp_filt]]
+
+    cell = do.LGNCell(**parameters)
+
+    return cell
+
+
+def mk_lgn_layer_record(lgn_layer: do.LGNLayer) -> do.LGNLayerRecord:
+
+    cell_records = tuple(
+        mk_lgn_cell_record(c)
+        for c in lgn_layer.cells
+        )
+    parameters = _mk_dataclass_fields_dict(lgn_layer)
+    parameters['cells'] = cell_records
+
+    record = do.LGNLayerRecord(**parameters)
+
+    return record
+
+
+def mk_lgn_layer_from_record(record: do.LGNLayerRecord) -> do.LGNLayer:
+
+    parameters = _mk_dataclass_fields_dict(record)
+    cells = tuple(
+            mk_cell_from_record(cell_record)
+            for cell_record in parameters['cells']
+        )
+    parameters['cells'] = cells
+
+    lgn_layer = do.LGNLayer(**parameters)
+
+    return lgn_layer
+

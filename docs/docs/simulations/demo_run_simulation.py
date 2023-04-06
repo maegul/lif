@@ -503,7 +503,8 @@ lgn_layer_resp = convolve.mk_lgn_response_spikes(st_params, input_responses)
 
 # +
 lgnparams = do.LGNParams(
-	n_cells=3,
+	n_cells=30,
+	# n_cells=3,
 	orientation = do.LGNOrientationParams(ArcLength(30), 0.5),
 	circ_var = do.LGNCircVarParams('naito_lg_highsf', 'naito'),
 	F1_amps= do.LGNF1AmpDistParams(),
@@ -513,6 +514,45 @@ lgnparams = do.LGNParams(
 # -
 # +
 lgn_layer = cells.mk_lgn_layer(lgnparams, st_params.spat_res)
+# -
+
+# ## Testing Cell Record and pickling
+
+# +
+cell = lgn_layer.cells[0]
+cell_record = cells.mk_lgn_cell_record(cell)
+
+new_cell = cells.mk_cell_from_record(cell_record)
+
+layer_record = cells.mk_lgn_layer_record(lgn_layer)
+
+new_layer = cells.mk_lgn_layer_from_record(layer_record)
+# -
+# +
+import pickle
+
+with open('/tmp/test_cell.pkl', 'wb') as f:
+	pickle.dump(cell, f)
+
+with open('/tmp/test_lgn.pkl', 'wb') as f:
+	pickle.dump(lgn_layer, f)
+
+with open('/tmp/test_cell_rec.pkl', 'wb') as f:
+	pickle.dump(cell_record, f)
+
+with open('/tmp/test_lgn_rec.pkl', 'wb') as f:
+	pickle.dump(layer_record, f)
+# -
+# +
+with open('/tmp/test_lgn_rec.pkl', 'rb') as f:
+	new_layer = cells.mk_lgn_layer_from_record(pickle.load(f))
+# -
+# +
+print(
+	new_layer.cells[0].spat_filt.parameters.cent.arguments
+	==
+	lgn_layer.cells[0].spat_filt.parameters.cent.arguments
+)
 # -
 
 # +
@@ -656,11 +696,21 @@ st_params = do.SpaceTimeParams(
 	)
 # -
 # +
+# good subset of spat filts that are all in the middle in terms of size
+subset_spat_filts = [
+	'berardi84_5a', 'berardi84_5b', 'berardi84_6', 'maffei73_2mid',
+	'maffei73_2right', 'so81_2bottom', 'so81_5', 'soodak87_1'
+]
+# -
+# +
+stimulus.print_params_for_all_saved_stimuli()
+# -
+# +
 multi_stim_params = do.MultiStimulusGeneratorParams(
-	spat_freqs=[2], temp_freqs=[4], orientations=[90], contrasts=[0.3, 0.6]
+	spat_freqs=[0.8], temp_freqs=[4], orientations=[90], contrasts=[0.3]
 	)
 lgn_params = do.LGNParams(
-	n_cells=20,
+	n_cells=30,
 	orientation = do.LGNOrientationParams(ArcLength(0), circ_var=0.5),
 	circ_var = do.LGNCircVarParams('naito_lg_highsf', 'naito'),
 	spread = do.LGNLocationParams(2, 'jin_etal_on'),
@@ -681,6 +731,105 @@ sim_params = do.SimulationParams(
 	lif_params = lif_params
 	)
 # -
+
+# ## Getting the V1 cell firing!
+
+# Probelem is no firing from the V1 cell!
+# Guessing that it's not enough EPSC current ...
+# ... so ensuring that the total current (`EPSC x n_inputs`) is kept constant at `~2.5nA`
+
+# ### Setup
+
+# basic fundamental space time params
+
+# +
+spat_res=ArcLength(1, 'mnt')
+spat_ext=ArcLength(660, 'mnt')
+"Good high value that should include any/all worst case scenarios"
+temp_res=Time(1, 'ms')
+temp_ext=Time(1000, 'ms')
+
+st_params = do.SpaceTimeParams(
+	spat_ext, spat_res, temp_ext, temp_res,
+	array_dtype='float32'
+	)
+# -
+
+# spatial filter subset
+
+# +
+# good subset of spat filts that are all in the middle in terms of size
+subset_spat_filts = [
+	'berardi84_5a', 'berardi84_5b', 'berardi84_6', 'maffei73_2mid',
+	'maffei73_2right', 'so81_2bottom', 'so81_5', 'soodak87_1'
+]
+
+# subset_spat_filts = 'all'
+# -
+
+# quick check of available filters
+# +
+stimulus.print_params_for_all_saved_stimuli()
+# -
+
+# simulation params
+
+# +
+multi_stim_params = do.MultiStimulusGeneratorParams(
+	spat_freqs=[0.8], # gets good coherent response from ensemble of LGN cells
+	temp_freqs=[4],
+	orientations=[90],
+	contrasts=[0.3]
+	)
+lgn_params = do.LGNParams(
+	n_cells=30,
+	orientation = do.LGNOrientationParams(ArcLength(0), circ_var=0.5),
+	circ_var = do.LGNCircVarParams('naito_lg_highsf', 'naito'),
+	spread = do.LGNLocationParams(2, 'jin_etal_on'),
+	filters = do.LGNFilterParams(
+		spat_filters=subset_spat_filts,
+		temp_filters='all'),
+	F1_amps = do.LGNF1AmpDistParams()
+	)
+lif_params = do.LIFParams()
+# -
+
+# +
+sim_params = do.SimulationParams(
+	n_simulations=1,
+	space_time_params=st_params,
+	multi_stim_params=multi_stim_params,
+	lgn_params=lgn_params,
+	lif_params = lif_params
+	)
+# -
+
+# ### Running Simulation
+
+# +
+results = run.run_simulation(sim_params)
+# -
+
+# quick test
+
+
+# ### Results analysis
+
+# +
+rks = list(results.keys())
+result = results[rks[0]][0]
+result.keys()
+# -
+
+# Plotting the LGN spiking rates
+
+# +
+fig = go.Figure()
+for i, r in enumerate(result['lgn_responses'].cell_rates):
+	fig.add_scatter(y=r, mode='lines', name=f'cell {i}')
+fig.show()
+# -
+
 
 # ### Pickling Prototyping
 
