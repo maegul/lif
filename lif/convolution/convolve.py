@@ -41,7 +41,7 @@ def mk_single_sf_tf_response(
     will have an F1 and DC (from fourier analysis) as the filters dictate.
     """
 
-    # Handle if max_f1 passed in or not
+    # # Handle if max_f1 passed in or not
     if (
             (target_max_f1_amp or filter_actual_max_f1_amp) # at least one
             and not
@@ -49,21 +49,40 @@ def mk_single_sf_tf_response(
             ):
         raise ValueError('Need to pass BOTH target and actual max_f1_amp')
 
-    # requrie that the spatial filter and the stimulus slice are the same size
+    # # requrie that the spatial filter and the stimulus slice are the same size
     # stim_slice also has temporal dimension (3rd), so take only first two
     if not (stim_slice.shape[:2] == spat_filt.shape):
         raise exc.LGNError('Stimulus slice and spatial filter array are not the same shape')
 
-    # spatial convolution
+    # # spatial convolution
     spatial_product = (spat_filt[..., np.newaxis] * stim_slice).sum(axis=(0, 1))
 
-    # temporal convolution
-    # take temporal extent of stimulus, as convolve will go to extent of stim+temp_filt
-    resp: np.ndarray = convolve(spatial_product, temp_filt)[:stim_slice.shape[2]]
-    # resp: np.ndarray = convolve(spatial_product, temp_filt)[:temp_filt.size]
+    # # temporal convolution
 
-    # adjustment parameters for going from F1 SF and TF to convolution to accurate
-    # sinusoidal response
+    # prepare temp buffer
+    # Doesn't actually help get a stable sinusoidal response
+    # ... leaving here just in case it's useful later
+    # sf_conv_amp = correction.mk_dog_sf_conv_amp(
+    #     freqs_x=stim_params.spat_freq_x,
+    #     freqs_y=stim_params.spat_freq_y,
+    #     dog_args=sf.parameters, spat_res=st_params.spat_res
+    #     )
+    # buffer_val = sf_conv_amp * stim_params.DC
+    # print(sf_conv_amp, buffer_val)
+    # temp_res_unit = st_params.temp_res.unit
+    # buffer_size = int(Time(200, 'ms')[temp_res_unit] / st_params.temp_res.value ) + 1
+    # buffer = np.ones(buffer_size) * buffer_val
+
+    # spatial_product_w_buffer = np.r_[buffer, spatial_product]
+    # take temporal extent of stimulus, as convolve will go to extent of stim+temp_filt
+    # resp: np.ndarray = convolve(
+    #     spatial_product_w_buffer, temp_filt
+    #     )[buffer_size : (stim_slice.shape[2]+buffer_size)]
+
+    resp: np.ndarray = convolve(spatial_product, temp_filt)[:stim_slice.shape[2]]
+
+    # # adjustment parameters
+    # for going from F1 SF and TF to convolution to accurate sinusoidal response
     adj_params = correction.mk_conv_resp_adjustment_params(
         st_params, stim_params, sf, tf,
         contrast_params=contrast_params,
@@ -71,8 +90,10 @@ def mk_single_sf_tf_response(
         target_max_f1_amp=target_max_f1_amp
         )
 
+    # # apply adjustment
     true_resp = correction.adjust_conv_resp(resp, adj_params)
 
+    # # recification
     if rectified:
         true_resp[true_resp < 0] = 0
 
