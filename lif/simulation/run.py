@@ -244,7 +244,7 @@ def loop_n_simulations(
         stim_params: do.GratingStimulusParams,
         v1_model: do.LIFNetwork,
         stimulus_results_key: Optional[str] = None
-        ) -> Tuple[do.SimulationResult]:
+        ) -> Tuple[do.SimulationResult, ...]:
 
     sim_results = []
 
@@ -339,7 +339,7 @@ def run_simulation(
     # ## CRUDE! Final results object
     # CRUDE but will probably get updated to be what I need
     # For now: {stim_signature: [v1.spikes]}
-    results: Dict[str, Tuple[do.SimulationResult]] = {}
+    results: Dict[str, Tuple[do.SimulationResult, ...]] = {}
 
 
     # ## Loop through each stim_params
@@ -450,7 +450,7 @@ def save_simulation_results(
 
         # Results data
         results_data_file = new_exp_dir/'results_data.pkl'
-        _save_pickle_file(results_data_file, results_data_file)
+        _save_pickle_file(results_data_file, sim_results.results)
 
     except Exception as e:
         # delete whole folder so that no bad results floating around

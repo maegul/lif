@@ -1924,4 +1924,4 @@ class SimulationResult(ConversionABC):
 class SimulationResults(ConversionABC):
     params: SimulationParams
     lgn_layers: ContrastLgnLayerCollection
-    results: Dict[str, Tuple[SimulationResult]]
+    results: Dict[str, Tuple[SimulationResult, ...]]
