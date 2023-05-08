@@ -3,6 +3,7 @@
 # # Imports
 # +
 from pathlib import Path
+import re
 import numpy as np
 
 import plotly.express as px
@@ -719,8 +720,6 @@ lgn_params = do.LGNParams(
 	)
 lif_params = do.LIFParams()
 # -
-stimulus.mk_multi_stimulus_params(multi_stim_params)
-
 
 # +
 sim_params = do.SimulationParams(
@@ -739,6 +738,34 @@ sim_params = do.SimulationParams(
 # ... so ensuring that the total current (`EPSC x n_inputs`) is kept constant at `~2.5nA`
 
 # ### Setup
+
+# utility function for saving figs on the server
+
+# +
+def save_plotly_fig_tmp(fig):
+	"""For graphs on a remote server - save to tmp to view through ssh later
+
+	Write plotly figure to html with plotlyjs as a CDN.
+	Files are written to `/tmp` with title if available and an incrememnted number.
+	"""
+
+	fig_dir = Path('/tmp')
+
+	all_figure_files = fig_dir.glob('*.html')
+	fig_numbers = sorted(
+		[
+			int(
+				re.findall(r'.*fig_(\d{1,3}).html', f.as_posix())[0]
+				)
+			for f in all_figure_files]
+		)
+	next_number = fig_numbers[-1] + 1
+
+	title_text = (fig.layout.title.text if fig.layout.title.text else '')
+	fig_path = fig_dir / f'{title_text}_fig_{next_number}.html'
+
+	fig.write_html(file=fig_path, include_plotlyjs='cdn')
+# -
 
 # basic fundamental space time params
 
@@ -776,22 +803,25 @@ stimulus.print_params_for_all_saved_stimuli()
 
 # +
 multi_stim_params = do.MultiStimulusGeneratorParams(
-	spat_freqs=[0.8], # gets good coherent response from ensemble of LGN cells
+	spat_freqs=[1], # gets good coherent response from ensemble of LGN cells
 	temp_freqs=[4],
 	orientations=[90],
-	contrasts=[0.3]
+	contrasts=[0.4]
 	)
 lgn_params = do.LGNParams(
 	n_cells=30,
-	orientation = do.LGNOrientationParams(ArcLength(0), circ_var=0.5),
+	orientation = do.LGNOrientationParams(ArcLength(90), circ_var=0.99),
 	circ_var = do.LGNCircVarParams('naito_lg_highsf', 'naito'),
-	spread = do.LGNLocationParams(2, 'jin_etal_on'),
+	spread = do.LGNLocationParams(ratio=2, distribution_alias='jin_etal_on'),
 	filters = do.LGNFilterParams(
 		spat_filters=subset_spat_filts,
 		temp_filters='all'),
 	F1_amps = do.LGNF1AmpDistParams()
 	)
-lif_params = do.LIFParams()
+lif_params = do.LIFParams(
+	total_EPSC=3.5
+	)
+# lif_params.mk_dict_with_units(n_inputs=lgn_params.n_cells)
 # -
 
 # +
@@ -810,12 +840,13 @@ sim_params = do.SimulationParams(
 results = run.run_simulation(sim_params)
 # -
 
-# quick test
-
 
 # ### Results analysis
 
+# Extract results
+
 # +
+# get first simulation result (first stim, first simulation)
 rks = list(results.keys())
 result = results[rks[0]][0]
 result.keys()
@@ -823,13 +854,55 @@ result.keys()
 
 # Plotting the LGN spiking rates
 
+
+# LGN rates
+
 # +
 fig = go.Figure()
 for i, r in enumerate(result['lgn_responses'].cell_rates):
 	fig.add_scatter(y=r, mode='lines', name=f'cell {i}')
-fig.show()
+fig.update_layout(title='LGN_cell_rates')
+# fig.show()
+save_plotly_fig_tmp(fig)
 # -
 
+# average LGN rate
+# +
+avg_lgn_rate = np.mean(result['lgn_responses'].cell_rates, axis=0)
+fig = px.line(y=avg_lgn_rate, title='average_lgn_rate')
+save_plotly_fig_tmp(fig)
+# -
+
+# Membrane Potential
+
+# +
+membrane_potential = result['membrane_potential']
+fig = px.line(membrane_potential, title='membrane_potential')
+save_plotly_fig_tmp(fig)
+# -
+
+# lgn spikes
+
+# +
+spike_times = result['lgn_spikes']
+fig = px.scatter(
+	x=np.sort(spike_times.ms),
+	y=np.ones_like(spike_times.ms)
+	)
+save_plotly_fig_tmp(fig)
+# -
+# +
+fig = px.histogram(
+	np.sort(spike_times.ms), nbins=50,
+	title='lgn_spikes_histogram'
+	)
+save_plotly_fig_tmp(fig)
+# -
+
+# +
+v1_spikes = result['spikes']
+v1_spikes.shape
+# -
 
 # ### Pickling Prototyping
 
@@ -1306,6 +1379,7 @@ for th in np.linspace(0, 180, 7, endpoint=False):
 
 fig.show()
 # -
+
 
 # # RF Pairwise Distance scale
 

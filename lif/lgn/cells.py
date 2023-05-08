@@ -516,6 +516,11 @@ def mk_cell_from_record(record: do.LGNCellRecord) -> do.LGNCell:
 
 
 def mk_lgn_layer_record(lgn_layer: do.LGNLayer) -> do.LGNLayerRecord:
+    """
+    using an LGN record that reduces the size on disk by storing only a reference/key
+    to each RF rather than the whole thing as there are only a finite set and they are
+    already stored separately
+    """
 
     cell_records = tuple(
         mk_lgn_cell_record(c)
@@ -542,3 +547,30 @@ def mk_lgn_layer_from_record(record: do.LGNLayerRecord) -> do.LGNLayer:
 
     return lgn_layer
 
+
+def mk_contrast_lgn_layer_collection_record(
+        lgn_collection: do.ContrastLgnLayerCollection
+        ) -> do.ContrastLgnLayerCollectionRecord:
+
+    record = {
+        contrast: tuple(
+            mk_lgn_layer_record(layer) for layer in layers
+            )
+        for contrast, layers in lgn_collection.items()
+    }
+
+    return record
+
+
+def mk_contrast_lgn_layer_collection_from_record(
+        lgn_collection_record: do.ContrastLgnLayerCollectionRecord
+        ) -> do.ContrastLgnLayerCollection:
+
+    layer_collection = {
+        contrast: tuple(
+            mk_lgn_layer_from_record(layer_record) for layer_record in layer_records
+            )
+        for contrast, layer_records in lgn_collection_record.items()
+    }
+
+    return layer_collection

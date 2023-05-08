@@ -49,10 +49,12 @@ all_filter_combinations_keys = tuple(
 
 # Find max for each combination
 
+F1MaxAmpDict = Dict[Tuple[str, str], do.LGNActualF1AmpMax]
+
 def mk_actual_max_f1_amps(
         stim_params: do.GratingStimulusParams,
         contrast_params: Optional[do.ContrastParams] = None
-        ) -> Dict[Tuple[str, str], do.LGNActualF1AmpMax]:
+        ) -> F1MaxAmpDict:
 
     actual_max_f1_amps = {}
 
@@ -69,7 +71,7 @@ def mk_actual_max_f1_amps(
 
 def get_cell_actual_max_f1_amp(
         lgn_cell: do.LGNCell,
-        all_max_f1_amps: Dict[Tuple[str, str], do.LGNActualF1AmpMax]
+        all_max_f1_amps: F1MaxAmpDict
         ):
 
     cell_index_key = (

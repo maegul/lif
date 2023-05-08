@@ -12,3 +12,7 @@ class FilterError(Exception):
 class LGNError(Exception):
     '''Error with the definition and setup of an LGN layer'''
     pass
+
+class SimulationError(Exception):
+    """Error in the course of simulation that has disrupted its execution"""
+    pass

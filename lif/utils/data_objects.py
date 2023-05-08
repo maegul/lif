@@ -1656,6 +1656,12 @@ class LGNLayer(ConversionABC):
     "if a float, represents the coefficient used to scale another metric"
 
 
+ContrastLgnLayerCollection = Dict[ContrastValue, Tuple[LGNLayer]]
+"For storing multiple lgn layers for running a simulation, by contrast of a stimulus (which affects max firing rates)"
+
+ContrastLgnLayerCollectionRecord = Dict[ContrastValue, Tuple[LGNLayerRecord]]
+"For storing on disk"
+
 @dataclass
 class LGNLayerResponse(ConversionABC):
     cell_rates: Tuple[np.ndarray]
@@ -1878,7 +1884,7 @@ class V1Params(ConversionABC):
     lif_params: LIFParams
 
 
-# # Simulation
+# # Simulation and Results
 
 @dataclass
 class MultiStimulusGeneratorParams(ConversionABC):
@@ -1903,3 +1909,19 @@ class SimulationParams(ConversionABC):
     multi_stim_params: MultiStimulusGeneratorParams
     lgn_params: LGNParams
     lif_params: LIFParams
+
+
+@dataclass
+class SimulationResult(ConversionABC):
+    stimulus_results_key: Optional[str]
+    n_simulation: int
+    spikes: np.ndarray
+    membrane_potential: np.ndarray
+    lgn_responses: LGNLayerResponse
+    lgn_spikes: Time[np.ndarray]
+
+@dataclass
+class SimulationResults(ConversionABC):
+    params: SimulationParams
+    lgn_layers: ContrastLgnLayerCollection
+    results: Dict[str, Tuple[SimulationResult]]
