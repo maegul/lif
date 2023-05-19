@@ -1,7 +1,7 @@
 """
 Using receptive fields and stimuli to create firing rates through convolution
 """
-from typing import Tuple, Union, Dict, Optional, Sequence
+from typing import Tuple, Union, Dict, Optional, Sequence, overload, cast
 
 from brian2.monitors.ratemonitor import PopulationRateMonitor
 from brian2.monitors.spikemonitor import SpikeMonitor
@@ -12,6 +12,7 @@ import brian2 as bn
 
 from ..stimulus import stimulus as stim
 from ..receptive_field.filters import filter_functions as ff
+from ..lgn import cells
 
 from ..utils import data_objects as do, exceptions as exc
 from ..utils.units import Time
@@ -132,19 +133,43 @@ def mk_response_poisson_spikes(
 
     # Turn response rate to brian array of rates, with appropriate time step
 
-
+@overload
 def mk_lgn_response_spikes(
         st_params: do.SpaceTimeParams,
         response_arrays: Tuple[np.ndarray, ...],
-        ) -> do.LGNLayerResponse:
+        n_trials: None = None
+        ) -> do.LGNLayerResponse: ...
+@overload
+def mk_lgn_response_spikes(
+        st_params: do.SpaceTimeParams,
+        response_arrays: Tuple[np.ndarray, ...],
+        n_trials: int = 10
+        ) -> Tuple[do.LGNLayerResponse, ...]: ...
+def mk_lgn_response_spikes(
+        st_params: do.SpaceTimeParams,
+        response_arrays: Tuple[np.ndarray, ...],
+        n_trials: Optional[int] = None
+        ) -> Union[do.LGNLayerResponse, Tuple[do.LGNLayerResponse, ...]]:
 
-    spikes = mk_response_poisson_spikes(st_params, response_arrays)
 
+    n_cells = len(response_arrays)
+    if n_trials is not None:
+        # repeated idxs (all cells x n_trials) ... eg (0, 1, 2, 0, 1, 2) (3 cells x 2 trials)
+        repeated_cell_idxs = cells.mk_repeated_lgn_cell_idxs(n_trials=n_trials, n_cells=n_cells)
+        response_arrays_for_spiking = tuple(
+                response_arrays[i]
+                for i in repeated_cell_idxs
+            )
+    else:
+        response_arrays_for_spiking = response_arrays
+
+    spikes = mk_response_poisson_spikes(st_params, response_arrays_for_spiking)
     spike_times = spikes.spike_trains()
 
     # convert to native object type (native to this code base)
     all_cell_spike_times: Sequence[Time[np.ndarray]] = []
-    cell_indices = sorted(list(spike_times.keys()))
+    cell_indices = list(spike_times.keys())
+
     for ci in cell_indices:
         # convert to aboslute time values (as will be a Time quantity)
         # Use seconds to convert and then to store
@@ -153,10 +178,23 @@ def mk_lgn_response_spikes(
 
     all_cell_spike_times = tuple(all_cell_spike_times)
 
-    lgn_response = do.LGNLayerResponse(
-            cell_rates = response_arrays,
-            cell_spike_times = all_cell_spike_times
-        )
+    if n_trials is not None:
+        # make a separate lgn response object for each trial
+        # separate response object for each trial
+        lgn_response = tuple(
+                do.LGNLayerResponse(
+                    cell_spike_times = all_cell_spike_times[
+                        0 + (n_cells * trial) : n_cells + (n_cells * trial)
+                        ],
+                    cell_rates = response_arrays
+                )
+                for trial in range(n_trials)
+            )
+    else:
+        lgn_response = do.LGNLayerResponse(
+                cell_rates = response_arrays,
+                cell_spike_times = all_cell_spike_times
+            )
 
     return lgn_response
 

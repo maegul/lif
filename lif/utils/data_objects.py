@@ -1864,6 +1864,8 @@ class LIFNetwork(ConversionABC):
     "Current, optional as unlikely to be necessary"
     initial_state_name: str = 'initial'
     "Name given to the initial state within Brian's state storage system"
+    n_trials: Optional[int] = None
+    "Number of trials being simulated simultaneously"
 
     def reset_spikes(
             self,
@@ -1904,21 +1906,54 @@ MultiStimulusParams = Tuple[GratingStimulusParams]
 @dataclass
 class SimulationParams(ConversionABC):
     n_simulations: int
-    "Number of repeat simulations to run with same parameters"
+    "Number of repeat simulations to run with same parameters but newly seeded random vars"
     space_time_params: SpaceTimeParams
     multi_stim_params: MultiStimulusGeneratorParams
     lgn_params: LGNParams
     lif_params: LIFParams
+    n_trials: int = 10
+    "Number of trials to repeat for a single simulation run with a single draw of random vars"
 
 
 @dataclass
 class SimulationResult(ConversionABC):
     stimulus_results_key: Optional[str]
     n_simulation: int
-    spikes: np.ndarray
+    spikes: Union[np.ndarray, Tuple[np.ndarray, ...]]
     membrane_potential: np.ndarray
-    lgn_responses: LGNLayerResponse
-    lgn_spikes: Time[np.ndarray]
+    lgn_responses: Union[LGNLayerResponse, Tuple[LGNLayerResponse, ...]]
+    n_trials: int = 1
+
+    def check_n_trials_consistency(self) -> bool:
+        n = self.n_trials
+
+        if not all((
+                # if not a tuple, then only one trial
+                n == (len(self.spikes) if isinstance(self.spikes, tuple) else 1),
+                n == (self.membrane_potential.shape[0]),
+                n == (len(self.lgn_responses) if isinstance(self.lgn_responses, tuple) else 1),
+                )):
+            return False
+        else:
+            return True
+
+    def get_spikes(self, n_trial: int) -> np.ndarray:
+        if isinstance(self.spikes, tuple):
+            return self.spikes[n_trial]
+        else:
+            return self.spikes
+
+    def get_mem_pot(self, n_trial: int) -> np.ndarray:
+        return self.membrane_potential[n_trial, :]
+
+    def get_lgn_response(self, n_trial: int) -> LGNLayerResponse:
+        if isinstance(self.lgn_responses, tuple):
+            return self.lgn_responses[n_trial]
+        else:
+            return self.lgn_responses
+
+
+
 
 @dataclass
 class SimulationResults(ConversionABC):

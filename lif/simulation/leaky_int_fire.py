@@ -1,7 +1,7 @@
 
 from dataclasses import dataclass
 
-from typing import Union, Tuple
+from typing import Union, Tuple, Optional, overload, cast
 
 import numpy as np
 import pandas as pd
@@ -21,13 +21,17 @@ import plotly.express as px
 import plotly.graph_objects as go
 import plotly.subplots as psp
 
+from ..lgn import cells
+
 import lif.utils.data_objects as do
 from lif.utils.units.units import Time
 
 
+
 def mk_lif_v1(
 		n_inputs: int,
-		lif_params: do.LIFParams
+		lif_params: do.LIFParams,
+		n_trials: Optional[int] = None
 		) -> do.LIFNetwork:
 
 	# equations
@@ -41,9 +45,15 @@ def mk_lif_v1(
 	reset =     'v = v_reset'
 
 	lif_params_w_units = lif_params.mk_dict_with_units(n_inputs=n_inputs)
+	number_trials = (
+			1
+				if not n_trials  # IE, only 1 if number of trials not provided
+				else n_trials
+		)
+
 	G = bn.NeuronGroup(
-		1,
-		eqs,
+		N=number_trials,
+		model=eqs,
 		threshold=threshold, reset=reset,
 		namespace=lif_params_w_units,
 		method='euler')
@@ -51,18 +61,46 @@ def mk_lif_v1(
 	# Set initial potential to threshold
 	G.v = lif_params_w_units['v_rest']
 
+	# each LGN cell, is simply given an index in series irrespective of which
+	# LGN layer or rather, trial it belongs to (ie, 0, 1, 2, 3, ... to total amount of LGN cells)
+	# The task is to direct these LGN cells to the appropriate V1 cells during simulation
+	# so that there are simply a set of trials, each with the same LGN cells going to different
+	# V1 cells ... and not a complete mess
+	# Thus, number of synapses is the number of LGN cells, including each repeat across all
+	# the trials.
+	n_synapses = n_inputs * number_trials
+
 	# custom spike inputs
 	# make dummy spikes for initial state
-	dummy_spk_idxs = np.arange(n_inputs)
+
+	dummy_spk_idxs = np.arange(n_synapses)
 	dummy_spk_times = dummy_spk_idxs * 2 * bnun.msecond
+
 	PS = bn.SpikeGeneratorGroup(
-		n_inputs,
-		dummy_spk_idxs,
-		dummy_spk_times,
+		N=n_synapses,
+		indices=dummy_spk_idxs,
+		times=dummy_spk_times,
 		sorted=True)
 
 	S = bn.Synapses(PS, G, on_pre=on_pre, namespace=lif_params_w_units)
-	S.connect(i=np.arange(n_inputs), j=0)
+
+	# each synapse is an LGN cell, that implicitly belongs to a particular trial
+	# the trials are organised for the sake of the simulation by connecting the LGN cells
+	# appropriately.
+	# This is done mostly with the "V1" (or `j`) indices ... ie the targets/post-synaptic cells.
+	# The organisation
+	v1_synapse_idx = np.array(
+		cells.mk_repeated_v1_indices_for_inputs_for_all_lgn_and_trial_synapses(
+				n_inputs=n_inputs, n_trials=number_trials
+			)
+		)
+	# v1_synapse_idx = np.r_[
+	# 	tuple(
+	# 		n_trial * np.ones(n_inputs, dtype=int)
+	# 		for n_trial in range(number_trials)
+	# 		)
+	# 	]
+	S.connect(i=np.arange(n_synapses), j=v1_synapse_idx)
 
 	M = bn.StateMonitor(G, 'v', record=True)
 	SM = bn.SpikeMonitor(G)
@@ -74,7 +112,8 @@ def mk_lif_v1(
 		network=ntwk,
 		input_spike_generator=PS,
 		spike_monitor=SM, membrane_monitor=M,
-		initial_state_name='initial'
+		initial_state_name='initial',
+		n_trials=n_trials
 		)
 
 	# paranoid ... ensuring initial statename is accurate in brian and this LIF object
@@ -84,20 +123,44 @@ def mk_lif_v1(
 
 
 def mk_input_spike_indexed_arrays(
-		lgn_response: Union[Tuple[Time[np.ndarray], ...], do.LGNLayerResponse]
+		lgn_response: Union[
+			Tuple[Time[np.ndarray], ...],
+			do.LGNLayerResponse,
+			Tuple[do.LGNLayerResponse]
+			]
 		) -> Tuple[np.ndarray, Time[np.ndarray]]:
 
+	all_spike_times: Tuple[Time[np.ndarray], ...]
+
+	# single trial lgn layer response
 	if isinstance(lgn_response, do.LGNLayerResponse):
 		all_spike_times = lgn_response.cell_spike_times
+
+	# tuple of multiple trial results
+	elif (isinstance(lgn_response, tuple)) and (isinstance(lgn_response[0], do.LGNLayerResponse)):
+		lgn_response = cast(Tuple[do.LGNLayerResponse,...], lgn_response)
+		# flatten all trial lgn response spike trains into a single tuple
+		all_spike_times = tuple(
+				spike_times
+				for response in lgn_response
+					for spike_times in response.cell_spike_times
+			)
+
+	# just a tuple of cell's spikes
+	# elif isinstance(lgn_response, tuple) and not (isinstance(lgn_response[0], do.LGNLayerResponse)):
 	else:
+		lgn_response = cast(Tuple[Time[np.ndarray], ...], lgn_response)
 		all_spike_times = lgn_response
 
 	n_inputs = len(all_spike_times)
-	# intervals correspond to spike `1` (second spike) to the end
+
 	spike_idxs = np.r_[
 			tuple(
 				# for each input, array of cell number same length as number of spikes
-				(np.ones(shape=all_spike_times[i].value.size) * i)
+				(
+					np.ones(shape=all_spike_times[i].value.size)
+					* i
+				).astype(int)
 				for i in range(n_inputs)
 			)
 		]

@@ -574,3 +574,48 @@ def mk_contrast_lgn_layer_collection_from_record(
     }
 
     return layer_collection
+
+
+# # Cell indices for multiple trials
+
+
+def mk_repeated_lgn_cell_idxs(
+        n_trials: int, n_cells: int
+        ) -> Tuple[int, ...]:
+    """Creates repeated indices for when running multiple trials of the same LGN layer
+
+    Indices go through each lgn layer then repeat for each trial
+
+    Examples:
+        >>> mk_repeated_lgn_cell_idxs(n_trials=3, n_cells=5)
+        (0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 0, 1, 2, 3, 4)
+    """
+    # repeated idxs (all cells x n_trials) ... eg (0, 1, 2, 0, 1, 2) (3 cells x 2 trials)
+    repeated_cell_idxs = tuple(
+            n_cell
+            for _ in range(n_trials)  # dummy loop to get repeats
+                for n_cell in range(n_cells)
+        )
+
+    return repeated_cell_idxs
+
+
+def mk_repeated_v1_indices_for_inputs_for_all_lgn_and_trial_synapses(
+        n_trials: int, n_inputs: int
+        ) -> Tuple[int, ...]:
+    """Makes indices for v1 cells recieving inputs for lgn cells
+
+    Examples:
+        >>> mk_repeated_v1_indices_for_inputs_for_all_lgn_and_trial_synapses(3, 5)
+        (0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2)
+    """
+
+    # notice the inversion of the pattern for the lgn cell idxs
+    v1_synapse_indices = tuple(
+            n_trial  # each trial has just one V1 cell, so n_trial = n_v1_cell
+            for n_trial in range(n_trials)
+                for _ in range(n_inputs)  # dummy to get repeats
+                # repeat the same v1 cell index for each lgn cell/input
+        )
+
+    return v1_synapse_indices

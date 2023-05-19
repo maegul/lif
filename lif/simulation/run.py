@@ -157,7 +157,8 @@ def create_v1_lif_network(
     # ... but for now, one at a time.
     v1_model = lif_model.mk_lif_v1(
         n_inputs=params.lgn_params.n_cells,
-        lif_params=params.lif_params
+        lif_params=params.lif_params,
+        n_trials=params.n_trials
         )
 
     return v1_model
@@ -283,23 +284,29 @@ def loop_n_simulations(
                 response.response for response in responses
             )
         lgn_layer_responses = convolve.mk_lgn_response_spikes(
-                params.space_time_params, response_arrays
+                params.space_time_params, response_arrays,
+                n_trials = params.n_trials
             )
 
         # ### Simulate V1 Reponse
         spike_idxs, spike_times = (
-            lif_model.
-            mk_input_spike_indexed_arrays(lgn_response=lgn_layer_responses) )
+            lif_model
+            .mk_input_spike_indexed_arrays(lgn_response=lgn_layer_responses)
+            )
 
         v1_model.reset_spikes(spike_idxs, spike_times)
 
         v1_model.run(params.space_time_params)
 
+        v1_spikes = tuple(v1_model.spike_monitor.spike_trains().values())
+        # shape: n_trials x time steps
+        v1_mem_pot: np.ndarray = v1_model.membrane_monitor.v
+
         result = do.SimulationResult(
                 stimulus_results_key = stimulus_results_key,
                 n_simulation = sim_idx,
-                spikes = v1_model.spike_monitor.spike_trains()[0],
-                membrane_potential = v1_model.membrane_monitor.v[0],
+                spikes = v1_spikes,
+                membrane_potential = v1_mem_pot,
                 lgn_responses = lgn_layer_responses,
                 lgn_spikes = spike_times
             )

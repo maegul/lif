@@ -708,7 +708,7 @@ stimulus.print_params_for_all_saved_stimuli()
 # -
 # +
 multi_stim_params = do.MultiStimulusGeneratorParams(
-	spat_freqs=[0.8], temp_freqs=[4], orientations=[90], contrasts=[0.3]
+	spat_freqs=[0.8], temp_freqs=[4], orientations=[90], contrasts=[0.4]
 	)
 lgn_params = do.LGNParams(
 	n_cells=30,
@@ -730,6 +730,160 @@ sim_params = do.SimulationParams(
 	lif_params = lif_params
 	)
 # -
+
+
+# ### Running Simulation
+
+# +
+results = run.run_simulation(sim_params)
+# -
+# +
+results.params.lif_params
+# -
+# +
+results.lgn_layers.keys()
+len(list(results.lgn_layers.values())[0])
+# -
+# +
+test_result = list(results.results.values())[0]
+len(test_result[0].lgn_spikes.value)
+# -
+
+# ### Saving Results (?)
+
+# +
+test_dir = Path('/home/ubuntu/lif_hws/work/results_data')
+run.save_simulation_results(
+		results_dir = test_dir,
+		sim_results = results,
+		comments = 'test run'
+	)
+# -
+
+
+# #### Random Dev Tests
+
+# ##### testing new lgn trials
+
+# +
+response_pulse = np.ones(400)*50
+response_arrays = (
+		np.r_[np.zeros(100), response_pulse, np.zeros(500)],
+		np.r_[np.zeros(300), response_pulse, np.zeros(300)],
+		np.r_[np.zeros(500), response_pulse, np.zeros(100)],
+		np.r_[np.zeros(600), response_pulse],
+	)
+# -
+# +
+lgn_resp = convolve.mk_lgn_response_spikes(
+		st_params,
+		response_arrays, n_trials = None
+	)
+# -
+# +
+fig = go.Figure()
+for i, c in enumerate(lgn_resp.cell_spike_times):
+	fig.add_scatter(
+		y=i * np.ones_like(c.value),
+		x=c.ms,
+		mode='markers'
+		)
+
+fig.show()
+# -
+# +
+n_trials = 9
+lgn_resp = convolve.mk_lgn_response_spikes(
+		st_params,
+		(response_arrays[0],), n_trials = n_trials
+	)
+# -
+# +
+colors = ['red', 'green', 'blue', 'magenta']
+fig = go.Figure()
+for t, l in enumerate(lgn_resp):
+	for i, c in enumerate(l.cell_spike_times):
+		fig.add_scatter(
+			y=(i * np.ones_like(c.value)) + (len(response_arrays) * t),
+			x=c.ms,
+			mode='markers',
+			legendgroup = f'cell {i}',
+			marker_color=colors[i]
+			)
+
+fig.show()
+# -
+# +
+lgn_resp[0].cell_spike_times
+# -
+# +
+len(lgn_resp)
+test = lgn_resp[0]
+# -
+# +
+print(
+	len(test.cell_rates),
+	len(test.cell_spike_times)
+	)
+# -
+# +
+lgn_resp[0].cell_spike_times[0] == lgn_resp[1].cell_spike_times[0]
+# -
+
+
+# ##### Testing Input spike indexed arrays
+
+# test input spike indexed arrays function
+
+# +
+n_trials = 10
+response_pulse = np.ones(400)*50
+response_arrays = (
+		np.r_[np.zeros(100), response_pulse, np.zeros(500)],
+		np.r_[np.zeros(300), response_pulse, np.zeros(300)],
+		np.r_[np.zeros(500), response_pulse, np.zeros(100)],
+		np.r_[np.zeros(600), response_pulse],
+	)
+# -
+# +
+lgn_resp = convolve.mk_lgn_response_spikes(
+		st_params,
+		response_arrays, n_trials = n_trials
+	)
+# -
+
+# +
+spike_idxs, spike_times = (
+	lifv1
+	.mk_input_spike_indexed_arrays(lgn_response=lgn_resp)
+	)
+# -
+# +
+spike_idxs
+spike_times
+# -
+# +
+v1_synapse_idxs = cells.mk_repeated_v1_indices_for_inputs_for_all_lgn_and_trial_synapses(
+		n_inputs=len(response_arrays), n_trials=n_trials)
+# -
+# +
+fig = px.scatter(
+	x=spike_times.ms,
+	y=spike_idxs,
+	color=[px.colors.qualitative.D3[v1_synapse_idxs[i_lgn]] for i_lgn in spike_idxs]
+	)
+fig.show()
+# -
+
+# test V1
+# ... run a v1 simulation (can just use LGN response from above)
+
+# +
+
+# -
+
+
+
 
 # ## Getting the V1 cell firing!
 
