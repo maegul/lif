@@ -405,6 +405,21 @@ def _save_pickle_file(
         pickle.dump(obj, f)
 
 
+def _load_pickle_file(file: Path):
+
+    if not file.exists():
+        raise ValueError(f'File {file} does not exist')
+
+    # always add .pkl extension just in case it's missing
+    with open(file.with_suffix('.pkl'), 'wb') as f:
+        obj = pickle.load(f)
+
+    return obj
+
+
+
+exp_dir_prefix = "exp_no_"
+
 def save_simulation_results(
         results_dir: Path,
         sim_results: do.SimulationResults,
@@ -415,7 +430,6 @@ def save_simulation_results(
         raise ValueError(f'Results directory does not exist: {results_dir}')
 
     # experiment folder
-    exp_dir_prefix = "exp_no_"
     all_exp_dirs = [
         p
             for p in results_dir.glob(f'{exp_dir_prefix}*')
@@ -463,4 +477,46 @@ def save_simulation_results(
         # delete whole folder so that no bad results floating around
         shutil.rmtree(new_exp_dir)
         raise exc.SimulationError('Failed to save results') from e
+
+def load_simulation_results(
+        results_dir: Path,
+        exp_dir: Path
+        ) -> Tuple[dict, do.SimulationResults]:
+
+    exp_results_dir = results_dir / exp_dir
+
+    if not exp_results_dir.exists():
+        raise ValueError(f'Directory {exp_results_dir} does not exist')
+
+    meta_data_file = exp_results_dir/'meta_data.pkl'
+    meta_data = _load_pickle_file(meta_data_file)
+
+    # params
+    simulation_params_file = exp_results_dir/'simulation_params.pkl'
+    simulation_params = _load_pickle_file(simulation_params_file)
+
+    # lgn layer data
+    lgn_layer_collection_file = exp_results_dir/'lgn_layers.pkl'
+
+    # using an LGN record that reduces the size on disk by storing only a reference/key
+    # to each RF rather than the whole thing as there are only a finite set and they are
+    # already stored separately
+
+    lgn_layer_collection_record = _load_pickle_file(lgn_layer_collection_file)
+    lgn_layer_collection = (
+        cells.mk_contrast_lgn_layer_collection_from_record(lgn_layer_collection_record)
+        )
+
+    # Results data
+    results_data_file = exp_results_dir/'results_data.pkl'
+    results_data = _load_pickle_file(results_data_file)
+
+    sim_results = do.SimulationResults(
+            params=simulation_params,
+            lgn_layers = lgn_layer_collection,
+            results = results_data
+        )
+
+    return meta_data, sim_results
+
 
