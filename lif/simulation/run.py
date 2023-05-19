@@ -308,7 +308,7 @@ def loop_n_simulations(
                 spikes = v1_spikes,
                 membrane_potential = v1_mem_pot,
                 lgn_responses = lgn_layer_responses,
-                lgn_spikes = spike_times
+                n_trials = params.n_trials
             )
 
         sim_results.append(result)
