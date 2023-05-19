@@ -411,7 +411,7 @@ def _load_pickle_file(file: Path):
         raise ValueError(f'File {file} does not exist')
 
     # always add .pkl extension just in case it's missing
-    with open(file.with_suffix('.pkl'), 'wb') as f:
+    with open(file.with_suffix('.pkl'), 'rb') as f:
         obj = pickle.load(f)
 
     return obj
