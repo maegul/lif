@@ -2,6 +2,7 @@
 # +
 from pathlib import Path
 import re
+import datetime as dt
 import numpy as np
 
 import plotly.express as px
@@ -88,15 +89,24 @@ sim_params = do.SimulationParams(
 # -
 
 # # Simulation
-
+# +
+mk_time = lambda: dt.datetime.utcnow().isoformat()
+# -
 # +
 test_dir = Path('/home/ubuntu/lif_hws/work/results_data')
 # -
 # +
 for total_epsc in np.linspace(3, 5, 5):
+	print(mk_time())
+	print('Running simulation')
+
 	print(f'Total EPSC = {total_epsc}')
 	sim_params.lif_params.total_EPSC = total_epsc
+
 	results = run.run_simulation(sim_params)
+
+	print(mk_time())
+	print('Saving results')
 	run.save_simulation_results(
 			results_dir = test_dir,
 			sim_results = results,
