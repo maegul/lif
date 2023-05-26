@@ -87,3 +87,49 @@ sim_params = do.SimulationParams(
 	n_trials = 10
 	)
 # -
+
+
+# # Simulation
+# +
+import sys
+# -
+# +
+mk_time = lambda: dt.datetime.utcnow().isoformat()
+# -
+# +
+test_dir = Path('/home/ubuntu/lif_hws/work/results_data')
+# -
+
+# ## Parallel Params
+# +
+parallel_params = {
+	'1': [3, 3.5],
+	'2': [4, 4.5],
+	'3': [5, 5.5]
+}
+parallel_param_arg = sys.argv[1]
+current_params = parallel_params[parallel_param_arg]
+# -
+
+# ## Run!!
+
+# +
+for total_epsc in current_params:
+	print(mk_time())
+	print('Running simulation')
+	if 'parallel_params' in locals():
+		print(f'Parallel Param: {parallel_param_arg}, current: {current_params}')
+
+	print(f'Total EPSC = {total_epsc}')
+	sim_params.lif_params.total_EPSC = total_epsc
+
+	results = run.run_simulation(sim_params)
+
+	print(mk_time())
+	print('Saving results')
+	run.save_simulation_results(
+			results_dir = test_dir,
+			sim_results = results,
+			comments = 'test run'
+		)
+# -
