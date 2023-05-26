@@ -1495,7 +1495,7 @@ class LGNOrientationParams(ConversionABC):
     "Distribution for orientations of LGN cells"
     mean_orientation: ArcLength[scalar]
     circ_var: float
-    "variance in preferred orientation"
+    "variance in preferred orientation (0: high var, 1: low var)"
 
     @property
     def von_mises(self) -> VonMisesParams:

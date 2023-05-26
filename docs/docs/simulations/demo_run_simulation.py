@@ -727,7 +727,9 @@ sim_params = do.SimulationParams(
 	space_time_params=st_params,
 	multi_stim_params=multi_stim_params,
 	lgn_params=lgn_params,
-	lif_params = lif_params
+	lif_params = lif_params,
+	n_trials = 3
+	# n_trials = 10
 	)
 # -
 
@@ -758,6 +760,20 @@ run.save_simulation_results(
 		sim_results = results,
 		comments = 'test run'
 	)
+# -
+# +
+loaded_results = run.load_simulation_results(test_dir, Path('exp_no_4'))
+# -
+# +
+loaded_sim_results = loaded_results[1]
+test = list(loaded_sim_results.results.values())[0]
+# -
+# +
+proto = test[0]
+# -
+# +
+proto.check_n_trials_consistency()
+proto.get_spikes(1)
 # -
 
 
@@ -879,9 +895,76 @@ fig.show()
 # ... run a v1 simulation (can just use LGN response from above)
 
 # +
-
+lgn_params = do.LGNParams(
+	n_cells=len(response_arrays),
+	orientation = do.LGNOrientationParams(ArcLength(0), circ_var=0.5),
+	circ_var = do.LGNCircVarParams('naito_lg_highsf', 'naito'),
+	spread = do.LGNLocationParams(2, 'jin_etal_on'),
+	filters = do.LGNFilterParams(spat_filters='all', temp_filters='all'),
+	F1_amps = do.LGNF1AmpDistParams()
+	)
+sim_params = do.SimulationParams(
+	n_simulations=1,
+	space_time_params=st_params,
+	multi_stim_params=multi_stim_params,
+	lgn_params=lgn_params,
+	lif_params = lif_params,
+	n_trials=n_trials
+	)
 # -
 
+# +
+v1_model = run.create_v1_lif_network(sim_params)
+# -
+# +
+v1_model.reset_spikes(spike_idxs, spike_times)
+
+v1_model.run(st_params)
+
+# -
+# +
+all_spikes = v1_model.spike_monitor.spike_trains()
+all_mem_pot = v1_model.membrane_monitor.v
+# -
+# +
+all_mem_pot.shape
+# -
+# +
+trial_n = 6
+fig = px.line(y=all_mem_pot[trial_n,:] / lifv1.bnun.mvolt )
+for spike_times in lgn_resp[trial_n].cell_spike_times:
+	fig = (
+		fig
+		.add_scatter(
+			y=np.ones(10_000)*-70,
+			x=spike_times.ms / 0.1,
+			mode='markers', marker_color='black',
+			marker_symbol='line-ns-open'
+			)
+		)
+fig.show()
+# -
+# +
+
+for trial_n in range(n_trials):
+	fig = px.line(y=all_mem_pot[trial_n,:] / lifv1.bnun.mvolt )
+	for spike_times in lgn_resp[trial_n].cell_spike_times:
+		fig = (
+			fig
+			.add_scatter(
+				y=np.ones(10_000)*-70,
+				x=spike_times.ms / 0.1,
+				mode='markers', marker_color='black',
+				marker_symbol='line-ns-open'
+				)
+			)
+	fig.show()
+# -
+# +
+# need to sort out the trials!
+v1_spikes = v1_model.spike_monitor.spike_trains()[0]
+v1_mem_pot = v1_model.membrane_monitor.v[0]
+# -
 
 
 

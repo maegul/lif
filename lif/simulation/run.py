@@ -420,6 +420,14 @@ def _load_pickle_file(file: Path):
 
 exp_dir_prefix = "exp_no_"
 
+
+def mk_all_exp_dir(results_dir: Path):
+
+    all_exp_dir = results_dir.glob(f'{exp_dir_prefix}*')
+
+    return all_exp_dir
+
+
 def save_simulation_results(
         results_dir: Path,
         sim_results: do.SimulationResults,
@@ -432,7 +440,8 @@ def save_simulation_results(
     # experiment folder
     all_exp_dirs = [
         p
-            for p in results_dir.glob(f'{exp_dir_prefix}*')
+            for p in mk_all_exp_dir(results_dir)
+            # for p in results_dir.glob(f'{exp_dir_prefix}*')
             if p.is_dir()
         ]
 
@@ -478,6 +487,13 @@ def save_simulation_results(
         shutil.rmtree(new_exp_dir)
         raise exc.SimulationError('Failed to save results') from e
 
+def load_meta_data(exp_results_dir: Path) -> Dict:
+
+    meta_data_file = exp_results_dir/'meta_data.pkl'
+    meta_data = _load_pickle_file(meta_data_file)
+
+    return meta_data
+
 def load_simulation_results(
         results_dir: Path,
         exp_dir: Path
@@ -488,8 +504,9 @@ def load_simulation_results(
     if not exp_results_dir.exists():
         raise ValueError(f'Directory {exp_results_dir} does not exist')
 
-    meta_data_file = exp_results_dir/'meta_data.pkl'
-    meta_data = _load_pickle_file(meta_data_file)
+    # meta_data_file = exp_results_dir/'meta_data.pkl'
+    # meta_data = _load_pickle_file(meta_data_file)
+    meta_data = load_meta_data(exp_results_dir)
 
     # params
     simulation_params_file = exp_results_dir/'simulation_params.pkl'
