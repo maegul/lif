@@ -85,7 +85,7 @@ test_dir = Path('/home/ubuntu/lif_hws/work/results_data')
 
 # ## Parallel Params
 # +
-all_stim_params = [0, 0.2, 0.4, 0.8,  1, 1.2, 1.6, 2, 4, 8]
+all_stim_params = [0, 0.2, 0.4, 0.8,  1, 1.2, 1.6, 2, 4]
 # -
 # +
 # distribute the params
