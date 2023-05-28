@@ -66,7 +66,8 @@ temp_ext=Time(1000, 'ms')
 
 st_params = do.SpaceTimeParams(
 	spat_ext, spat_res, temp_ext, temp_res,
-	array_dtype='float32'
+	array_dtype='float16'
+	# array_dtype='float32'
 	)
 # -
 # +
