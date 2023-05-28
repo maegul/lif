@@ -71,9 +71,6 @@ st_params = do.SpaceTimeParams(
 	)
 # -
 # +
-multi_stim_params = do.MultiStimulusGeneratorParams(
-	spat_freqs=[0.8], temp_freqs=[4], orientations=[90], contrasts=[0.4]
-	)
 lif_params = do.LIFParams(
 	total_EPSC=3
 	)
@@ -103,12 +100,45 @@ test_dir = Path('/home/ubuntu/lif_hws/work/results_data')
 
 # ## Parallel Params
 # +
+all_stim_params = [0, 0.2, 0.4, 0.8,  1, 1.2, 1.6, 2, 4, 8]
+# -
+# +
+# distribute the params
+n_procs = 3
+
 parallel_params = {
-	'1': [0, 0.2, 0.4,],
-	'2': [0.8,  1, 1.2],
-	'3': [1.6, 2, 4]
+	str(i+1): list()
+	for i in range(n_procs)
 }
+for i, e in enumerate(all_stim_params):
+	parallel_params[str((i%n_procs)+1)].append(e)
+# -
+# +
+# predefined params
+# parallel_params = {
+# 	'1': [0, 0.2, 0.4,],
+# 	'2': [0.8,  1, 1.2],
+# 	'3': [1.6, 2, 4]
+# }
+# -
+# +
 parallel_param_arg = sys.argv[1]
+# -
+
+# ### Arg 0 ... prep stimuli in single thread
+# +
+# If "0" ... then prepare all stimuli ... presumes that variable parameters are stimuli
+if parallel_param_arg == '0':
+
+	multi_stim_params = do.MultiStimulusGeneratorParams(
+		spat_freqs=all_stim_params, temp_freqs=[4], orientations=[90], contrasts=[0.4]
+		)
+	multi_params = stimulus.mk_multi_stimulus_params(multi_stim_params)
+	stimulus.mk_stimulus_cache(st_params, multi_params)
+
+	sys.exit()
+# -
+# +
 current_params = parallel_params[parallel_param_arg]
 # -
 # +
@@ -116,7 +146,8 @@ lif_params = do.LIFParams(
 	total_EPSC=3
 	)
 multi_stim_params = do.MultiStimulusGeneratorParams(
-	spat_freqs=current_params, temp_freqs=[4], orientations=[90], contrasts=[0.4]
+	spat_freqs=current_params,
+	temp_freqs=[4], orientations=[90], contrasts=[0.4]
 	)
 # -
 # +
