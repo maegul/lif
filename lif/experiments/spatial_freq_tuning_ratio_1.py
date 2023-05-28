@@ -70,21 +70,6 @@ st_params = do.SpaceTimeParams(
 	# array_dtype='float32'
 	)
 # -
-# +
-lif_params = do.LIFParams(
-	total_EPSC=3
-	)
-# -
-# +
-sim_params = do.SimulationParams(
-	n_simulations=100,
-	space_time_params=st_params,
-	multi_stim_params=multi_stim_params,
-	lgn_params=lgn_params,
-	lif_params = lif_params,
-	n_trials = 10
-	)
-# -
 
 
 # # Simulation
