@@ -580,7 +580,8 @@ def mk_contrast_lgn_layer_collection_from_record(
 
 
 def mk_repeated_lgn_cell_idxs(
-        n_trials: int, n_cells: int
+        n_trials: int, n_cells: int,
+        n_lgn_layers: Optional[int] = None
         ) -> Tuple[int, ...]:
     """Creates repeated indices for when running multiple trials of the same LGN layer
 
@@ -590,12 +591,28 @@ def mk_repeated_lgn_cell_idxs(
         >>> mk_repeated_lgn_cell_idxs(n_trials=3, n_cells=5)
         (0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 0, 1, 2, 3, 4)
     """
-    # repeated idxs (all cells x n_trials) ... eg (0, 1, 2, 0, 1, 2) (3 cells x 2 trials)
-    repeated_cell_idxs = tuple(
-            n_cell
-            for _ in range(n_trials)  # dummy loop to get repeats
-                for n_cell in range(n_cells)
-        )
+
+    if not n_lgn_layers:
+        # repeated idxs (all cells x n_trials) ... eg (0, 1, 2, 0, 1, 2) (3 cells x 2 trials)
+        repeated_cell_idxs = tuple(
+                n_cell
+                for _ in range(n_trials)  # dummy loop to get repeats
+                    for n_cell in range(n_cells)
+            )
+    # if n_lgn_layers provided
+    else:
+        # repeated idxs  ...
+        #   for each lgn layer, repeat idxs of those cells n_trials times
+        #   eg, if cells belong to lgn_layers as follows (1, 1, 1, 2, 2, 2, 3, 3, 3)
+        #   and n_trials is 3
+        #   provide idxs as (0, 1, 2, 0, 1, 2, 0, 1, 2, 3, 4, 5, 3, 4, 5, ...)
+        #   IE (00, 01, 02, 00, 01, 02, 00, 01, 02, 10, 11, 12, ...) (00 = lgn 0, cell 0)
+        repeated_cell_idxs = tuple(
+                n_cell + (n_sim * n_cells)
+                for n_sim in range(n_lgn_layers)
+                    for _ in range(n_trials)  # dummy loop to get repeats
+                        for n_cell in range(n_cells)
+            )
 
     return repeated_cell_idxs
 

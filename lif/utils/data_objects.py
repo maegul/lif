@@ -18,6 +18,7 @@ import datetime as dt
 from pathlib import Path
 import pickle as pkl
 import copy
+import datetime as dt
 
 import numpy as np
 from scipy.optimize import OptimizeResult
@@ -1656,7 +1657,7 @@ class LGNLayer(ConversionABC):
     "if a float, represents the coefficient used to scale another metric"
 
 
-ContrastLgnLayerCollection = Dict[ContrastValue, Tuple[LGNLayer]]
+ContrastLgnLayerCollection = Dict[ContrastValue, Tuple[LGNLayer, ...]]
 "For storing multiple lgn layers for running a simulation, by contrast of a stimulus (which affects max firing rates)"
 
 ContrastLgnLayerCollectionRecord = Dict[ContrastValue, Tuple[LGNLayerRecord]]
@@ -1882,6 +1883,41 @@ class LIFNetwork(ConversionABC):
 
 
 @dataclass
+class LIFMultiNetwork(ConversionABC):
+    network: bn.Network
+    "Master network object for managing whole simulation"
+    input_spike_generator: bn.SpikeGeneratorGroup
+    "LGN Spikes providing input the V1 cell"
+    spike_monitor: bn.SpikeMonitor
+    "Spikes"
+    membrane_monitor: bn.StateMonitor
+    "Membrane potential"
+    n_simulations: int
+    "Number of separate simulations run in parallel"
+    n_trials: int
+    "Number of trials being simulated simultaneously"
+    initial_state_name: str = 'initial'
+    "Name given to the initial state within Brian's state storage system"
+    current_monitor: Optional[bn.StateMonitor] = None
+    "Current, optional as unlikely to be necessary"
+
+    def reset_spikes(
+            self,
+            spike_idxs: np.ndarray, spike_times: Time[np.ndarray],
+            spikes_sorted: bool = False):
+
+        self.network.restore(self.initial_state_name)
+        self.input_spike_generator.set_spikes(
+            indices=spike_idxs,
+            times=spike_times.ms * bnun.msecond,
+            sorted=spikes_sorted
+            )
+
+    def run(self, space_time_params: SpaceTimeParams):
+        self.network.run(space_time_params.temp_ext.s * bnun.second)
+
+
+@dataclass
 class V1Params(ConversionABC):
     lif_params: LIFParams
 
@@ -1953,6 +1989,17 @@ class SimulationResult(ConversionABC):
             return self.lgn_responses
 
 
+@dataclass
+class SimulationMetaData():
+    exp_id: str
+    comments: str
+
+    @property
+    def creation_time_str(self) -> str:
+        return self.creation_time.isoformat()
+
+    def __post_init__(self):
+        self.creation_time = dt.datetime.utcnow()
 
 
 @dataclass

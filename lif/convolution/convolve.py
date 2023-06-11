@@ -137,30 +137,69 @@ def mk_response_poisson_spikes(
 def mk_lgn_response_spikes(
         st_params: do.SpaceTimeParams,
         response_arrays: Tuple[np.ndarray, ...],
-        n_trials: None = None
+        n_trials: None = None,
+        n_lgn_layers: None = None,
+        n_inputs: None = None,
         ) -> do.LGNLayerResponse: ...
 @overload
 def mk_lgn_response_spikes(
         st_params: do.SpaceTimeParams,
         response_arrays: Tuple[np.ndarray, ...],
-        n_trials: int = 10
+        n_trials: int = 10,
+        n_lgn_layers: None = None,
+        n_inputs: None = None,
+        ) -> Tuple[do.LGNLayerResponse, ...]: ...
+@overload
+def mk_lgn_response_spikes(
+        st_params: do.SpaceTimeParams,
+        response_arrays: Tuple[np.ndarray, ...],
+        n_trials: int,
+        n_lgn_layers: int,
+        n_inputs: int,
         ) -> Tuple[do.LGNLayerResponse, ...]: ...
 def mk_lgn_response_spikes(
         st_params: do.SpaceTimeParams,
         response_arrays: Tuple[np.ndarray, ...],
-        n_trials: Optional[int] = None
+        n_trials: Optional[int] = None,
+        n_lgn_layers: Optional[int] = None,
+        n_inputs: Optional[int] = None,
         ) -> Union[do.LGNLayerResponse, Tuple[do.LGNLayerResponse, ...]]:
+    """
+
+    Must provide n_inputs if providing n_lgn_layers, as then the response arrays will be flattened
+    and it cannot be determined form the number of resposne arrays how many input cells there are
+    per lgn_layer without some calculation (IE, `len(response_arrays) / n_lgn_layers`) ...
+    ... better to be explicit.
+    """
 
 
-    n_cells = len(response_arrays)
-    if n_trials is not None:
+    # tile response arrays appropriately for repeated trials of the same responses
+    if (n_trials is not None) and (n_lgn_layers is None):
+        n_cells = len(response_arrays)
         # repeated idxs (all cells x n_trials) ... eg (0, 1, 2, 0, 1, 2) (3 cells x 2 trials)
         repeated_cell_idxs = cells.mk_repeated_lgn_cell_idxs(n_trials=n_trials, n_cells=n_cells)
         response_arrays_for_spiking = tuple(
                 response_arrays[i]
                 for i in repeated_cell_idxs
             )
+    # tile response arrays when multiple lgn layers and trials
+    elif (n_trials is not None) and (n_lgn_layers is not None) and (n_inputs is not None):
+        n_cells = n_inputs
+        # repeated idxs for trials but with multiple lgn layers, each with multiple cells
+        # Thus ... cells x Trials x LGN Layers
+        # EG (0, 1, 2, 0, 1, 2, 3, 4, 5, 3, 4, 5) (3 cells x 2 trials x 2 lgn layers)
+        repeated_cell_idxs = cells.mk_repeated_lgn_cell_idxs(
+            n_trials=n_trials, n_cells=n_cells,
+            n_lgn_layers=n_lgn_layers)
+        cells.mk_repeated_lgn_cell_idxs(
+            n_trials=n_trials, n_cells=30,
+            n_lgn_layers=n_lgn_layers)
+        response_arrays_for_spiking = tuple(
+                response_arrays[i]
+                for i in repeated_cell_idxs
+            )
     else:
+        n_cells = len(response_arrays)
         response_arrays_for_spiking = response_arrays
 
     spikes = mk_response_poisson_spikes(st_params, response_arrays_for_spiking)
@@ -170,25 +209,66 @@ def mk_lgn_response_spikes(
     all_cell_spike_times: Sequence[Time[np.ndarray]] = []
     cell_indices = list(spike_times.keys())
 
-    for ci in cell_indices:
-        # convert to aboslute time values (as will be a Time quantity)
-        # Use seconds to convert and then to store
-        cell_spike_times: Time[np.ndarray] = Time(spike_times[ci] / bn.second, 's')
-        all_cell_spike_times.append(cell_spike_times)
+    # convert to aboslute time values (as will be a Time quantity)
+    # Use seconds to convert and then to store
+    all_cell_spike_times = tuple(
+            Time(spike_times[ci] / bn.second, 's')
+            for ci in cell_indices
+        )
 
-    all_cell_spike_times = tuple(all_cell_spike_times)
+    # older way ... normal for loop
+    # for ci in cell_indices:
+    #     # convert to aboslute time values (as will be a Time quantity)
+    #     # Use seconds to convert and then to store
+    #     cell_spike_times: Time[np.ndarray] = Time(spike_times[ci] / bn.second, 's')
+    #     all_cell_spike_times.append(cell_spike_times)
+    # all_cell_spike_times = tuple(all_cell_spike_times)
 
-    if n_trials is not None:
+    # Create response objects
+    # Trials but not multiple sims/lgn layers
+    if (not (n_trials is None)) and (n_lgn_layers is None):
         # make a separate lgn response object for each trial
-        # separate response object for each trial
+        # IE, each ojbect has responses of all cells' of the lgn layer, but for only trial
         lgn_response = tuple(
                 do.LGNLayerResponse(
                     cell_spike_times = all_cell_spike_times[
+                        # take all cells of a single trial, where `trial` increments
+                        # which set of cells are taken by multiplying `trial` by the number of cells
                         0 + (n_cells * trial) : n_cells + (n_cells * trial)
                         ],
                     cell_rates = response_arrays
                 )
                 for trial in range(n_trials)
+            )
+
+    # trials and multiple lgn layers / sims
+    if (not (n_trials is None)) and (not (n_lgn_layers is None)):
+        # create a flattened tuple in same structure as input response arrays
+        # each response object is for a single trial for a single lgn layer
+        # eg (layer1-trial1, layer1-trial2, layer2-trial1, layer2-trial2) (2 trials x 2 layers)
+        lgn_response = tuple(
+                do.LGNLayerResponse(
+                    cell_spike_times = all_cell_spike_times[
+                        # take all cells of a trial, incrementing through each set of cells
+                        # by multiplying `trial` by `n_cells` as above.
+                        # In this case, though, each trial is for a particular lgn layer
+                        0 + (n_cells * trial) : n_cells + (n_cells * trial)
+                    ],
+                    cell_rates = response_arrays[
+                        # Only need response arrays for the layer these responses are coming from
+                        # find lgn layer by integer dividing `trial` by `n_trials`
+                        # then use n lgn layer to increment over the set of cells using `n_cells`
+                        # as the response arrays are (n_cells x n_layers)
+                        # eg (cell1-layer1, cell2-layer1, cell1-layer2, cell2-layer2, ...)
+                        # Basically, wait for `trial` to get through all the trials of a single
+                        # lgn layer then increment up to the next lgn layer:
+                        # `trial//n_trials = n_lgn_layer`
+                        0 + (n_cells * (trial//n_trials)) : n_cells + (n_cells * (trial//n_trials))
+                    ]
+                )
+                # generically, there is an lgn response for each layer *and* trial, so each
+                #   trial for each layer is a separate response here ... go through each one
+                for trial in range(n_lgn_layers * n_trials)
             )
     else:
         lgn_response = do.LGNLayerResponse(

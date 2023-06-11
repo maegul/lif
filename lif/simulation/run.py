@@ -2,12 +2,15 @@
 
 """
 
+import math
+import re
 from textwrap import dedent
-from typing import Any, Sequence, Dict, Tuple, Optional
+from typing import Any, List, Sequence, Dict, Tuple, Optional, Union, cast
 from pathlib import Path
 import shutil
 import datetime as dt
 import pickle
+import itertools
 
 import numpy as np
 
@@ -22,6 +25,7 @@ from . import (
     all_filter_actual_max_f1_amp as all_max_f1,
     leaky_int_fire as lif_model
     )
+from lif import lgn
 
 
 # def mk_lgn_layer_responses(
@@ -159,6 +163,22 @@ def create_v1_lif_network(
         n_inputs=params.lgn_params.n_cells,
         lif_params=params.lif_params,
         n_trials=params.n_trials
+        )
+
+    return v1_model
+
+
+def create_multi_v1_lif_network(
+        params: do.SimulationParams
+        ) -> do.LIFMultiNetwork:
+
+    # At some point, multiple sets of inputs may be simulated simultaneously
+    # ... but for now, one at a time.
+    v1_model = lif_model.mk_multi_lif_v1(
+        n_inputs=params.lgn_params.n_cells,
+        lif_params=params.lif_params,
+        n_trials=params.n_trials,
+        n_simulations=params.n_simulations
         )
 
     return v1_model
@@ -322,6 +342,39 @@ def loop_n_simulations(
 #         all_stim_params: Tuple[do.GratingStimulusParams],
 #         ):
 
+def run_single_stim_simulation(
+        params: do.SimulationParams,
+        stim_params: do.GratingStimulusParams,
+        all_lgn_layers: do.ContrastLgnLayerCollection,
+        actual_max_f1_amps: all_max_f1.F1MaxAmpDict,
+        v1_model: do.LIFNetwork
+        ) -> Tuple[do.SimulationResult]:
+
+    print(dedent(f'''\
+        {stimulus.mk_stim_signature(params.space_time_params, stim_params)}
+        '''))
+
+    stimulus_results_key = f'{stimulus.mk_stim_signature(params.space_time_params, stim_params)}'
+
+    # ### Load Stimulus
+    stim_array = stimulus.load_stimulus_from_params(params.space_time_params, stim_params)
+
+    # ### Actual Max F1 amplitudes
+
+    # Do here, at the "top" so that only have to do once for a simulation
+    # ... but I can't be bothered storing in disk and managing that.
+
+    # ### Loop through N sims
+
+    sim_results = loop_n_simulations(
+            params, all_lgn_layers,
+            stim_array, actual_max_f1_amps,
+            stim_params, v1_model, stimulus_results_key
+        )
+
+    return sim_results
+
+
 def run_simulation(
         params: do.SimulationParams,
         force_central_rf_locations: bool = False
@@ -394,6 +447,179 @@ def run_simulation(
     return simulation_results
 
 
+# # All in one multi simulation code
+
+def mk_n_simulation_partitions(
+        n_sims: int,
+        max_sims: int = 500
+        ) -> Tuple[int, Tuple[Tuple[int, int], ...]]:
+
+    n_partitions = math.ceil(n_sims / max_sims)
+
+    partitioned_n_sims = [0]
+    running_total_sims = n_sims
+    for _ in range(n_partitions):
+        if running_total_sims > max_sims:
+            partitioned_n_sims.append(max_sims)
+            running_total_sims -= max_sims
+        elif running_total_sims == 0:
+            break
+        else:
+            partitioned_n_sims.append(running_total_sims)
+
+    partitioned_n_sims = tuple(partitioned_n_sims)
+
+    partition_incs = list(itertools.accumulate(partitioned_n_sims))
+
+    partition_idxs = tuple(
+        (start, end)
+            for start, end
+            in zip(partition_incs[:-1], partition_incs[1:])
+        )
+
+    if len(partition_idxs) != n_partitions:
+        raise ValueError(f'Incorrect number of partition indices generated (n: {n_partitions}, n_idxs: {len(partition_idxs)})')
+
+    return n_partitions, partition_idxs
+
+
+def run_single_stim_multi_layer_simulation(
+        params: do.SimulationParams,
+        stim_params: do.GratingStimulusParams,
+        lgn_layers: Union[Tuple[do.LGNLayer], do.ContrastLgnLayerCollection],
+        ) -> Tuple[do.SimulationResult]:
+    """
+
+    """
+    if isinstance(lgn_layers, dict):  # ContrastLgnLayerCollection is a dict with contrast val keys
+        lgn_layers = lgn_layers[stim_params.contrast]
+    n_lgn_layers = len(lgn_layers)
+    # n_lgn_layers: number of simulations to run in this function, which may be less than the total
+    #     nunmber of simulations for the whole simulation, due to compute resource limits.
+    #     This number must correspond to the length of `all_lgn_layers`.
+    #     If there is partitioning being done, it is up to the caller to manage the splitting
+    #     of lgn_layers.
+
+    # lgn layer responses
+
+    # do once per simulation
+    actual_max_f1_amps = all_max_f1.mk_actual_max_f1_amps(stim_params=stim_params)
+
+    # stim
+    stim_array = stimulus.load_stimulus_from_params(params.space_time_params, stim_params)
+
+    # v1 model
+
+    v1_model = create_multi_v1_lif_network(params)
+
+    # LGN Responses
+
+    # Convolution responses
+
+    # Nested tuple:    |- responses of cells for a single layer
+    #                  V       V - tuple of responses for all layers
+    #               ( ( ), ( ) )
+    all_responses = tuple(
+        loop_lgn_cells_mk_response(
+                lgn,
+                params, stim_array, actual_max_f1_amps, stim_params
+            )
+        for lgn in lgn_layers
+    )
+
+    # Flattened tuple of response arrays: (r11, r12, ... r1n, ... r21, r22, ... r_mn)
+    #   where m = number of layers, n = number of cells per layer
+    #     |- Temporal response of a single cell
+    #     |                     Response arrays of each cell from a single LGN layer
+    #     |                         of length lgn_params.n_cells (ie, `n` input cells)
+    #     V                 |------------------|
+    #  ( array[], array[], ... array[], array[] )
+    response_arrays = tuple(
+            single_response.response
+            for responses in all_responses  # first layer is responses for a single layer
+                for single_response in responses # second layer is cellular responses within a layer
+        )
+
+
+    # spikes
+
+    # adapt function to react to when n_sims is passed in
+    # should then parse response arrays as being not just (cell1, cell2, ... celln)
+    # but (cell11, cell12, ... cell21, cell22, ... cell_mn)
+
+    # Where are trials?
+
+    # response objects in order of (trials x lgn_layers)
+    # eg (trial1-layer1, trial2-layer1, trial1-layer2, trial2-layer2, ...)
+    lgn_layer_responses = convolve.mk_lgn_response_spikes(
+            params.space_time_params, response_arrays,
+            n_trials = params.n_trials,
+            n_lgn_layers=n_lgn_layers,
+            n_inputs=params.lgn_params.n_cells
+        )
+
+    # v1 model run and collect results
+
+    # Should be in same order as above
+    # but just flattened arrays of spike_idxs ... ie, spike_idx refers to which
+    # response object in lgn_layer_responses
+    spike_idxs, spike_times = (
+        lif_model
+        .mk_input_spike_indexed_arrays(lgn_response=lgn_layer_responses)
+        )
+
+    v1_model.reset_spikes(spike_idxs, spike_times, spikes_sorted=False)
+    v1_model.run(params.space_time_params)
+
+    # return results
+
+    # gotta reshape / organise results
+    #
+
+    # (trials x lgn_layers)
+    v1_spikes = tuple(v1_model.spike_monitor.spike_trains().values())
+    # shape: (n_trials x n_lgn_layers) x time steps
+    v1_mem_pot: np.ndarray = v1_model.membrane_monitor.v
+
+    # One simulation result for each layer (including trials)
+
+    stimulus_results_key = f'{stimulus.mk_stim_signature(params.space_time_params, stim_params)}'
+
+    results: List[do.SimulationResult] = []
+    for n_lgn_layer in range(n_lgn_layers):
+        spikes = tuple(
+                v1_spikes[
+                    0 + (n_lgn_layer*params.n_trials) : params.n_trials + (n_lgn_layer*params.n_trials)
+                ]
+            )
+
+        membrane_potential = v1_mem_pot[
+            0 + (n_lgn_layer * params.n_trials) : params.n_trials + (n_lgn_layer * params.n_trials)
+            ,
+            :
+        ]
+
+        lgn_responses = lgn_layer_responses[
+            0 + (n_lgn_layer*params.n_trials) : params.n_trials + (n_lgn_layer*params.n_trials)
+        ]
+
+        results.append(
+            do.SimulationResult(
+                stimulus_results_key=stimulus_results_key,
+                n_simulation=n_lgn_layer,
+                spikes=spikes,
+                membrane_potential=membrane_potential,
+                lgn_responses=lgn_responses,
+                n_trials=params.n_trials
+                )
+            )
+
+    results_tuple = tuple(results)
+
+    return results_tuple
+
+
+
 def _save_pickle_file(
         file: Path, obj: Any, overwrite: bool = False):
 
@@ -434,6 +660,7 @@ def save_simulation_results(
         comments: str = ''
         ):
 
+    # move out into a separate function
     if not results_dir.exists():
         raise ValueError(f'Results directory does not exist: {results_dir}')
 
@@ -487,12 +714,186 @@ def save_simulation_results(
         shutil.rmtree(new_exp_dir)
         raise exc.SimulationError('Failed to save results') from e
 
+
+def prep_results_dir(results_dir: Path):
+    if results_dir.exists():
+        raise ValueError(f'Results directory already exists ... start new experiment')
+    else:
+        results_dir.mkdir()
+
+
+def prep_temp_results_dirs(results_dir: Path, n_stims: Union[int, Sequence]):
+
+    if not isinstance(n_stims, int):
+        n_stims = len(n_stims)
+
+    if (not results_dir.exists()):
+        raise ValueError(f'Results directory does not exist: {results_dir}')
+
+    for stim in range(n_stims):
+        stim_dir = results_dir / f'{stim:0>3}'
+        if stim_dir.exists():
+            raise ValueError(f'Stim dir ({stim_dir}) already exists ... results already organised')
+        stim_dir.mkdir()
+
+
+def run_partitioned_single_stim(
+        params: do.SimulationParams,
+        n_stim: int,
+        stim_params: do.GratingStimulusParams,
+        lgn_layers: do.ContrastLgnLayerCollection,
+        results_dir: Path,
+        partitioned_sim_lgn_idxs: Tuple[Tuple[int, int], ...]
+        ):
+
+    for n_partition, (start, end) in enumerate(partitioned_sim_lgn_idxs):
+        partitioned_lgn_layer = lgn_layers[stim_params.contrast][start : end]
+
+        partitioned_results = run_single_stim_multi_layer_simulation(
+                params, stim_params, partitioned_lgn_layer
+            )
+        save_single_stim_results(
+            results_dir, partitioned_results,
+            stim_n=n_stim, partition=n_partition
+            )
+    save_merge_single_stim_results(results_dir, stim_n=n_stim)
+
+
+def _mk_stim_results_dir(results_dir: Path, stim_n: int) -> Path:
+
+    if (not results_dir.exists()):
+        raise ValueError(f'Results directory does not exist: {results_dir}')
+
+    stim_results_dir = results_dir / f'{stim_n:0>3}'
+
+    return stim_results_dir
+
+
+def _parse_stim_results_path(stim_results_file: Path) -> Optional[int]:
+
+    pattern = re.compile(r'(\d\d\d).pkl')
+
+    path_match = pattern.fullmatch(stim_results_file.name)
+
+    if path_match is None:
+        return None
+
+    stim_n = int(path_match.group(1))
+
+    return stim_n
+
+
+def save_single_stim_results(
+        results_dir: Path,
+        results: Tuple[do.SimulationResult],
+        stim_n: int,
+        partition: int
+        ):
+    """
+
+    stim_n: which of the multi_stim combos this simulation belongs to
+    partition: which part of the full simulation
+    """
+
+    stim_results_dir = _mk_stim_results_dir(results_dir, stim_n)
+    part_results_file_path = stim_results_dir / f'{partition:0>3}.pkl'
+    if (not results_dir.exists()):
+        raise ValueError(f'Results directory does not exist: {results_dir}')
+    elif (not stim_results_dir.exists()):
+        raise ValueError(f'Stim results directory does not exist: {stim_results_dir}')
+
+    if part_results_file_path.exists():
+        raise ValueError(f'Partition results file already exists: {stim_results_dir}')
+
+    _save_pickle_file(part_results_file_path, results)
+
+
+def save_merge_single_stim_results(
+        results_dir: Path,
+        stim_n: int
+        ):
+
+    stim_results_dir = _mk_stim_results_dir(results_dir, stim_n)
+    if (not results_dir.exists()):
+        raise ValueError(f'Results directory does not exist: {results_dir}')
+    elif (not stim_results_dir.exists()):
+        raise ValueError(f'Stim results directory does not exist: {stim_results_dir}')
+
+    partitioned_results = []
+    partitioned_results_files = stim_results_dir.glob('*.pkl')
+
+    for result_file in partitioned_results_files:
+        results = _load_pickle_file(result_file)
+        partitioned_results.append(results)
+
+    full_results = tuple(
+            result
+            for partial_results in partitioned_results
+                for result in partial_results
+        )
+
+    _save_pickle_file(stim_results_dir.with_suffix('.pkl'), full_results)
+
+
+def save_merge_all_results(
+        results_dir: Path,
+        multi_stim_combos: Tuple[do.GratingStimulusParams],
+        params: do.SimulationParams,
+        ):
+
+    if (not results_dir.exists()):
+        raise ValueError(f'Results directory does not exist: {results_dir}')
+
+    all_result_files = results_dir.glob('*.pkl')
+
+    # match numbers to n_stims
+    result_files_idxs = {}
+    for result_file in all_result_files:
+        i = _parse_stim_results_path(result_file)
+        result_files_idxs[i] = result_file
+
+    if any((k is None) for k in result_files_idxs.keys()):
+        raise exc.SimulationError('Not all result files successfully parsed')
+
+    # checking that idxs match what would be expected by the number of
+    if not (
+            sorted(list(result_files_idxs.keys()))
+            ==
+            list(range(len(multi_stim_combos)))
+            ):
+        raise exc.SimulationError(
+            f"Stim result numbering doesn't match len of multi_stim comb: {len(multi_stim_combos)}")
+
+    result_files_idxs = cast(Dict[int, Path], result_files_idxs)
+
+    # loop through each n and stim: load file, key with stimulus_sig, save dict
+
+    all_results = dict()
+
+    for n_stim, stim_params in enumerate(multi_stim_combos):
+        result_file = result_files_idxs[n_stim]
+        results: Tuple[do.SimulationResult] = _load_pickle_file(result_file)
+
+        stim_sig = stimulus.mk_stim_signature(params.space_time_params, stim_params)
+        all_results[stim_sig] = results
+
+    _save_pickle_file(results_dir / 'results_data.pkl', all_results)
+
+
 def load_meta_data(exp_results_dir: Path) -> Dict:
 
     meta_data_file = exp_results_dir/'meta_data.pkl'
     meta_data = _load_pickle_file(meta_data_file)
 
     return meta_data
+
+
+def load_sim_params(exp_results_dir: Path) -> do.SimulationParams:
+    params_file = exp_results_dir/'simulation_params.pkl'
+    params = _load_pickle_file(params_file)
+
+    return params
+
 
 def load_simulation_results(
         results_dir: Path,
@@ -509,8 +910,9 @@ def load_simulation_results(
     meta_data = load_meta_data(exp_results_dir)
 
     # params
-    simulation_params_file = exp_results_dir/'simulation_params.pkl'
-    simulation_params = _load_pickle_file(simulation_params_file)
+    # simulation_params_file = exp_results_dir/'simulation_params.pkl'
+    # simulation_params = _load_pickle_file(simulation_params_file)
+    simulation_params = load_sim_params(exp_results_dir)
 
     # lgn layer data
     lgn_layer_collection_file = exp_results_dir/'lgn_layers.pkl'

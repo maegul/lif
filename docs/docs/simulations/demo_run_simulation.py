@@ -967,6 +967,113 @@ v1_mem_pot = v1_model.membrane_monitor.v[0]
 # -
 
 
+# ## Testing new multi sim function
+# +
+stimulus.print_params_for_all_saved_stimuli()
+# -
+# +
+all_stims = stimulus.get_params_for_all_saved_stimuli()
+for vs in all_stims.keys():
+	if vs.spat_ext == ArcLength(660, 'mnt'):
+		print(vs, all_stims[vs])
+		print(list(all_stims[vs])[0].asdict_())
+		st_params = vs
+		stim_params = list(all_stims[vs])[0]
+# -
+
+# +
+# spat_res=ArcLength(1, 'mnt')
+# spat_ext=ArcLength(660, 'mnt')
+# "Good high value that should include any/all worst case scenarios"
+# temp_res=Time(1, 'ms')
+# temp_ext=Time(1000, 'ms')
+
+# st_params = do.SpaceTimeParams(
+# 	spat_ext, spat_res, temp_ext, temp_res,
+# 	array_dtype='float32'
+# 	)
+# -
+# +
+# good subset of spat filts that are all in the middle in terms of size
+subset_spat_filts = [
+	'berardi84_5a', 'berardi84_5b', 'berardi84_6', 'maffei73_2mid',
+	'maffei73_2right', 'so81_2bottom', 'so81_5', 'soodak87_1'
+]
+# -
+# +
+multi_stim_params = do.MultiStimulusGeneratorParams(
+	spat_freqs=[1], # gets good coherent response from ensemble of LGN cells
+	temp_freqs=[4],
+	orientations=[90],
+	contrasts=[0.3]
+	)
+lgn_params = do.LGNParams(
+	n_cells=30,
+	orientation = do.LGNOrientationParams(ArcLength(0), circ_var=0.5),
+	circ_var = do.LGNCircVarParams('naito_lg_highsf', 'naito'),
+	spread = do.LGNLocationParams(2, 'jin_etal_on'),
+	filters = do.LGNFilterParams(spat_filters='all', temp_filters='all'),
+	F1_amps = do.LGNF1AmpDistParams()
+	)
+lif_params = do.LIFParams()
+# -
+
+# +
+sim_params = do.SimulationParams(
+	n_simulations=2,
+	space_time_params=st_params,
+	multi_stim_params=multi_stim_params,
+	lgn_params=lgn_params,
+	lif_params = lif_params,
+	n_trials = 3
+	# n_trials = 10
+	)
+# -
+# +
+all_lgn_layers = run.create_all_lgn_layers(sim_params, False)
+# lgn_layers = all_lgn_layers
+results = run.run_single_stim_multi_layer_simulation(sim_params, stim_params, all_lgn_layers)
+# -
+
+# ### Results all match up?
+
+# +
+len(results)
+# -
+# +
+res = results[1]
+# -
+# +
+len(res.lgn_responses)
+# -
+# +
+res.membrane_potential.shape
+# -
+# +
+n = 2
+all_spikes = np.r_[tuple(
+		spks.ms*10
+		for spks in res.lgn_responses[n].cell_spike_times
+	)]
+all_spikes_y = np.ones_like(all_spikes) * -0.07
+(
+	px.line(y=res.membrane_potential[n, :])
+	.add_scatter(
+		x = all_spikes,
+		y = all_spikes_y,
+		mode='markers'
+		)
+	).show()
+# -
+# +
+res.lgn_responses[1].cell_spike_times
+# -
+
+
+# ### Saving Multiple and wrapping up
+# +
+
+# -
 
 # ## Getting the V1 cell firing!
 
