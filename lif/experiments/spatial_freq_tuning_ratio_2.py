@@ -104,6 +104,8 @@ sim_params = do.SimulationParams(
 # +
 n_procs = 3
 n_partitions, partitioned_n_sims = run.mk_n_simulation_partitions(sim_params.n_simulations, 500)
+
+run.mk_n_simulation_partitions(100, 500)
 # multi_stim_combos = stimulus.mk_multi_stimulus_params(sim_params.multi_stim_params)
 # -
 
@@ -160,8 +162,8 @@ for i, stim_param in enumerate(multi_stim_combos):
 
 	print(f'FINISHED stim param {i} of {len(multi_stim_combos)}')
 
-	pool.close()
-	pool.join()
+pool.close()
+pool.join()
 
 # -
 

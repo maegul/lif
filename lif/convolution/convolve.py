@@ -56,7 +56,12 @@ def mk_single_sf_tf_response(
         raise exc.LGNError('Stimulus slice and spatial filter array are not the same shape')
 
     # # spatial convolution
-    spatial_product = (spat_filt[..., np.newaxis] * stim_slice).sum(axis=(0, 1))
+    # faster way of doing manual convolution here than the older line below
+    # `...` broadcasts additional dimensions
+    spatial_product = np.einsum('ij,ij...', spat_filt, stim_slice)
+
+    # older line
+    # spatial_product = (spat_filt[..., np.newaxis] * stim_slice).sum(axis=(0, 1))
 
     # # temporal convolution
 
