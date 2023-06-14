@@ -3,6 +3,7 @@
 """
 
 import math
+import datetime as dt
 import re
 from textwrap import dedent
 from typing import Any, List, Sequence, Dict, Tuple, Optional, Union, cast
@@ -776,7 +777,7 @@ def run_partitioned_single_stim(
     for n_partition, (start, end) in enumerate(partitioned_sim_lgn_idxs):
         if log_print:
             log_info = f'Stim: {n_stim}, part: {n_partition}'
-            print(f'Running ... {log_info}')
+            print(f'Running ... {log_info} ({dt.datetime.utcnow().isoformat()})')
         else:
             log_info = None
 
@@ -789,7 +790,7 @@ def run_partitioned_single_stim(
             )
 
         if log_print:
-            print(f'{log_info} ... saving partitioned single stim results')
+            print(f'{log_info} ... saving partitioned single stim results ({dt.datetime.utcnow().isoformat()})')
 
         save_single_stim_results(
             results_dir, partitioned_results,
@@ -797,7 +798,7 @@ def run_partitioned_single_stim(
             )
 
     if log_print:
-        print(f'Stim: {n_stim} ... saving all single stim results')
+        print(f'Stim: {n_stim} ... saving all single stim results ({dt.datetime.utcnow().isoformat()})')
 
     save_merge_single_stim_results(results_dir, stim_n=n_stim)
 
