@@ -85,7 +85,10 @@ meta_data = do.SimulationMetaData('HWS0', 'Test run with spatial frequency tunin
 
 all_stim_params = [0, 0.2, 0.4, 0.8,  1, 1.2, 1.6, 2, 4]
 multi_stim_params = do.MultiStimulusGeneratorParams(
-	spat_freqs=all_stim_params, temp_freqs=[4], orientations=[90], contrasts=[0.4]
+	spat_freqs=all_stim_params,
+	temp_freqs=[4],
+	orientations=[90],
+	contrasts=[0.4]
 	)
 # -
 # +
@@ -103,9 +106,12 @@ sim_params = do.SimulationParams(
 # -
 # +
 n_procs = 3
-n_partitions, partitioned_n_sims = run.mk_n_simulation_partitions(sim_params.n_simulations, 500)
+n_sims_per_partition = 500
+n_partitions, partitioned_n_sims = run.mk_n_simulation_partitions(
+	sim_params.n_simulations,
+	n_sims_per_partition
+	)
 
-run.mk_n_simulation_partitions(100, 500)
 # multi_stim_combos = stimulus.mk_multi_stimulus_params(sim_params.multi_stim_params)
 # -
 
@@ -146,9 +152,8 @@ from multiprocessing.pool import AsyncResult
 # +
 pool = mp.Pool(processes=n_procs)
 
+print(f'Starting Simulations... n_sims: {len(multi_stim_combos)}, n_procs: {n_procs} ({dt.datetime.utcnow().isoformat()})')
 for i, stim_param in enumerate(multi_stim_combos):
-
-	print(f'RUNNING stim param {i} of {len(multi_stim_combos)}')
 
 	pool.apply_async(
 		func=run.run_partitioned_single_stim,
@@ -158,15 +163,15 @@ for i, stim_param in enumerate(multi_stim_combos):
 			'stim_params': stim_param,
 			'lgn_layers': all_lgn_layers,
 			'results_dir': results_dir,
-			'partitioned_sim_lgn_idxs': partitioned_n_sims
+			'partitioned_sim_lgn_idxs': partitioned_n_sims,
+			'log_print': True
 		}
 		)
-
-	print(f'FINISHED stim param {i} of {len(multi_stim_combos)}')
 
 pool.close()
 pool.join()
 
+print(f'Done simulations ({dt.datetime.utcnow().isoformat()})')
 # -
 
 # Save single_stim_results file index

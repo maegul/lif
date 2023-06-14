@@ -487,6 +487,7 @@ def run_single_stim_multi_layer_simulation(
         params: do.SimulationParams,
         stim_params: do.GratingStimulusParams,
         lgn_layers: Union[Tuple[do.LGNLayer], do.ContrastLgnLayerCollection],
+        log_print: bool = False, log_info: Optional[str] = None
         ) -> Tuple[do.SimulationResult]:
     """
 
@@ -519,13 +520,32 @@ def run_single_stim_multi_layer_simulation(
     # Nested tuple:    |- responses of cells for a single layer
     #                  V       V - tuple of responses for all layers
     #               ( ( ), ( ) )
-    all_responses = tuple(
-        loop_lgn_cells_mk_response(
-                lgn,
-                params, stim_array, actual_max_f1_amps, stim_params
-            )
-        for lgn in lgn_layers
-    )
+    # all_responses = tuple(
+    #     loop_lgn_cells_mk_response(
+    #             lgn,
+    #             params, stim_array, actual_max_f1_amps, stim_params
+    #         )
+    #     for lgn in lgn_layers
+    # )
+
+    if log_print:
+        def log_func1(i, log_info):
+            if (i%20) == 0:
+                print(f'{log_info} ... response for lgn layer {i}')
+        log_func=log_func1
+    else:
+        def log_func2(i, _): pass
+        log_func=log_func2
+
+    all_responses: List[Tuple[do.ConvolutionResponse,...]] = list()
+    for i, lgn in enumerate(lgn_layers):
+        log_func(i, log_info)
+        lgn_resp = loop_lgn_cells_mk_response(
+                        lgn,
+                        params, stim_array, actual_max_f1_amps, stim_params
+                    )
+        all_responses.append(lgn_resp)
+
 
     # Flattened tuple of response arrays: (r11, r12, ... r1n, ... r21, r22, ... r_mn)
     #   where m = number of layers, n = number of cells per layer
@@ -543,6 +563,9 @@ def run_single_stim_multi_layer_simulation(
 
     # spikes
 
+    if log_print:
+        print(f'{log_info} ... spikes for lgn responses')
+
     # adapt function to react to when n_sims is passed in
     # should then parse response arrays as being not just (cell1, cell2, ... celln)
     # but (cell11, cell12, ... cell21, cell22, ... cell_mn)
@@ -559,6 +582,9 @@ def run_single_stim_multi_layer_simulation(
         )
 
     # v1 model run and collect results
+
+    if log_print:
+        print(f'{log_info} ... running V1 model')
 
     # Should be in same order as above
     # but just flattened arrays of spike_idxs ... ie, spike_idx refers to which
@@ -743,19 +769,36 @@ def run_partitioned_single_stim(
         stim_params: do.GratingStimulusParams,
         lgn_layers: do.ContrastLgnLayerCollection,
         results_dir: Path,
-        partitioned_sim_lgn_idxs: Tuple[Tuple[int, int], ...]
+        partitioned_sim_lgn_idxs: Tuple[Tuple[int, int], ...],
+        log_print: bool = False
         ):
 
     for n_partition, (start, end) in enumerate(partitioned_sim_lgn_idxs):
+        if log_print:
+            log_info = f'Stim: {n_stim}, part: {n_partition}'
+            print(f'Running ... {log_info}')
+        else:
+            log_info = None
+
+
         partitioned_lgn_layer = lgn_layers[stim_params.contrast][start : end]
 
         partitioned_results = run_single_stim_multi_layer_simulation(
-                params, stim_params, partitioned_lgn_layer
+                params, stim_params, partitioned_lgn_layer,
+                log_print=log_print, log_info=log_info
             )
+
+        if log_print:
+            print(f'{log_info} ... saving partitioned single stim results')
+
         save_single_stim_results(
             results_dir, partitioned_results,
             stim_n=n_stim, partition=n_partition
             )
+
+    if log_print:
+        print(f'Stim: {n_stim} ... saving all single stim results')
+
     save_merge_single_stim_results(results_dir, stim_n=n_stim)
 
 
@@ -835,11 +878,10 @@ def save_merge_single_stim_results(
     _save_pickle_file(stim_results_dir.with_suffix('.pkl'), full_results)
 
 
-def save_merge_all_results(
+def get_all_experiment_single_stim_results_files(
         results_dir: Path,
-        multi_stim_combos: Tuple[do.GratingStimulusParams],
-        params: do.SimulationParams,
-        ):
+        multi_stim_combos: Tuple[do.GratingStimulusParams]
+        ) -> Dict[Optional[int], Path]:
 
     if (not results_dir.exists()):
         raise ValueError(f'Results directory does not exist: {results_dir}')
@@ -862,7 +904,18 @@ def save_merge_all_results(
         raise exc.SimulationError(
             f"Stim result numbering doesn't match len of multi_stim comb: {len(multi_stim_combos)}")
 
-    result_files_idxs = cast(Dict[int, Path], result_files_idxs)
+    result_files_idxs = cast(Dict[Optional[int], Path], result_files_idxs)
+
+    return result_files_idxs
+
+def save_merge_all_results(
+        results_dir: Path,
+        multi_stim_combos: Tuple[do.GratingStimulusParams],
+        params: do.SimulationParams,
+        ):
+
+    result_files_idxs = get_all_experiment_single_stim_results_files(
+        results_dir, multi_stim_combos)
 
     # loop through each n and stim: load file, key with stimulus_sig, save dict
 
