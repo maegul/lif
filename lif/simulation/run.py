@@ -852,12 +852,10 @@ def save_merge_all_results(
         i = _parse_stim_results_path(result_file)
         result_files_idxs[i] = result_file
 
-    if any((k is None) for k in result_files_idxs.keys()):
-        raise exc.SimulationError('Not all result files successfully parsed')
-
-    # checking that idxs match what would be expected by the number of
+    # checking that idxs match what would be expected by the number of stim combos
     if not (
-            sorted(list(result_files_idxs.keys()))
+            # exclude None as not match
+            sorted(list(k for k in result_files_idxs.keys() if k is not None))
             ==
             list(range(len(multi_stim_combos)))
             ):
