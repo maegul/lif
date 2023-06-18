@@ -6,7 +6,7 @@ import math
 import datetime as dt
 import re
 from textwrap import dedent
-from typing import Any, List, Sequence, Dict, Tuple, Optional, Union, cast
+from typing import Any, List, Sequence, Dict, Tuple, Optional, Union, cast, overload
 from pathlib import Path
 import shutil
 import datetime as dt
@@ -16,10 +16,17 @@ import itertools
 import numpy as np
 
 from ..utils import data_objects as do, exceptions as exc
+from lif.utils.units.units import (
+        ArcLength, Time, SpatFrequency, TempFrequency
+    )
 
 from ..receptive_field.filters import filter_functions as ff
 
-from ..convolution import convolve
+from ..convolution import (
+    convolve,
+    soodak_rf as srf,
+    correction
+    )
 from ..lgn import cells
 from ..stimulus import stimulus
 from . import (
@@ -187,13 +194,68 @@ def create_multi_v1_lif_network(
 
 # loop through LGN cells
 # ... -> maybe here insert the additional trials
+
+def mk_lgn_cell_response_analytically(
+        cell: do.LGNCell,
+        params: do.SimulationParams,
+        actual_max_f1_amps: all_max_f1.F1MaxAmpDict,
+        st_params: do.SpaceTimeParams,
+        stim_params: do.GratingStimulusParams,
+        temp_coords: Time[np.ndarray],
+        rectified: bool = True
+        ) -> do.ConvolutionResponse:
+
+    spatial_product = srf.mk_spat_filt_temp_response(
+        st_params, stim_params, cell.spat_filt, cell.location, cell.orientation,
+        temp_coords)
+
+    # temporal filter array
+    tc = ff.mk_temp_coords(
+        params.space_time_params.temp_res,
+        tau=cell.temp_filt.parameters.arguments.tau
+        )
+    temp_filt = ff.mk_tq_tf(tc, cell.temp_filt)
+
+
+    actual_max_f1_amp = all_max_f1.get_cell_actual_max_f1_amp(cell, actual_max_f1_amps)
+
+
+    # cell_resp = convolve.mk_single_sf_tf_response(
+    #         params.space_time_params, cell.spat_filt, cell.temp_filt,
+    #         spat_filt, temp_filt,
+    #         stim_params, stim_slice,
+    #         filter_actual_max_f1_amp=actual_max_f1_amp.value,
+    #         target_max_f1_amp=cell.max_f1_amplitude
+    #         )
+
+    resp: np.ndarray = convolve.convolve(spatial_product, temp_filt)[:temp_coords.value.shape[0]]
+
+    # # adjustment parameters
+    # for going from F1 SF and TF to convolution to accurate sinusoidal response
+    adj_params = correction.mk_conv_resp_adjustment_params(
+        st_params, stim_params, cell.spat_filt, cell.temp_filt,
+        filter_actual_max_f1_amp=actual_max_f1_amp.value,
+        target_max_f1_amp=cell.max_f1_amplitude
+        )
+
+    # # apply adjustment
+    true_resp = correction.adjust_conv_resp(resp, adj_params)
+
+    # # recification
+    if rectified:
+        true_resp[true_resp < 0] = 0
+
+    return do.ConvolutionResponse(response=true_resp, adjustment_params=adj_params)
+
+
 def mk_lgn_cell_response(
         cell: do.LGNCell,
         params: do.SimulationParams,
         stim_array: np.ndarray,
         actual_max_f1_amps: all_max_f1.F1MaxAmpDict,
-        stim_params: do.GratingStimulusParams
+        stim_params: do.GratingStimulusParams,
         ) -> do.ConvolutionResponse:
+
 
     # spatial filter array
     xc, yc = ff.mk_spat_coords(
@@ -237,22 +299,38 @@ def mk_lgn_cell_response(
 def loop_lgn_cells_mk_response(
         lgn: do.LGNLayer,
         params: do.SimulationParams,
-        stim_array: np.ndarray,
+        stim_array: Optional[np.ndarray],
         actual_max_f1_amps: all_max_f1.F1MaxAmpDict,
-        stim_params: do.GratingStimulusParams
+        stim_params: do.GratingStimulusParams,
+        analytical: bool = False
         ) -> Tuple[do.ConvolutionResponse]:
 
     responses: Sequence[do.ConvolutionResponse] = []
 
     # ##### Loop through LGN cells
-    for cell in lgn.cells:
-        # spatial filter array
+    if analytical:
+        temp_cords = ff.mk_temp_coords(
+            params.space_time_params.temp_res, params.space_time_params.temp_ext)
 
-        response = mk_lgn_cell_response(
-                cell,
-                params, stim_array, actual_max_f1_amps, stim_params
-            )
-        responses.append(response)
+        for cell in lgn.cells:
+
+            response = mk_lgn_cell_response_analytically(
+                    cell, params, actual_max_f1_amps,
+                    params.space_time_params, stim_params,
+                    temp_coords=temp_cords
+                )
+            responses.append(response)
+    else:
+        if stim_array is None:
+            raise ValueError('Stim array must be an array if not using analytical convolution')
+        for cell in lgn.cells:
+            # spatial filter array
+
+            response = mk_lgn_cell_response(
+                    cell,
+                    params, stim_array, actual_max_f1_amps, stim_params
+                )
+            responses.append(response)
 
     responses = tuple(responses)
     return responses
@@ -291,7 +369,8 @@ def loop_n_simulations(
 
         responses = loop_lgn_cells_mk_response(
                 lgn,
-                params, stim_array, actual_max_f1_amps, stim_params
+                params, stim_array, actual_max_f1_amps, stim_params,
+                analytical=params.analytical_convolution
             )
 
         # be paranoid and use tuples ... ?
@@ -454,7 +533,6 @@ def mk_n_simulation_partitions(
         n_sims: int,
         max_sims: int = 500
         ) -> Tuple[int, Tuple[Tuple[int, int], ...]]:
-
     n_partitions = math.ceil(n_sims / max_sims)
 
     partitioned_n_sims = [0]
@@ -508,7 +586,10 @@ def run_single_stim_multi_layer_simulation(
     actual_max_f1_amps = all_max_f1.mk_actual_max_f1_amps(stim_params=stim_params)
 
     # stim
-    stim_array = stimulus.load_stimulus_from_params(params.space_time_params, stim_params)
+    if params.analytical_convolution:
+        stim_array = None
+    else:
+        stim_array = stimulus.load_stimulus_from_params(params.space_time_params, stim_params)
 
     # v1 model
 
@@ -543,7 +624,8 @@ def run_single_stim_multi_layer_simulation(
         log_func(i, log_info)
         lgn_resp = loop_lgn_cells_mk_response(
                         lgn,
-                        params, stim_array, actual_max_f1_amps, stim_params
+                        params, stim_array, actual_max_f1_amps, stim_params,
+                        analytical=params.analytical_convolution
                     )
         all_responses.append(lgn_resp)
 

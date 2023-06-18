@@ -880,7 +880,7 @@ def mk_dog_sf_ft(
     Parameters
     ----
 
-    collapse_symmetry: (default True)
+    collapse_symmetry:
         whether to multiply non-zero amplitudes by 2 to remove
         the positive/negative freq symmetry of fourier transforms.
         True for sinusoidal amplitudes, False for convolutional amplitudes

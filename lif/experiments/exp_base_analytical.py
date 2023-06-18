@@ -1,5 +1,6 @@
 # # Imports
 # +
+import time
 from pathlib import Path
 from typing import Tuple, Union
 import re
@@ -30,6 +31,10 @@ import lif.simulation.leaky_int_fire as lifv1
 from lif.simulation import run
 
 from lif.plot import plot
+# -
+# +
+import multiprocessing as mp
+from multiprocessing.pool import AsyncResult
 # -
 
 
@@ -76,15 +81,13 @@ st_params = do.SpaceTimeParams(
 mk_time = lambda: dt.datetime.utcnow().isoformat()
 # -
 # +
-exp_dir = Path('/home/ubuntu/lif_hws/work/results_data')
+exp_dir = Path('/Volumes/MagellanSG/PhD/Data/hws_lif')
+# exp_dir = Path('/home/ubuntu/lif_hws/work/results_data')
 # -
 
 # ## Parallel Params
 # +
-meta_data = do.SimulationMetaData(
-	'HWS1',
-	'Spatial Tuning for unbiased and circularly distributed RF locations'
-	)
+meta_data = do.SimulationMetaData('HWS0', 'Test run with spatial frequency tuning')
 
 all_stim_params = [0, 0.2, 0.4, 0.8,  1, 1.2, 1.6, 2, 4]
 multi_stim_params = do.MultiStimulusGeneratorParams(
@@ -104,10 +107,12 @@ sim_params = do.SimulationParams(
 	multi_stim_params=multi_stim_params,
 	lgn_params=lgn_params,
 	lif_params = lif_params,
-	n_trials = 10
+	n_trials = 10,
+	analytical_convolution=True
 	)
 # -
 # +
+# n_procs = 2
 n_procs = 3
 n_sims_per_partition = 500
 n_partitions, partitioned_n_sims = run.mk_n_simulation_partitions(
@@ -120,7 +125,8 @@ n_partitions, partitioned_n_sims = run.mk_n_simulation_partitions(
 
 # prep stimuli
 # +
-multi_stim_combos = run.create_stimulus(sim_params, force_central_rf_locations=False)
+multi_stim_combos = stimulus.mk_multi_stimulus_params(sim_params.multi_stim_params)
+# multi_stim_combos = run.create_stimulus(sim_params, force_central_rf_locations=False)
 # -
 
 # prep single stim dirs
@@ -128,8 +134,11 @@ multi_stim_combos = run.create_stimulus(sim_params, force_central_rf_locations=F
 results_dir = exp_dir / meta_data.exp_id
 # -
 # +
+print('Making Directories')
+time.sleep(1)
 run.prep_results_dir(results_dir)
 run.prep_temp_results_dirs(results_dir=results_dir, n_stims = multi_stim_combos)
+print('made directories')
 # -
 
 # create lgn layers
@@ -148,17 +157,32 @@ run._save_pickle_file(
 # -
 
 # pool sims into n_procs multi proc
+
 # +
-import multiprocessing as mp
-from multiprocessing.pool import AsyncResult
+print('starting workers')
+time.sleep(1)
 # -
 # +
+# print(f'Starting Simulations... n_sims: {len(multi_stim_combos)}, n_procs: {n_procs} ({dt.datetime.utcnow().isoformat()})')
+# for i, stim_param in enumerate(multi_stim_combos):
+
+# 	kwds={
+# 		'params': sim_params,
+# 		'n_stim': i,
+# 		'stim_params': stim_param,
+# 		'lgn_layers': all_lgn_layers,
+# 		'results_dir': results_dir,
+# 		'partitioned_sim_lgn_idxs': partitioned_n_sims,
+# 		'log_print': True
+# 	}
+# 	run.run_partitioned_single_stim(**kwds)
+
+
+# print(f'Done simulations ({dt.datetime.utcnow().isoformat()})')
+
 pool = mp.Pool(processes=n_procs)
 
-print(f'Experiment: {meta_data.exp_id}: {meta_data.comments}')
-print('--------\n\n')
 print(f'Starting Simulations... n_sims: {len(multi_stim_combos)}, n_procs: {n_procs} ({dt.datetime.utcnow().isoformat()})')
-
 for i, stim_param in enumerate(multi_stim_combos):
 
 	pool.apply_async(
@@ -178,6 +202,10 @@ pool.close()
 pool.join()
 
 print(f'Done simulations ({dt.datetime.utcnow().isoformat()})')
+# -
+
+# +
+
 # -
 
 # Save single_stim_results file index

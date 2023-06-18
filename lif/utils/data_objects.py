@@ -1949,6 +1949,8 @@ class SimulationParams(ConversionABC):
     lif_params: LIFParams
     n_trials: int = 10
     "Number of trials to repeat for a single simulation run with a single draw of random vars"
+    analytical_convolution: bool = False
+    "Whether to skip convolution and determine LGN RF responses analytically (faster)"
 
 
 @dataclass

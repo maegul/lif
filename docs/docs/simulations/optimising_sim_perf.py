@@ -593,23 +593,6 @@ stim_slice.dtype
 
 
 
-In [14]: m,n = 4,5
-
-In [15]: A = np.random.rand(m,n)
-
-In [16]: B = np.random.rand(m,n)
-
-In [17]: np.sum(np.multiply(A, B))
-Out[17]: 5.1783176986341335
-
-In [18]: np.tensordot(A,B, axes=((0,1),(0,1)))
-Out[18]: array(5.1783176986341335)
-
-In [22]: A.ravel().dot(B.ravel())
-Out[22]: 5.1783176986341335
-
-In [21]: np.einsum('ij,ij',A,B)
-Out[21]: 5.1783176986341326
 
 # +
 %timeit sp2 = np.einsum('ij,ij...', spat_filt, stim_slice)
