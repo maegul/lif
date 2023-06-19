@@ -1958,9 +1958,9 @@ class SimulationResult(ConversionABC):
     stimulus_results_key: Optional[str]
     n_simulation: int
     spikes: Union[np.ndarray, Tuple[np.ndarray, ...]]
-    membrane_potential: np.ndarray
     lgn_responses: Union[LGNLayerResponse, Tuple[LGNLayerResponse, ...]]
     n_trials: int = 1
+    membrane_potential: Optional[np.ndarray] = None
 
     def check_n_trials_consistency(self) -> bool:
         n = self.n_trials
@@ -1968,7 +1968,11 @@ class SimulationResult(ConversionABC):
         if not all((
                 # if not a tuple, then only one trial
                 n == (len(self.spikes) if isinstance(self.spikes, tuple) else 1),
-                n == (self.membrane_potential.shape[0]),
+                (
+                    n == (self.membrane_potential.shape[0])
+                        if self.membrane_potential is not None
+                        else True
+                        ),
                 n == (len(self.lgn_responses) if isinstance(self.lgn_responses, tuple) else 1),
                 )):
             return False
@@ -1981,8 +1985,13 @@ class SimulationResult(ConversionABC):
         else:
             return self.spikes
 
-    def get_mem_pot(self, n_trial: int) -> np.ndarray:
-        return self.membrane_potential[n_trial, :]
+    def get_mem_pot(self, n_trial: int) -> Optional[np.ndarray]:
+        value = (
+            self.membrane_potential[n_trial, :]
+                if self.membrane_potential is not None
+                else None
+                )
+        return value
 
     def get_lgn_response(self, n_trial: int) -> LGNLayerResponse:
         if isinstance(self.lgn_responses, tuple):

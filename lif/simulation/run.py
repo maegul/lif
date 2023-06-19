@@ -566,7 +566,8 @@ def run_single_stim_multi_layer_simulation(
         params: do.SimulationParams,
         stim_params: do.GratingStimulusParams,
         lgn_layers: Union[Tuple[do.LGNLayer], do.ContrastLgnLayerCollection],
-        log_print: bool = False, log_info: Optional[str] = None
+        log_print: bool = False, log_info: Optional[str] = None,
+        save_membrane_data: bool = False
         ) -> Tuple[do.SimulationResult]:
     """
 
@@ -702,11 +703,14 @@ def run_single_stim_multi_layer_simulation(
                 ]
             )
 
-        membrane_potential = v1_mem_pot[
-            0 + (n_lgn_layer * params.n_trials) : params.n_trials + (n_lgn_layer * params.n_trials)
-            ,
-            :
-        ]
+        if save_membrane_data:
+            membrane_potential = v1_mem_pot[
+                0 + (n_lgn_layer * params.n_trials) : params.n_trials + (n_lgn_layer * params.n_trials)
+                ,
+                :
+            ]
+        else:
+            membrane_potential = None
 
         lgn_responses = lgn_layer_responses[
             0 + (n_lgn_layer*params.n_trials) : params.n_trials + (n_lgn_layer*params.n_trials)
@@ -853,7 +857,8 @@ def run_partitioned_single_stim(
         lgn_layers: do.ContrastLgnLayerCollection,
         results_dir: Path,
         partitioned_sim_lgn_idxs: Tuple[Tuple[int, int], ...],
-        log_print: bool = False
+        log_print: bool = False,
+        save_membrane_data: bool = False
         ):
 
     for n_partition, (start, end) in enumerate(partitioned_sim_lgn_idxs):
@@ -868,7 +873,8 @@ def run_partitioned_single_stim(
 
         partitioned_results = run_single_stim_multi_layer_simulation(
                 params, stim_params, partitioned_lgn_layer,
-                log_print=log_print, log_info=log_info
+                log_print=log_print, log_info=log_info,
+                save_membrane_data=save_membrane_data
             )
 
         if log_print:

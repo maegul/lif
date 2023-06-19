@@ -63,9 +63,9 @@ subset_spat_filts = [
 # +
 lgn_params = do.LGNParams(
 	n_cells=30,
-	orientation=do.LGNOrientationParams(ArcLength(30), circ_var=0),
+	orientation=do.LGNOrientationParams(ArcLength(0), circ_var=0.2),
 	circ_var=do.LGNCircVarParams('naito_lg_highsf', 'naito'),
-	spread=do.LGNLocationParams(ratio=1, distribution_alias='jin_etal_on'),
+	spread=do.LGNLocationParams(ratio=2, distribution_alias='jin_etal_on'),
 	filters=do.LGNFilterParams(spat_filters=subset_spat_filts, temp_filters='all'),
 	F1_amps=do.LGNF1AmpDistParams()
 	)
@@ -97,19 +97,22 @@ st_params = do.SpaceTimeParams(
 # ## Meta
 # +
 meta_data = do.SimulationMetaData(
-	'HWS0',
+	'HWS9',
 	'''
-	Test run with spatial frequency tuning
+	Orientation Tuning
+	preferred SF
+	No ratio or biases
 	''')
 # -
 
 # ##  Stim Params
 # +
-all_stim_params = [0, 0.2, 0.4, 0.8,  1, 1.2, 1.6, 2, 4]
+orientations = np.arange(0, 180, 22.5)
+# orientations = [0, 22.5, 45, 67.5, 90, 112.5, 135, 157.5]
 multi_stim_params = do.MultiStimulusGeneratorParams(
-	spat_freqs=all_stim_params,
+	spat_freqs=[0.8],
 	temp_freqs=[4],
-	orientations=[90],
+	orientations=orientations,
 	contrasts=[0.4]
 	)
 # -
@@ -139,8 +142,8 @@ sim_params = do.SimulationParams(
 # ## Sim Logistics
 
 # +
-# n_procs = 2
-n_procs = 3
+n_procs = 1
+# n_procs = 3
 n_sims_per_partition = 500
 n_partitions, partitioned_n_sims = run.mk_n_simulation_partitions(
 	sim_params.n_simulations,
@@ -199,6 +202,7 @@ time.sleep(1)
 # -
 # +
 print(f'Starting Simulations... n_sims: {len(multi_stim_combos)}, n_procs: {n_procs} ({dt.datetime.utcnow().isoformat()})')
+
 for i, stim_param in enumerate(multi_stim_combos):
 
 	kwds={
