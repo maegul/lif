@@ -67,7 +67,7 @@ lgn_params = do.LGNParams(
 	n_cells=30,
 	orientation=do.LGNOrientationParams(ArcLength(0), circ_var=0),
 	circ_var=do.LGNCircVarParams('naito_lg_highsf', 'naito'),
-	spread=do.LGNLocationParams(ratio=1, distribution_alias='jin_etal_on'),
+	spread=do.LGNLocationParams(ratio=6, distribution_alias='jin_etal_on'),
 	filters=do.LGNFilterParams(spat_filters=subset_spat_filts, temp_filters='all'),
 	F1_amps=do.LGNF1AmpDistParams()
 	)
@@ -99,18 +99,19 @@ st_params = do.SpaceTimeParams(
 # ## Meta
 # +
 meta_data = do.SimulationMetaData(
-	'HWS0',
-	'''Test run with spatial frequency tuning
+	'HWS6',
+	'''Orientation Tuning with increasingly focused Sagar orientation and specific ratio
 	''')
 # -
 
 # ##  Stim Params
 # +
-all_stim_params = [0, 0.2, 0.4, 0.8,  1, 1.2, 1.6, 2, 4]
+orientations = np.arange(0, 180, 22.5)
+# orientations = [0, 22.5, 45, 67.5, 90, 112.5, 135, 157.5]
 multi_stim_params = do.MultiStimulusGeneratorParams(
-	spat_freqs=all_stim_params,
+	spat_freqs=[0.8],
 	temp_freqs=[4],
-	orientations=[90],
+	orientations=orientations,
 	contrasts=[0.4]
 	)
 # -
@@ -142,20 +143,20 @@ sim_params = do.SimulationParams(
 
 # +
 # Define parameter sweeps
-multi_sim_params_ratios = [1, 2, 3, 4]
-def sim_param_update_ratio(sim_params: do.SimulationParams, value):
-	new_sim_params = copy.deepcopy(sim_params)
-	new_sim_params.lgn_params.spread.ratio = value
-	return new_sim_params
+# multi_sim_params_ratios = [1, 2, 3, 4]
+# def sim_param_update_ratio(sim_params: do.SimulationParams, value):
+# 	new_sim_params = copy.deepcopy(sim_params)
+# 	new_sim_params.lgn_params.spread.ratio = value
+# 	return new_sim_params
 
-multi_sim_params_cv = [0.1, 0.2, 0.3]
+multi_sim_params_cv = [0, 0.2, 0.4, 0.6, 0.8, 1]
 def sim_param_update_cv(sim_params: do.SimulationParams, value):
 	new_sim_params = copy.deepcopy(sim_params)
 	new_sim_params.lgn_params.orientation.circ_var = value
 	return new_sim_params
 
 multi_sim_update_agents = (
-	{'values': multi_sim_params_ratios, 'func': sim_param_update_ratio },
+	# {'values': multi_sim_params_ratios, 'func': sim_param_update_ratio },
 	{'values': multi_sim_params_cv, 'func': sim_param_update_cv },
 	)
 # -

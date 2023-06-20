@@ -828,9 +828,14 @@ def save_simulation_results(
         raise exc.SimulationError('Failed to save results') from e
 
 
-def prep_results_dir(results_dir: Path):
+def prep_results_dir(results_dir: Path, suppress_exc: bool = False):
     if results_dir.exists():
-        raise ValueError(f'Results directory already exists ... start new experiment')
+        message = f'Results directory already exists ... start new experiment'
+        if not suppress_exc:
+            raise ValueError(message)
+        else:
+            print(f'WARNING: {message}')
+
     else:
         results_dir.mkdir()
 
@@ -969,8 +974,8 @@ def save_merge_single_stim_results(
 
 def get_all_experiment_single_stim_results_files(
         results_dir: Path,
-        multi_stim_combos: Tuple[do.GratingStimulusParams]
-        ) -> Dict[Optional[int], Path]:
+        multi_stim_combos: Tuple
+        ) -> Dict[int, Path]:
 
     if (not results_dir.exists()):
         raise ValueError(f'Results directory does not exist: {results_dir}')
@@ -981,19 +986,20 @@ def get_all_experiment_single_stim_results_files(
     result_files_idxs = {}
     for result_file in all_result_files:
         i = _parse_stim_results_path(result_file)
-        result_files_idxs[i] = result_file
+        if i is not None:
+            result_files_idxs[i] = result_file
 
     # checking that idxs match what would be expected by the number of stim combos
     if not (
             # exclude None as not match
-            sorted(list(k for k in result_files_idxs.keys() if k is not None))
+            sorted(list(k for k in result_files_idxs.keys()))
             ==
             list(range(len(multi_stim_combos)))
             ):
         raise exc.SimulationError(
             f"Stim result numbering doesn't match len of multi_stim comb: {len(multi_stim_combos)}")
 
-    result_files_idxs = cast(Dict[Optional[int], Path], result_files_idxs)
+    result_files_idxs = cast(Dict[int, Path], result_files_idxs)
 
     return result_files_idxs
 
