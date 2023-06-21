@@ -135,18 +135,23 @@ def main():
 	# ## Meta
 	# +
 	meta_data = do.SimulationMetaData(
-		'HWS0',
-		'''Test run with spatial frequency tuning
+		'HWS7',
+		'''Orientation Tuning with increasingly focused Sagar orientation and specific ratio...
+		... but at SF 1
+		Orientations x (circ-vars x ratios) at spat_freq = 1
 		''')
 	# -
 
 	# ##  Stim Params
 	# +
-	all_stim_params = [0, 0.2, 0.4, 0.8,  1, 1.2, 1.6, 2, 4]
+	# spat_freqs = [0, 0.2, 0.4, 0.8,  1, 1.2, 1.6, 2, 4]
+	# spat_freqs = [0.4, 0.8,  1, 1.2, 1.6, 2, 4]
+	orientations = list(np.arange(0, 180, 22.5))
+
 	multi_stim_params = do.MultiStimulusGeneratorParams(
-		spat_freqs=all_stim_params,
+		spat_freqs=[1],  # incrementing this up
 		temp_freqs=[4],
-		orientations=[90],
+		orientations=orientations,
 		contrasts=[0.4]
 		)
 	# -
@@ -178,13 +183,13 @@ def main():
 
 	# +
 	# Define parameter sweeps
-	multi_sim_params_ratios = [1, 2, 3, 4]
+	multi_sim_params_ratios = [1, 2, 3, 4, 5, 6]
 	def sim_param_update_ratio(sim_params: do.SimulationParams, value):
 		new_sim_params = copy.deepcopy(sim_params)
 		new_sim_params.lgn_params.spread.ratio = value
 		return new_sim_params
 
-	multi_sim_params_cv = [0.1, 0.2, 0.3]
+	multi_sim_params_cv = [0, 0.2, 0.4, 0.6, 0.8, 1]
 	def sim_param_update_cv(sim_params: do.SimulationParams, value):
 		new_sim_params = copy.deepcopy(sim_params)
 		new_sim_params.lgn_params.orientation.circ_var = value
