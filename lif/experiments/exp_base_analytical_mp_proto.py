@@ -5,7 +5,7 @@ import itertools
 import copy
 import time
 from pathlib import Path
-from typing import Tuple, Union, Dict, List, TypedDict, Callable
+from typing import Tuple, Union, Dict, List, TypedDict, Callable, Optional
 import re
 import datetime as dt
 import numpy as np
@@ -48,9 +48,13 @@ class MultiSimAgents(TypedDict):
 
 def mk_all_sim_params(
 		sim_params: do.SimulationParams,
-		multi_sim_update_agents: Tuple[MultiSimAgents, ...]
+		multi_sim_update_agents: Optional[Tuple[MultiSimAgents, ...]]
 		) -> List[do.SimulationParams]:
 	# +
+
+	if multi_sim_update_agents is None:
+		return [sim_params]
+
 	# repeat funcs for each value
 	all_agents = [
 			[(agent['func'], v) for v in agent['values']]
@@ -190,6 +194,9 @@ def main():
 		{'values': multi_sim_params_ratios, 'func': sim_param_update_ratio },
 		{'values': multi_sim_params_cv, 'func': sim_param_update_cv },
 		)
+
+	# Just make none if want to use only base sim params
+	# multi_sim_update_agents = None
 	# -
 	# +
 	all_sim_params = mk_all_sim_params(sim_params, multi_sim_update_agents)
