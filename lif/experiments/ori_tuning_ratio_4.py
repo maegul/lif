@@ -178,7 +178,6 @@ for agent_combos in all_agent_combos:
 	all_sim_params.append(new_sim)
 # -
 
-
 # ## Sim Logistics
 
 # +
@@ -223,7 +222,7 @@ print('Making Directories')
 time.sleep(1)
 # can't suppress until stim results not stored by iteration index
 run.prep_results_dir(results_dir, suppress_exc=False)
-run.prep_temp_results_dirs(results_dir=results_dir, n_stims = multi_stim_combos)
+run.prep_temp_results_dirs(results_dir=results_dir, n_stims = all_param_combos)
 print('made directories')
 # -
 
