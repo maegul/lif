@@ -36,9 +36,12 @@ Examples:
 # # Imports
 import random
 from textwrap import dedent
-from typing import List, cast, Dict, Tuple, Sequence, Optional, Callable, Any
+from typing import (
+    List, cast, Dict, Tuple, Sequence, Optional, Callable, Any, Union,
+    overload
+    )
 from collections import abc
-from itertools import combinations, combinations_with_replacement
+import itertools as it
 import json
 from dataclasses import dataclass
 
@@ -578,41 +581,90 @@ def mk_contrast_lgn_layer_collection_from_record(
 
 # # Cell indices for multiple trials
 
-
+@overload
 def mk_repeated_lgn_cell_idxs(
-        n_trials: int, n_cells: int,
+        n_trials: int,
+        n_cells: int,
+        n_lgn_layers: Optional[int] = None
+        ) -> Tuple[int, ...]: ...
+@overload
+def mk_repeated_lgn_cell_idxs(
+        n_trials: int,
+        n_cells: Sequence[int],
+        n_lgn_layers: None = None
+        ) -> Tuple[int, ...]: ...
+def mk_repeated_lgn_cell_idxs(
+        n_trials: int,
+        n_cells: Union[int, Sequence[int]],
         n_lgn_layers: Optional[int] = None
         ) -> Tuple[int, ...]:
     """Creates repeated indices for when running multiple trials of the same LGN layer
 
     Indices go through each lgn layer then repeat for each trial
 
+    If n_cells is variable (different for each layer), and so a Sequence, n_lgn_layers will be
+    inferred from the length of that sequence
+
     Examples:
         >>> mk_repeated_lgn_cell_idxs(n_trials=3, n_cells=5)
         (0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 0, 1, 2, 3, 4)
     """
 
-    if not n_lgn_layers:
-        # repeated idxs (all cells x n_trials) ... eg (0, 1, 2, 0, 1, 2) (3 cells x 2 trials)
-        repeated_cell_idxs = tuple(
-                n_cell
-                for _ in range(n_trials)  # dummy loop to get repeats
-                    for n_cell in range(n_cells)
-            )
-    # if n_lgn_layers provided
-    else:
+    # constant number of cells per layer
+    if isinstance(n_cells, int):
+
+        # Just repeat cells
+        if not n_lgn_layers:
+            # repeated idxs (all cells x n_trials) ... eg (0, 1, 2, 0, 1, 2) (3 cells x 2 trials)
+            repeated_cell_idxs = tuple(
+                    n_cell
+                    for _ in range(n_trials)  # dummy loop to get repeats
+                        for n_cell in range(n_cells)
+                )
+
+        # if n_lgn_layers provided
+        else:
+            # repeated idxs  ...
+            #   for each lgn layer, repeat idxs of those cells n_trials times
+            #   eg, if cells belong to lgn_layers as follows (1, 1, 1, 2, 2, 2, 3, 3, 3)
+            #   and n_trials is 3
+            #   provide idxs as (0, 1, 2, 0, 1, 2, 0, 1, 2, 3, 4, 5, 3, 4, 5, ...)
+            #   IE (00, 01, 02, 00, 01, 02, 00, 01, 02, 10, 11, 12, ...) (00 = lgn 0, cell 0)
+            repeated_cell_idxs = tuple(
+                    n_cell + (n_sim * n_cells)
+                    for n_sim in range(n_lgn_layers)
+                        for _ in range(n_trials)  # dummy loop to get repeats
+                            for n_cell in range(n_cells)
+                )
+
+    if isinstance(n_cells, (tuple, list)):
+    # if isinstance(n_cells, Sequence):
+
+        # this should be true, just in case type checker doesn't realise
+        # n_lgn_layers = cast(int, n_lgn_layers)
+
+        offsets = np.r_[0, np.cumsum(n_cells)[:-1]]
+        repeated_cell_idxs = np.r_[
+            tuple(
+                    np.tile(np.arange(rl)+cum_offset, n_trials)
+                    for rl, cum_offset in zip(n_cells, offsets)
+                )
+        ]
+
+
+        # if n_lgn_layers provided
         # repeated idxs  ...
         #   for each lgn layer, repeat idxs of those cells n_trials times
         #   eg, if cells belong to lgn_layers as follows (1, 1, 1, 2, 2, 2, 3, 3, 3)
         #   and n_trials is 3
         #   provide idxs as (0, 1, 2, 0, 1, 2, 0, 1, 2, 3, 4, 5, 3, 4, 5, ...)
         #   IE (00, 01, 02, 00, 01, 02, 00, 01, 02, 10, 11, 12, ...) (00 = lgn 0, cell 0)
-        repeated_cell_idxs = tuple(
-                n_cell + (n_sim * n_cells)
-                for n_sim in range(n_lgn_layers)
-                    for _ in range(n_trials)  # dummy loop to get repeats
-                        for n_cell in range(n_cells)
-            )
+        # repeated_cell_idxs = tuple(
+        #         n_cell + (n_sim * n_cells)
+        #         for n_sim in range(n_lgn_layers)
+        #             for _ in range(n_trials)  # dummy loop to get repeats
+        #                 for n_cell in range(n_cells)
+        #     )
 
     return repeated_cell_idxs
 

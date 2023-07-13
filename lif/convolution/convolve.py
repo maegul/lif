@@ -2,6 +2,7 @@
 Using receptive fields and stimuli to create firing rates through convolution
 """
 from typing import Tuple, Union, Dict, Optional, Sequence, overload, cast
+import itertools as it
 
 from brian2.monitors.ratemonitor import PopulationRateMonitor
 from brian2.monitors.spikemonitor import SpikeMonitor
@@ -160,14 +161,14 @@ def mk_lgn_response_spikes(
         response_arrays: Tuple[np.ndarray, ...],
         n_trials: int,
         n_lgn_layers: int,
-        n_inputs: int,
+        n_inputs: Union[int, Sequence[int]],
         ) -> Tuple[do.LGNLayerResponse, ...]: ...
 def mk_lgn_response_spikes(
         st_params: do.SpaceTimeParams,
         response_arrays: Tuple[np.ndarray, ...],
         n_trials: Optional[int] = None,
         n_lgn_layers: Optional[int] = None,
-        n_inputs: Optional[int] = None,
+        n_inputs: Optional[Union[int, Sequence[int]]] = None,
         ) -> Union[do.LGNLayerResponse, Tuple[do.LGNLayerResponse, ...]]:
     """
 
@@ -177,34 +178,55 @@ def mk_lgn_response_spikes(
     ... better to be explicit.
     """
 
+    # Repeat responses for generating multiple trials of a single response
 
     # tile response arrays appropriately for repeated trials of the same responses
     if (n_trials is not None) and (n_lgn_layers is None):
-        n_cells = len(response_arrays)
         # repeated idxs (all cells x n_trials) ... eg (0, 1, 2, 0, 1, 2) (3 cells x 2 trials)
-        repeated_cell_idxs = cells.mk_repeated_lgn_cell_idxs(n_trials=n_trials, n_cells=n_cells)
+        repeated_cell_idxs = cells.mk_repeated_lgn_cell_idxs(n_trials=n_trials,
+            n_cells=len(response_arrays)
+            )
         response_arrays_for_spiking = tuple(
                 response_arrays[i]
                 for i in repeated_cell_idxs
             )
     # tile response arrays when multiple lgn layers and trials
-    elif (n_trials is not None) and (n_lgn_layers is not None) and (n_inputs is not None):
-        n_cells = n_inputs
+    elif (
+                (n_trials is not None) and (n_lgn_layers is not None)
+                and (n_inputs is not None) and isinstance(n_inputs, int)
+            ):
         # repeated idxs for trials but with multiple lgn layers, each with multiple cells
         # Thus ... cells x Trials x LGN Layers
         # EG (0, 1, 2, 0, 1, 2, 3, 4, 5, 3, 4, 5) (3 cells x 2 trials x 2 lgn layers)
+        # if
         repeated_cell_idxs = cells.mk_repeated_lgn_cell_idxs(
-            n_trials=n_trials, n_cells=n_cells,
-            n_lgn_layers=n_lgn_layers)
-        cells.mk_repeated_lgn_cell_idxs(
-            n_trials=n_trials, n_cells=30,
+            n_trials=n_trials, n_cells=n_inputs,
             n_lgn_layers=n_lgn_layers)
         response_arrays_for_spiking = tuple(
                 response_arrays[i]
                 for i in repeated_cell_idxs
             )
+    # tile response arrays when multiple layers and trials but each layer
+    # has a variable amount of "overlapping regions" for synchrony
+    elif (
+                (n_trials is not None) and (n_lgn_layers is not None)
+                # when layers have different "cells" because of synchrony and overlap maps
+                and (n_inputs is not None) and isinstance(n_inputs, (tuple, list))
+            ):
+        # n_cells = n_inputs
+        # repeated idxs for trials but with multiple lgn layers, each with multiple cells
+        # Thus ... cells x Trials x LGN Layers
+        # EG (0, 1, 2, 0, 1, 2, 3, 4, 5, 3, 4, 5) (3 cells x 2 trials x 2 lgn layers)
+        # EXCEPT, when using synchrony and the number of "cells"/overlapping regions for each
+        # ... layer is different.  Then, the same will be done but the sequence will be irregular
+        # ... so as to reflect the different numbers of regions in each layer
+        repeated_cell_idxs = cells.mk_repeated_lgn_cell_idxs(
+            n_trials=n_trials, n_cells=n_inputs)
+        response_arrays_for_spiking = tuple(
+                response_arrays[i]
+                for i in repeated_cell_idxs
+            )
     else:
-        n_cells = len(response_arrays)
         response_arrays_for_spiking = response_arrays
 
     spikes = mk_response_poisson_spikes(st_params, response_arrays_for_spiking)
@@ -223,15 +245,16 @@ def mk_lgn_response_spikes(
 
     # older way ... normal for loop
     # for ci in cell_indices:
-    #     # convert to aboslute time values (as will be a Time quantity)
-    #     # Use seconds to convert and then to store
+         # convert to aboslute time values (as will be a Time quantity)
+         # Use seconds to convert and then to store
     #     cell_spike_times: Time[np.ndarray] = Time(spike_times[ci] / bn.second, 's')
     #     all_cell_spike_times.append(cell_spike_times)
     # all_cell_spike_times = tuple(all_cell_spike_times)
 
     # Create response objects
     # Trials but not multiple sims/lgn layers
-    if (not (n_trials is None)) and (n_lgn_layers is None):
+    if (n_trials is not None) and (n_lgn_layers is None):
+        n_cells = len(response_arrays)
         # make a separate lgn response object for each trial
         # IE, each ojbect has responses of all cells' of the lgn layer, but for only trial
         lgn_response = tuple(
@@ -247,7 +270,8 @@ def mk_lgn_response_spikes(
             )
 
     # trials and multiple lgn layers / sims
-    if (not (n_trials is None)) and (not (n_lgn_layers is None)):
+    elif (not (n_trials is None)) and (not (n_lgn_layers is None)) and isinstance(n_inputs, int):
+        n_cells = n_inputs
         # create a flattened tuple in same structure as input response arrays
         # each response object is for a single trial for a single lgn layer
         # eg (layer1-trial1, layer1-trial2, layer2-trial1, layer2-trial2) (2 trials x 2 layers)
@@ -275,6 +299,76 @@ def mk_lgn_response_spikes(
                 #   trial for each layer is a separate response here ... go through each one
                 for trial in range(n_lgn_layers * n_trials)
             )
+
+    # variable number of cells per layer (ie for synchrony)
+    elif (
+                (not (n_trials is None)) and (not (n_lgn_layers is None))
+                and isinstance(n_inputs, (tuple, list))
+            ):
+
+        # Collect spike times into separate trial-layers
+
+        # each pair of values will be the start and end idxs of slices that will provide each
+        # trial-layer subset of arrays
+        # 1. take the number of cells in each layer from n_inputs and repeat this number n_trials
+        # 2. Flatten each of these repeats of the number into a single iterable
+        # 3. Perform a cumulative sum over all these numbers,
+        # 4. starting the cumulative sum from 0 so that the first slice can start at the beginning
+        # Result is iterable of numbers, each number representing the number of cells
+        # that make up a single trial-layer.
+        # Eg, for n_inputs (5, 7, 3) and n_trials 2: (0, 5, 10, 17, 24, 27, 30)
+        # for (0,5), (5, 10), (10, 17), ...
+
+        trial_idxs = tuple(
+            it.accumulate(                             # 3
+                it.chain.from_iterable(                # 2
+                        it.repeat(n_cells, n_trials)   # 1
+                        for n_cells in n_inputs
+                    ),                                 # 4
+                initial=0
+                )
+            )
+
+        # Make iterable (generator) of each trial-layer by slicing all spike times using
+        # values calculated above
+        cell_spike_times = (
+                all_cell_spike_times[a : b]
+                for a,b in zip(
+                        trial_idxs[:-1],
+                        trial_idxs[1:]
+                    )
+            )
+
+        # Collect response arrays into separate trial-layers to pair up with spike times above
+
+        # Slicing indices for each layer without trials
+        resp_rate_idxs_base = tuple(it.accumulate(n_inputs, initial=0) )
+
+        # take all start indices (of the slice for each layer) and repeat for all trials
+        starts = tuple(it.chain.from_iterable(
+                it.repeat(rr_idx, n_trials)
+                for rr_idx in resp_rate_idxs_base[:-1]
+            ))
+
+        # take all end indices (of the slice for each layer) and repeat for all trials
+        ends = tuple(it.chain.from_iterable(
+                it.repeat(rr_idx, n_trials)
+                for rr_idx in resp_rate_idxs_base[1:]
+            ))
+
+        # Generator of each trial-layer response array (should pair up with spike time arrays above)
+        cell_response_arrays = (
+                response_arrays[a : b]
+                for a,b in zip(starts, ends)
+            )
+
+        # All lgn responses
+        lgn_response = tuple(
+                do.LGNLayerResponse(cell_spike_times = spike_times, cell_rates = responses)
+                    for spike_times, responses
+                    in zip(cell_spike_times, cell_response_arrays)
+            )
+
     else:
         lgn_response = do.LGNLayerResponse(
                 cell_rates = response_arrays,
@@ -282,8 +376,6 @@ def mk_lgn_response_spikes(
             )
 
     return lgn_response
-
-
 
 
 def mk_sf_tf_poisson(
