@@ -27,7 +27,10 @@ from ..convolution import (
     soodak_rf as srf,
     correction
     )
-from ..lgn import cells
+from ..lgn import (
+    cells,
+    spat_filt_overlap as sfo
+    )
 from ..stimulus import stimulus
 from . import (
     all_filter_actual_max_f1_amp as all_max_f1,
@@ -97,7 +100,6 @@ def create_stimulus(
     return all_stim_params
 
 
-do.ContrastLgnLayerCollection
 
 def create_all_lgn_layers(
         params: do.SimulationParams,
@@ -161,6 +163,57 @@ def create_all_lgn_layers(
     return all_lgn_layers
 
 
+def create_all_lgn_layer_overlapping_regions(
+        all_lgn_layers: do.ContrastLgnLayerCollection,
+        params: do.SimulationParams
+        ) -> Dict[do.ContrastValue, Tuple[sfo.LGNOverlapMap, ...]]:
+
+    # key is contrast
+    all_layers_overlaps = {
+        contrast: tuple(
+                    sfo.mk_lgn_overlapping_weights_vect(lgn_layer, params.space_time_params)
+                        for lgn_layer in lgn_layers
+                )
+        for contrast, lgn_layers in all_lgn_layers.items()
+    }
+
+    return all_layers_overlaps
+
+
+def mk_adjusted_overlapping_regions_wts(
+        all_lgn_overlapping_maps: Dict[do.ContrastValue, Tuple[sfo.LGNOverlapMap, ...]]
+        ) -> Dict[do.ContrastValue, Tuple[sfo.LGNOverlapMap, ...]]:
+
+    all_adjusted_overlap_maps = dict()
+
+    for contrast_value, overlap_maps in all_lgn_overlapping_maps.items():
+        adjusted_overlap_maps = tuple(
+                    {
+                    cell_idxs: {
+                        cell_idx: cell_wt / len(cell_idxs)
+                        for cell_idx, cell_wt in cell_wts.items()
+                    }
+                    for cell_idxs, cell_wts in overlap_map.items()
+                }
+                for overlap_map in overlap_maps
+            )
+
+        all_adjusted_overlap_maps[contrast_value] = adjusted_overlap_maps
+
+    return all_adjusted_overlap_maps
+
+
+def create_all_lgn_layer_adjusted_overlapping_regions(
+        all_lgn_layers: do.ContrastLgnLayerCollection,
+        params: do.SimulationParams
+        ) -> Dict[do.ContrastValue, Tuple[sfo.LGNOverlapMap, ...]]:
+
+    all_overlap_maps = create_all_lgn_layer_overlapping_regions(all_lgn_layers, params)
+    adjusted_overlap_maps = mk_adjusted_overlapping_regions_wts(all_overlap_maps)
+
+    return adjusted_overlap_maps
+
+
 def create_v1_lif_network(
         params: do.SimulationParams
         ) -> do.LIFNetwork:
@@ -177,17 +230,55 @@ def create_v1_lif_network(
 
 
 def create_multi_v1_lif_network(
-        params: do.SimulationParams
+        params: do.SimulationParams,
+        n_simulations: Optional[int] = None,
+        overlap_map: Optional[Tuple[sfo.LGNOverlapMap, ...]] = None,
         ) -> do.LIFMultiNetwork:
+
+    """
+
+    n_simulations: for covering when partitions of full simulatinos are being run
+    overlap_map: if provided, v1 network will be prepared to receive inputs from a variable
+    number of inputs, as can be the case in if the overlapping regions are providing input to
+    each V1 cell.  Generally, this is not effective for actual synchrony.
+    """
 
     # At some point, multiple sets of inputs may be simulated simultaneously
     # ... but for now, one at a time.
-    v1_model = lif_model.mk_multi_lif_v1(
-        n_inputs=params.lgn_params.n_cells,
-        lif_params=params.lif_params,
-        n_trials=params.n_trials,
-        n_simulations=params.n_simulations
+
+    n_simulations_arg = (
+            params.n_simulations
+                if n_simulations is None else
+            n_simulations
         )
+
+    if overlap_map is not None:
+        # IE, for each layer, number of overlap regions in that layer
+        # each region will become a separate input/LGNCell/Synapse
+        n_inputs_arg = tuple(len(layer) for layer in overlap_map)
+        if not (len(n_inputs_arg) == params.n_simulations):
+            raise exc.SimulationError(
+                f'overlapping regions map should contain'
+                )
+        n_cells_arg = params.lgn_params.n_cells
+
+        v1_model = lif_model.mk_multi_lif_v1(  # doing here to help typing know what input args are
+            n_inputs=n_inputs_arg, n_cells= n_cells_arg,
+            lif_params=params.lif_params,
+            n_trials=params.n_trials,
+            n_simulations=n_simulations_arg
+            )
+    else:
+        n_inputs_arg = params.lgn_params.n_cells
+        n_cells_arg = None
+
+        v1_model = lif_model.mk_multi_lif_v1(  # duplicating to help typing know what input args are
+            n_inputs=n_inputs_arg, n_cells= n_cells_arg,
+            lif_params=params.lif_params,
+            n_trials=params.n_trials,
+            n_simulations=n_simulations_arg
+            )
+
 
     return v1_model
 
@@ -562,10 +653,13 @@ def mk_n_simulation_partitions(
     return n_partitions, partition_idxs
 
 
+# # Main single stim simulation function
 def run_single_stim_multi_layer_simulation(
         params: do.SimulationParams,
         stim_params: do.GratingStimulusParams,
+        synch_params: do.SynchronyParams,
         lgn_layers: Union[Tuple[do.LGNLayer], do.ContrastLgnLayerCollection],
+        lgn_overlap_maps: Optional[Tuple[sfo.LGNOverlapMap, ...]],
         log_print: bool = False, log_info: Optional[str] = None,
         save_membrane_data: bool = False
         ) -> Tuple[do.SimulationResult]:
@@ -581,35 +675,30 @@ def run_single_stim_multi_layer_simulation(
     #     If there is partitioning being done, it is up to the caller to manage the splitting
     #     of lgn_layers.
 
-    # lgn layer responses
-
     # do once per simulation
     actual_max_f1_amps = all_max_f1.mk_actual_max_f1_amps(stim_params=stim_params)
 
-    # stim
+    # ## Make stimulus (if necessary)
     if params.analytical_convolution:
         stim_array = None
     else:
         stim_array = stimulus.load_stimulus_from_params(params.space_time_params, stim_params)
 
-    # v1 model
+    # ## Make v1 model
 
-    v1_model = create_multi_v1_lif_network(params)
+    # whether using synchrony or not, the v1 network is the same
+    # the same number of inputs go to the same number of v1 cells
+    # (as synchrony runs by duplicating synchronous spikes to "true LGN cells").
 
-    # LGN Responses
+    v1_model = create_multi_v1_lif_network(
+                params,
+                # as partition of all simulations, use n_lgn_layers as proxy for size of partition
+                n_simulations = n_lgn_layers
+            )
 
-    # Convolution responses
+    # ## LGN Responses
 
-    # Nested tuple:    |- responses of cells for a single layer
-    #                  V       V - tuple of responses for all layers
-    #               ( ( ), ( ) )
-    # all_responses = tuple(
-    #     loop_lgn_cells_mk_response(
-    #             lgn,
-    #             params, stim_array, actual_max_f1_amps, stim_params
-    #         )
-    #     for lgn in lgn_layers
-    # )
+    # ### Convolution responses
 
     if log_print:
         def log_func1(i, log_info):
@@ -620,6 +709,13 @@ def run_single_stim_multi_layer_simulation(
         def log_func2(i, _): pass
         log_func=log_func2
 
+
+    # Nested tuple:    |- responses of cells for a single layer
+    #                  V       V - tuple of responses for all layers
+    #               ( (. . .), (. . . ) )
+    # IE ... Nested iterable:
+    #           inner = response of each cell of a layer
+    #           outer = each layer
     all_responses: List[Tuple[do.ConvolutionResponse,...]] = list()
     for i, lgn in enumerate(lgn_layers):
         log_func(i, log_info)
@@ -631,18 +727,81 @@ def run_single_stim_multi_layer_simulation(
         all_responses.append(lgn_resp)
 
 
-    # Flattened tuple of response arrays: (r11, r12, ... r1n, ... r21, r22, ... r_mn)
-    #   where m = number of layers, n = number of cells per layer
-    #     |- Temporal response of a single cell
-    #     |                     Response arrays of each cell from a single LGN layer
-    #     |                         of length lgn_params.n_cells (ie, `n` input cells)
-    #     V                 |------------------|
-    #  ( array[], array[], ... array[], array[] )
-    response_arrays = tuple(
-            single_response.response
-            for responses in all_responses  # first layer is responses for a single layer
-                for single_response in responses # second layer is cellular responses within a layer
-        )
+    # ### Flatten response arrays
+
+    # #### Synchrony region response arrays ... create in flattening process
+
+    # If synchrony, create synchronous overlapping regions response arrays
+    if synch_params.lgn_has_synchrony:
+        if lgn_overlap_maps is None:
+            raise ValueError(f'lgn overlap maps must be provided if synchrony is to be implemented')
+
+        response_arrays_collector: Sequence[np.ndarray] = list()
+
+        # get temporal dimension size
+        temp_array_size = all_responses[0][0].response.size
+        # for each layer
+        for i, layer_responses in enumerate(all_responses):
+            overlap_map = lgn_overlap_maps[i]
+            # n_regions = len(overlap_map)
+
+            # put all original cell response arrays into a 2D array for better processing
+            layer_responses_array = np.zeros(shape=(len(layer_responses), temp_array_size))
+            for i, cell_response in enumerate(layer_responses):
+                layer_responses_array[i] = cell_response.response
+
+            # construct new response array based on number of overlapping regions
+            # all_new_resps = np.zeros(shape=(n_regions, temp_array_size))
+
+            # multiply out new responses
+            # For each overlapping region ...
+            for i, (cell_idxs, overlap_wts) in enumerate(overlap_map.items()):
+                # cell_idxs: indices of lgn_layer.cells of the cells overlapping in this region
+                # overlap_wts: contributions of each cell to this region, relative to cell's magnitude
+
+                # multiply each cell's response by its weighting for the overlapping region
+                # then sum over all the cells to create a single response array
+                # 1: aggregate into single response (axis=0 means over the cells)
+                # 2: get response arrays of all overlapping cells for this region
+                # 3: multiply response arrays by wts
+                #       - convert values to array (via tuple) which will be in same order as cell_idxs
+                #       - slice with newaxis so that the values will be broadcast onto the cell resonses
+                overlapping_region_response: np.ndarray = np.sum(           # 1
+                    layer_responses_array[cell_idxs, :]                     # 2
+                    *
+                    np.array(tuple(overlap_wts.values()))[:, np.newaxis]    # 3
+                    ,
+                    axis=0
+                    )
+
+                # add response array to giant flattened list of response arrays
+                response_arrays_collector.append(overlapping_region_response)
+
+        # Flattened tuple of response arrays: (r11, r12, ... r1n, ... r21, r22, ... r_mn)
+        #   where m = number of layers, n = number of OVERLAPPING REGIONS per layer
+        #     /- Temporal response of a single OVERLAPPING REGION
+        #     |                   /- Response arrays of each REGION from a single LGN layer
+        #     |                   V     of length `len(overlap_map)` FOR EACH LAYER
+        #     V               |--------------------|
+        #  ( array[], array[], ... array[], array[] )
+        response_arrays = tuple(response_arrays_collector)
+
+
+    # #### No Synchrony ... just flattening
+
+    else:
+        # Flattened tuple of response arrays: (r11, r12, ... r1n, ... r21, r22, ... r_mn)
+        #   where m = number of layers, n = number of cells per layer
+        #     |- Temporal response of a single cell
+        #     |                   |- Response arrays of each cell from a single LGN layer
+        #     |                   V     of length lgn_params.n_cells (ie, `n` input cells)
+        #     V               |--------------------|
+        #  ( array[], array[], ... array[], array[] )
+        response_arrays = tuple(
+                single_response.response
+                for responses in all_responses  # first layer is responses for a single layer
+                    for single_response in responses # second layer is cellular responses within a layer
+            )
 
 
     # spikes
@@ -655,14 +814,22 @@ def run_single_stim_multi_layer_simulation(
     # but (cell11, cell12, ... cell21, cell22, ... cell_mn)
 
     # Where are trials?
+    # They are only relevant for poisson spikes, so they arise in the data structures here
 
-    # response objects in order of (trials x lgn_layers)
+    # produce number of inputs per layer if synchrony is being used
+    if synch_params.lgn_has_synchrony and (lgn_overlap_maps is not None):
+        n_inputs = [len(overlap_map) for overlap_map in lgn_overlap_maps]
+    else:
+        n_inputs = params.lgn_params.n_cells
+
+    # response objects flattened in order of (trials x lgn_layers)
     # eg (trial1-layer1, trial2-layer1, trial1-layer2, trial2-layer2, ...)
     lgn_layer_responses = convolve.mk_lgn_response_spikes(
-            params.space_time_params, response_arrays,
+            params.space_time_params,
+            response_arrays = response_arrays,
             n_trials = params.n_trials,
             n_lgn_layers=n_lgn_layers,
-            n_inputs=params.lgn_params.n_cells
+            n_inputs=n_inputs  # either int or list of ints if synchrony and variable n cells per layer
         )
 
     # v1 model run and collect results
@@ -673,10 +840,29 @@ def run_single_stim_multi_layer_simulation(
     # Should be in same order as above
     # but just flattened arrays of spike_idxs ... ie, spike_idx refers to which
     # response object in lgn_layer_responses
-    spike_idxs, spike_times = (
-        lif_model
-        .mk_input_spike_indexed_arrays(lgn_response=lgn_layer_responses)
-        )
+
+    if synch_params.lgn_has_synchrony:
+        if lgn_overlap_maps is None:
+            raise ValueError(f'lgn overlap maps must be provided if synchrony is to be implemented')
+
+        spike_idxs, spike_times = (
+            lif_model
+            .mk_input_spike_indexed_arrays(
+                lgn_response=lgn_layer_responses,
+                overlapping_region_map = lgn_overlap_maps,
+                synchrony_params = synch_params,
+                temp_ext = params.space_time_params.temp_ext,
+                n_layers = n_lgn_layers,
+                n_trials = params.n_trials,
+                n_cells = params.lgn_params.n_cells
+                )
+            )
+
+    else:
+        spike_idxs, spike_times = (
+            lif_model
+            .mk_input_spike_indexed_arrays(lgn_response=lgn_layer_responses )
+            )
 
     v1_model.reset_spikes(spike_idxs, spike_times, spikes_sorted=False)
     v1_model.run(params.space_time_params)
@@ -855,11 +1041,14 @@ def prep_temp_results_dirs(results_dir: Path, n_stims: Union[int, Sequence]):
         stim_dir.mkdir()
 
 
+# # Main RUN for single stim for MP function
 def run_partitioned_single_stim(
         params: do.SimulationParams,
         n_stim: int,
         stim_params: do.GratingStimulusParams,
+        synch_params: do.SynchronyParams,
         lgn_layers: do.ContrastLgnLayerCollection,
+        lgn_overlap_maps: Optional[Dict[do.ContrastValue, Tuple[sfo.LGNOverlapMap, ...]]],
         results_dir: Path,
         partitioned_sim_lgn_idxs: Tuple[Tuple[int, int], ...],
         log_print: bool = False,
@@ -875,9 +1064,18 @@ def run_partitioned_single_stim(
 
 
         partitioned_lgn_layer = lgn_layers[stim_params.contrast][start : end]
+        contrast_specific_overlap_maps = (
+                # pass in only the right overlap regions
+                lgn_overlap_maps[stim_params.contrast][start : end]
+                    if lgn_overlap_maps else
+                None
+            )
 
         partitioned_results = run_single_stim_multi_layer_simulation(
-                params, stim_params, partitioned_lgn_layer,
+                params, stim_params,
+                synch_params = synch_params,
+                lgn_layers = partitioned_lgn_layer,
+                lgn_overlap_maps = contrast_specific_overlap_maps,
                 log_print=log_print, log_info=log_info,
                 save_membrane_data=save_membrane_data
             )
