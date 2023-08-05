@@ -670,7 +670,8 @@ def mk_repeated_lgn_cell_idxs(
 
 
 def mk_repeated_v1_indices_for_inputs_for_all_lgn_and_trial_synapses(
-        n_trials: int, n_inputs: int
+        n_trials: int,
+        n_inputs: Union[int, Sequence[int]]
         ) -> Tuple[int, ...]:
     """Makes indices for v1 cells recieving inputs for lgn cells
 
@@ -679,12 +680,50 @@ def mk_repeated_v1_indices_for_inputs_for_all_lgn_and_trial_synapses(
         (0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2)
     """
 
+
+    # number of lgn cells per layer is constant
     # notice the inversion of the pattern for the lgn cell idxs
-    v1_synapse_indices = tuple(
-            n_trial  # each trial has just one V1 cell, so n_trial = n_v1_cell
-            for n_trial in range(n_trials)
-                for _ in range(n_inputs)  # dummy to get repeats
-                # repeat the same v1 cell index for each lgn cell/input
-        )
+    if isinstance(n_inputs, int):
+        v1_synapse_indices = tuple(
+                n_trial  # each trial has just one V1 cell, so n_trial = n_v1_cell
+                for n_trial in range(n_trials)
+                    for _ in range(n_inputs)  # dummy to get repeats
+                    # repeat the same v1 cell index for each lgn cell/input
+            )
+    # number of lgn cells is not constant but varies for each layer
+    else:
+        v1_synapse_indices = tuple(
+                n_trial  # each trial has one V1 cell, so n_trial = n_v1_cell ... this is the idx
+
+                # 1: iterating over each trial-layer in terms of its ordinal position and n inputs
+                # 2: chain into single iterable all repeats from 3
+                # 3: repeat n_inputs of each layer n_trials times: trials x layers or trial-layers
+                #    ... by repeating each n_input value, each trial is represented, but
+                #    ... but the n_inputs value is kept the same for each trial of the same layer
+                # 4: dummy inner loop repeats n_trial value for each LGN input the current layer has
+                #    ... where the outer loop is iterating over each trial of each layer
+
+                for n_trial, n_inputs in enumerate(                                      # 1
+                            it.chain.from_iterable(                                      # 2
+                                # repeat each layer n_trials times (as trials x layers)
+                                it.repeat(n_input, n_trials)                             # 3
+                                    for n_input in n_inputs
+                            )
+                        )
+                    for _ in range(n_inputs)                                             # 4
+                    # repeat the same v1 cell index for each lgn cell/input
+            )
+
+        # getting paranoid here, in lieu of tests ... quick asserts
+        # sum of all n_inputs values is the source of all synapses ... multiplied by trials
+        assert len(v1_synapse_indices) == sum(n_inputs) * n_trials
+
+        # last synapse index should be the last v1 cell encoded in these indices
+        # which are in ordinal order here, so it should equal the total number of v1 cells
+        # which will be the number of values in n_inputs (each representing an LGN layer)
+        # multiplied by the number of trials.
+        #       V- last is same as max                               V- minus 1 as idxs start 0
+        assert v1_synapse_indices[-1] == ((len(n_inputs)*n_trials) - 1)
+
 
     return v1_synapse_indices

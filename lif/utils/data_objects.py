@@ -1835,7 +1835,10 @@ class LIFParams(ConversionABC):
 
         return self.total_EPSC / n_inputs
 
-    def mk_dict_with_units(self, n_inputs: int):
+    def mk_dict_with_units(
+            self,
+            n_inputs: Union[int, Literal[False]]
+            ):
 
         brian_units = {
             'v_rest': bnun.mV,
@@ -1848,6 +1851,11 @@ class LIFParams(ConversionABC):
         }
 
         values = {}
+
+        # don't normalise if False
+        if n_inputs is False:
+            n_inputs = 1
+
         for key, value in self.asdict_().items():
             # handle total_EPSC ... need to create EPSC variable manually
             if key == 'total_EPSC':

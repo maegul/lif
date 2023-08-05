@@ -11,34 +11,11 @@ from typing import DefaultDict, Tuple, Dict
 
 import numpy as np
 
-import lif.convolution.soodak_rf as srf
-import lif.convolution.correction as correction
-
-import plotly.express as px
-import plotly.graph_objects as go
-
-from lif.utils.units.units import (
-		ArcLength, Time, SpatFrequency, TempFrequency
-	)
 import lif.utils.data_objects as do
-import lif.utils.settings as settings
 
-from lif.receptive_field.filters import filters
-import lif.lgn as lgn
 import lif.stimulus.stimulus as stimulus
-import lif.convolution.convolve as convolve
-import lif.convolution.correction as correction
-import lif.convolution.soodak_rf as srf
-import lif.convolution.estimate_real_amp_from_f1 as est_f1
 import lif.receptive_field.filters.filter_functions as ff
 
-from lif.lgn import cells
-
-import lif.simulation.all_filter_actual_max_f1_amp as all_max_f1
-import lif.simulation.leaky_int_fire as lifv1
-from lif.simulation import run
-
-from lif.plot import plot
 # -
 
 LGNOverlapMap = Dict[Tuple[int,...], Dict[int, float]]
