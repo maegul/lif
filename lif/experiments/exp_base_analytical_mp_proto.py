@@ -56,14 +56,16 @@ def mk_all_sim_params(
 		return [sim_params]
 
 	# repeat funcs for each value
+	# ie, for each value, put it in a tuple along with its custom update function
 	all_agents = [
 			[(agent['func'], v) for v in agent['values']]
 			for agent in multi_sim_update_agents
 		]
-	# nest the sweeps
+	# nest the sweeps ... ie cross product of all variations
 	all_agent_combos = list(itertools.product(*all_agents))
 
-	# create sim_params accordingly
+	# create new sim_params accordingly
+	# sweep through all combinations of values, update sim_params, store in list
 	all_sim_params = []
 	for agent_combos in all_agent_combos:
 		new_sim = copy.deepcopy(sim_params)
@@ -164,13 +166,19 @@ def main():
 	# ### Base
 	# +
 	sim_params = do.SimulationParams(
-		n_simulations=1000,
+		n_simulations=100,
 		space_time_params=st_params,
 		multi_stim_params=multi_stim_params,
 		lgn_params=lgn_params,
 		lif_params = lif_params,
 		n_trials = 10,
 		analytical_convolution=True
+		)
+	# -
+	# +
+	synch_params = do.SynchronyParams(
+		False,
+		jitter=Time(3, 'ms')
 		)
 	# -
 
@@ -180,15 +188,15 @@ def main():
 	# Define parameter sweeps
 	multi_sim_params_ratios = [1, 2, 3, 4]
 	def sim_param_update_ratio(sim_params: do.SimulationParams, value):
-		new_sim_params = copy.deepcopy(sim_params)
-		new_sim_params.lgn_params.spread.ratio = value
-		return new_sim_params
+		# sim params will have been deepcopied from original params already
+		sim_params.lgn_params.spread.ratio = value
+		return sim_params
 
 	multi_sim_params_cv = [0.1, 0.2, 0.3]
 	def sim_param_update_cv(sim_params: do.SimulationParams, value):
-		new_sim_params = copy.deepcopy(sim_params)
-		new_sim_params.lgn_params.orientation.circ_var = value
-		return new_sim_params
+		# sim params will have been deepcopied from original params already
+		sim_params.lgn_params.orientation.circ_var = value
+		return sim_params
 
 	multi_sim_update_agents: Tuple[MultiSimAgents, ...] = (
 		{'values': multi_sim_params_ratios, 'func': sim_param_update_ratio },
@@ -258,7 +266,20 @@ def main():
 	# +
 	# Create new
 	all_lgn_layers = run.create_all_lgn_layers(sim_params, force_central_rf_locations=False)
+
 	# Load old layer
+	# -
+
+	# ## Create overlap maps
+	# +
+	# create lgn layer overlapping regions data
+	if synch_params.lgn_has_synchrony:
+		all_lgn_overlap_maps = run.create_all_lgn_layer_overlapping_regions(all_lgn_layers, sim_params)
+		# the main one, with weights reduced so that after duplication to target LGN cells rates are accurate
+		all_adjusted_lgn_overlap_maps = run.mk_adjusted_overlapping_regions_wts(all_lgn_overlap_maps)
+	else:
+		all_lgn_overlap_maps = None
+		all_adjusted_lgn_overlap_maps = None
 	# -
 
 	# ## save meta, params, lgn layers
@@ -274,6 +295,15 @@ def main():
 		results_dir / 'lgn_layers.pkl',
 		cells.mk_contrast_lgn_layer_collection_record(all_lgn_layers)
 		)
+	run._save_pickle_file(results_dir / 'synch_params.pkl', synch_params )
+
+	if all_lgn_overlap_maps:
+		run._save_pickle_file(results_dir / 'lgn_overlap_maps.pkl', all_lgn_overlap_maps)
+	if all_adjusted_lgn_overlap_maps:
+		run._save_pickle_file(
+			results_dir / 'adjusted_lgn_overlap_maps.pkl',
+			all_adjusted_lgn_overlap_maps
+			)
 	# -
 
 	# ## RUN - Parallel Workers or Linear worker
@@ -282,30 +312,9 @@ def main():
 	print('starting workers')
 	time.sleep(1)
 	# -
-	# +
-	# print(f'Starting Simulations... n_sims: {len(all_param_combos)}, n_procs: {n_procs} ({dt.datetime.utcnow().isoformat()})')
-
-
-	# # for i, stim_param in enumerate(multi_stim_combos):
-	# for i, param_combos in enumerate(all_param_combos):
-
-	# 	kwds={
-	# 		'n_stim': i,
-	# 		'params': param_combos['sim_params'],
-	# 		'stim_params': param_combos['stim_params'],
-	# 		'lgn_layers': all_lgn_layers,
-	# 		'results_dir': results_dir,
-	# 		'partitioned_sim_lgn_idxs': partitioned_n_sims,
-	# 		'log_print': True,
-	# 		'save_membrane_data': False
-	# 	}
-	# 	run.run_partitioned_single_stim(**kwds)
-
-
-	# print(f'Done simulations ({dt.datetime.utcnow().isoformat()})')
 
 	#####
-	# MultiProc
+	# # MultiProc
 	####
 
 	pool = mp.Pool(processes=n_procs)
@@ -324,6 +333,12 @@ def main():
 				'lgn_layers': all_lgn_layers,
 				'results_dir': results_dir,
 				'partitioned_sim_lgn_idxs': partitioned_n_sims,
+				# Using ADJUSTED OVERLAP MAP as spikes will be duplicated
+				'lgn_overlap_maps': (
+						all_adjusted_lgn_overlap_maps
+							if synch_params.lgn_has_synchrony else
+						None
+					),
 				'log_print': True,
 				'save_membrane_data': False
 			}

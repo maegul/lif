@@ -1984,6 +1984,31 @@ adjusted_overlap_maps = tuple(
 # -
 len(adjusted_overlap_maps)
 
+# +
+def mk_adjusted_overlapping_regions_wts(
+		all_lgn_overlapping_maps: Dict[do.ContrastValue, Tuple[sfo.LGNOverlapMap, ...]]
+		) -> Dict[do.ContrastValue, Tuple[sfo.LGNOverlapMap, ...]]:
+
+	all_adjusted_overlap_maps = dict()
+
+	for contrast_value, overlap_maps in all_lgn_overlapping_maps.items():
+		adjusted_overlap_maps = tuple(
+					{
+					cell_idxs: {
+						cell_idx: cell_wt / len(cell_idxs)
+						for cell_idx, cell_wt in cell_wts.items()
+					}
+					for cell_idxs, cell_wts in overlap_map.items()
+				}
+				for overlap_map in overlap_maps
+			)
+
+		all_adjusted_overlap_maps[contrast_value] = adjusted_overlap_maps
+
+	return all_adjusted_overlap_maps
+# -
+
+
 
 # #### Generate Spikes as before
 
@@ -2165,6 +2190,7 @@ test = set(trial_overlapping_region_lgn_cell_idxs[43])
 
 # #### Try doing before spike idxs even created
 
+len(adjusted_overlap_maps)
 # +
 n_layers = sim_params.n_simulations
 n_trials = sim_params.n_trials
@@ -2177,6 +2203,7 @@ trial_layer_idxs = tuple(
 	)
 # -
 # +
+# cell idxs for each overlapping region
 overlapping_map_layer_cell_idxs = tuple(
 		tuple(
 				tuple(keys) for keys in layer_overlapping_map
@@ -2184,6 +2211,7 @@ overlapping_map_layer_cell_idxs = tuple(
 		for layer_overlapping_map in adjusted_overlap_maps
 	)
 # -
+len(overlapping_map_layer_cell_idxs)
 # +
 # np.random.normal(loc=0, scale=3, size=1000)
 jitter = Time(1, 'ms')
@@ -2221,10 +2249,61 @@ for trial_layer_idx, trial_layer in zip(trial_layer_idxs, lgn_layer_responses):
 				# np.r_[tuple(spike_times.ms for spike_times in cell_spikes)],
 				'ms'
 			)
+		# deduplicate here??
 		true_all_spike_times_with_synchrony.append(concatenated_spike_times)
 # -
 
 # ##### Managing Negative and colliding spike times
+
+# +
+from typing import Optional
+# -
+# +
+def clean_sycnchrony_spike_times(
+		spike_times: Time[np.ndarray],
+		simulation_temp_res: Optional[Time[float]] = None
+		) -> Time[np.ndarray]:
+
+	"""Remove spikes that are negative, past simulation time or too close to each other
+
+	"""
+
+
+	if not simulation_temp_res:
+		sim_temp_res = Time(lifv1.defaultclock.dt / lifv1.bnun.msecond, 'ms')
+	else:
+		sim_temp_res = simulation_temp_res
+
+	# sort spikes (necessary as likely to be unsorted)
+	spks = np.sort(spike_times.ms)
+	de_dup_spks = None  # placeholder should no de-duplication need to occur
+
+	# jitter pushed spikes below 0?
+	if np.any(spk_negative := spks<0):
+		spks[spk_negative] *= -1  # rotate jitter around 0 (ie, make it positive)
+
+	# jitter pushed spikes beyond simulation time?
+	if np.any(spk_late := spks > sim_params.space_time_params.temp_ext.ms):
+		# rotate around simulation time as with negatives above
+		spks[spk_late] -= (spks[spk_late] - sim_params.space_time_params.temp_ext.ms)
+
+	# any two spikes closer than the simulation resolution?
+	if np.any(spk_dup_idxs := (np.abs( spks[1:] - spks[0:-1] ) <= (sim_temp_res.ms)) ):
+
+		# do not include in final array
+		de_dup_spks = np.r_[spks[0], spks[1:][~spk_dup_idxs]]
+
+
+	managed_spike_times = Time(
+			de_dup_spks
+				if (de_dup_spks is not None) else
+			spks,
+			'ms'  # make sure using same unit throughout as above
+		)
+
+	return managed_spike_times
+
+# -
 
 # +
 sim_temp_res = Time(lifv1.defaultclock.dt / lifv1.bnun.msecond, 'ms')
@@ -2251,30 +2330,32 @@ managed_all_spike_times_with_synchrony = deque()
 
 for i, spike_times_array in enumerate(true_all_spike_times_with_synchrony):
 
-	spks = np.sort(spike_times_array.ms)
-	de_dup_spks = None
-	if np.any(spk_negative := spks<0):
-		# print(i, 'negative')
-		spks[spk_negative] *= -1
+	managed_all_spike_times_with_synchrony.append(clean_sycnchrony_spike_times(spike_times_array))
 
-	if np.any(spk_late := spks > sim_params.space_time_params.temp_ext.ms):
-		# print(i, 'negative')
-		spks[spk_late] -= (spks[spk_late] - sim_params.space_time_params.temp_ext.ms)
+	# spks = np.sort(spike_times_array.ms)
+	# de_dup_spks = None
+	# if np.any(spk_negative := spks<0):
+	# 	# print(i, 'negative')
+	# 	spks[spk_negative] *= -1
 
-	if np.any(spk_dup_idxs := (np.abs( spks[1:] - spks[0:-1] ) <= (sim_temp_res.ms)) ):
-		# print(i, 'duplicates')
+	# if np.any(spk_late := spks > sim_params.space_time_params.temp_ext.ms):
+	# 	# print(i, 'negative')
+	# 	spks[spk_late] -= (spks[spk_late] - sim_params.space_time_params.temp_ext.ms)
 
-		de_dup_spks = np.r_[spks[0], spks[1:][~spk_dup_idxs]]
+	# if np.any(spk_dup_idxs := (np.abs( spks[1:] - spks[0:-1] ) <= (sim_temp_res.ms)) ):
+	# 	# print(i, 'duplicates')
+
+	# 	de_dup_spks = np.r_[spks[0], spks[1:][~spk_dup_idxs]]
 
 
-	managed_all_spike_times_with_synchrony.append(
-		Time(
-				de_dup_spks
-					if (de_dup_spks is not None) else
-				spks,
-				'ms'
-			)
-		)
+	# managed_all_spike_times_with_synchrony.append(
+	# 	Time(
+	# 			de_dup_spks
+	# 				if (de_dup_spks is not None) else
+	# 			spks,
+	# 			'ms'
+	# 		)
+	# 	)
 # -
 # +
 incorrect_spike_count = 0
@@ -2375,6 +2456,18 @@ px.line(y=v1_model_synch.membrane_monitor.v[0], title=f'Jitter: {jitter.ms}ms').
 # -
 
 
+# +
+import copy
+# -
+# +
+print(sim_params.n_simulations)
+new_sim_params = copy.deepcopy(sim_params)
+new_sim_params.n_simulations = 100
+print(new_sim_params.n_simulations)
+v1_model_test = run.create_multi_v1_lif_network(new_sim_params, overlap_map=None)
+print(v1_model_test.membrane_monitor.v.shape)
+# -
+
 
 # +
 pos_spk_idx = spike_times.value<0
@@ -2388,58 +2481,105 @@ v1_model.run(sim_params.space_time_params)
 
 
 
-# #### Attempt at optimising
 
-# Actually, I don't think this will work ...
+# ### Testing Synchrony Implentation in main code
+
 
 # +
-n_layers = sim_params.n_simulations
-n_trials = sim_params.n_trials
-n_cells = sim_params.lgn_params.n_cells  # IE, true LGN cells ... we're getting back to this here
-# -
-# +
-overlapping_map_layer_cell_idxs_list = tuple(
-		tuple(
-				list(keys) for keys in layer_overlapping_map
-			)
-		for layer_overlapping_map in adjusted_overlap_maps
+spat_res=ArcLength(1, 'mnt')
+spat_ext=ArcLength(660, 'mnt')
+"Good high value that should include any/all worst case scenarios"
+temp_res=Time(1, 'ms')
+temp_ext=Time(1000, 'ms')
+
+st_params = do.SpaceTimeParams(
+	spat_ext, spat_res, temp_ext, temp_res,
+	array_dtype='float32'
 	)
 # -
 # +
-overlapping_map_layer_cell_idxs_list[0]
-# test = np.array(overlapping_map_layer_cell_idxs_list[0])
+# good subset of spat filts that are all in the middle in terms of size
+subset_spat_filts = [
+	'berardi84_5a', 'berardi84_5b', 'berardi84_6', 'maffei73_2mid',
+	'maffei73_2right', 'so81_2bottom', 'so81_5', 'soodak87_1'
+]
 # -
 # +
-layer_trial_overlapping_region_n_spikes = tuple(
-		tuple(
-				spikes.value.size
-				for spikes in layer.cell_spike_times
-			)
-		for layer in lgn_layer_responses
+multi_stim_params = do.MultiStimulusGeneratorParams(
+	spat_freqs=[0.8], temp_freqs=[4], orientations=[90], contrasts=[0.3]
+	)
+
+stim_params = stimulus.mk_multi_stimulus_params(multi_stim_params)[0]
+
+lgn_params = do.LGNParams(
+	n_cells=30,
+	orientation = do.LGNOrientationParams(ArcLength(0), circ_var=0.5),
+	circ_var = do.LGNCircVarParams('naito_lg_highsf', 'naito'),
+	spread = do.LGNLocationParams(2, 'jin_etal_on'),
+	filters = do.LGNFilterParams(spat_filters='all', temp_filters='all'),
+	F1_amps = do.LGNF1AmpDistParams()
+	)
+lif_params = do.LIFParams(total_EPSC=3.5)
+# -
+
+# +
+sim_params = do.SimulationParams(
+	n_simulations=10,
+	space_time_params=st_params,
+	multi_stim_params=multi_stim_params,
+	lgn_params=lgn_params,
+	lif_params = lif_params,
+	n_trials = 3,
+	analytical_convolution=True
+	# n_trials = 10
+	)
+
+synch_params = do.SynchronyParams(
+	True,
+	jitter=Time(3, 'ms')
 	)
 # -
 # +
-layer_trial_cell_n_spikes = np.zeros(shape=(n_layers*n_trials, n_cells))
-for i, layer in enumerate(
-			it.chain.from_iterable(
-				it.repeat(cell_idxs_list, n_trials)
-				for cell_idxs_list in overlapping_map_layer_cell_idxs_list
-				)
-		):
-	# cell_n_spikes = np.zeros(shape=sim_params.lgn_params.n_cells)
-	for j, region in enumerate(layer):
-		layer_trial_cell_n_spikes[i][region] += layer_trial_overlapping_region_n_spikes[i][j]
-		len(layer_trial_overlapping_region_n_spikes[i])
+all_lgn_layers = run.create_all_lgn_layers(sim_params, force_central_rf_locations=False)
+
+# if synch_params.lgn_has_synchrony:
+
+all_lgn_overlap_maps = run.create_all_lgn_layer_overlapping_regions(all_lgn_layers, sim_params)
+# the main one, with weights reduced so that after duplication to target LGN cells rates are accurate
+all_adjusted_lgn_overlap_maps = run.mk_adjusted_overlapping_regions_wts(all_lgn_overlap_maps)
+
+lgn_layers = all_lgn_layers[stim_params.contrast]
+overlap_regions = all_adjusted_lgn_overlap_maps[stim_params.contrast]
 # -
-
-
-
 # +
-[len(layer) for layer in overlapping_map_layer_cell_idxs_list]
-[len(layer) for layer in layer_trial_overlapping_region_n_spikes]
+partitioned_results = run.run_single_stim_multi_layer_simulation(
+		sim_params, stim_params,
+		synch_params = synch_params,
+		lgn_layers = lgn_layers,
+		lgn_overlap_maps = overlap_regions,
+		log_print=True, log_info='Test',
+		save_membrane_data=True
+	)
+# -
+# +
+len(partitioned_results)
+test = partitioned_results[0]
+test_lgn = test.get_lgn_response(0)
+test_lgn.cell_spike_times
+
+
+
+len(test.lgn_responses)
+test.lgn_responses
+# -
+# +
+for result in partitioned_results:
+	for n in range(sim_params.n_trials):
+		print(len(result.get_lgn_response(0).cell_spike_times))
 
 # -
-
-[i for i in it.chain.from_iterable(it.repeat([1, 2], 3))]
-
+# Check that LGN spikes match v1 membrane potential
+# +
+px.line(test.get_mem_pot(0)).show()
+# -
 

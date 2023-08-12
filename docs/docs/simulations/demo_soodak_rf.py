@@ -184,7 +184,7 @@ px.line(x=tc.ms, y=spatial_product).show()
 a, ph = srf.mk_spat_filt_response(stim_params, spat_filt, rf_loc, rf_theta=rf_theta)
 # -
 # +
-%timeit r = srf.mk_spat_filt_temp_response(st_params, stim_params, spat_filt, rf_loc, rf_theta, tc)
+r = srf.mk_spat_filt_temp_response(st_params, stim_params, spat_filt, rf_loc, rf_theta, tc)
 r.max()
 # -
 # +

@@ -26,6 +26,7 @@ from ..lgn import cells, spat_filt_overlap as sfo
 
 import lif.utils.data_objects as do
 from lif.utils.units.units import Time
+import lif.utils.exceptions as exc
 
 
 
@@ -330,7 +331,7 @@ def mk_input_spike_indexed_arrays(
 		n_trials: int,
 		n_cells: int,
 		simulation_temp_res: Optional[Time[float]] = None,
-		) -> Tuple[np.ndarray, Time[np.ndarray]]: ...
+		) -> Tuple[np.ndarray, Time[np.ndarray], Tuple[Time[np.ndarray], ...]]: ...
 @overload
 def mk_input_spike_indexed_arrays(
 		lgn_response: Union[
@@ -345,7 +346,7 @@ def mk_input_spike_indexed_arrays(
 		n_trials: None = None,
 		n_cells: None = None,
 		simulation_temp_res: None = None,
-		) -> Tuple[np.ndarray, Time[np.ndarray]]: ...
+		) -> Tuple[np.ndarray, Time[np.ndarray], Tuple[Time[np.ndarray], ...]]: ...
 def mk_input_spike_indexed_arrays(
 		lgn_response: Union[
 				Tuple[Time[np.ndarray], ...],
@@ -359,7 +360,7 @@ def mk_input_spike_indexed_arrays(
 		n_trials: Optional[int] = None,
 		n_cells: Optional[int] = None,
 		simulation_temp_res: Optional[Time[float]] = None,
-		) -> Tuple[np.ndarray, Time[np.ndarray]]:
+		) -> Tuple[np.ndarray, Time[np.ndarray], Tuple[Time[np.ndarray], ...]]:
 
 	all_spike_times: Tuple[Time[np.ndarray], ...]
 
@@ -372,6 +373,8 @@ def mk_input_spike_indexed_arrays(
 				(isinstance(lgn_response, tuple))
 				and
 				(isinstance(lgn_response[0], do.LGNLayerResponse))
+				and
+				((synchrony_params is None) or (not synchrony_params.lgn_has_synchrony))
 			):
 		lgn_response = cast(Tuple[do.LGNLayerResponse,...], lgn_response)
 		# flatten all trial lgn response spike trains into a single tuple of arrays
@@ -389,7 +392,9 @@ def mk_input_spike_indexed_arrays(
 				and
 				(isinstance(lgn_response[0], do.LGNLayerResponse))
 				and  # IE - doing synchrony?
-				(overlapping_region_map is not None) and (synchrony_params is not None)
+				(overlapping_region_map is not None)
+				and
+				((synchrony_params is not None) and synchrony_params.lgn_has_synchrony)
 			):
 
 
@@ -466,9 +471,32 @@ def mk_input_spike_indexed_arrays(
 				true_all_spike_times_with_synchrony.append(managed_spike_times)
 
 
+		# start_idxs, end_idxs = (
+		# 	(start_idxs := np.arange(0, len(true_all_spike_times_with_synchrony), n_cells)),
+		# 	(start_idxs + 30)
+		# 	)
+
+		# # check
+		# if (
+		# 			# final idx should be total len of spike_times sequence (ie n cells in all trial_layers)
+		# 			(end_idxs[-1] != (n_layers*n_trials*n_cells))
+		# 			or
+		# 			# number of indices should be same as number of trial_layers (ie len of lgn_response)
+		# 			(len(start_idxs) != len(lgn_response))
+		# 			or
+		# 			# number of indices should be same as number of trial_layers
+		# 			(len(lgn_response) != (n_layers * n_trials))
+		# 		):
+
+		# 	raise exc.SimulationError("Trial, layer, cell indices don't match expected sizes")
+
 		all_spike_times = tuple(true_all_spike_times_with_synchrony)
 
-
+		# new_lgn_layer_spike_times = tuple(  # trial_layer_responses
+		# 	# all spike times for each cell in trial_layer
+		# 	tuple(all_spike_times[start_idx:end_idx])
+		# 	for start_idx, end_idx in zip(start_idxs, end_idxs)
+		# 	)
 
 	# just a tuple of cell's spikes
 	# elif isinstance(lgn_response, tuple) and not (isinstance(lgn_response[0], do.LGNLayerResponse)):
@@ -495,7 +523,7 @@ def mk_input_spike_indexed_arrays(
 		'ms'
 		)
 
-	return spike_idxs, spike_times
+	return spike_idxs, spike_times, all_spike_times
 
 	# spk_intvl = np.abs(all_psn_inpt_spikes[:, 1:] - all_psn_inpt_spikes[:, 0:-1])
 	# spk_intvl_within_dt_idx = (spk_intvl <= (defaultclock.dt))

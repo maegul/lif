@@ -845,7 +845,7 @@ def run_single_stim_multi_layer_simulation(
         if lgn_overlap_maps is None:
             raise ValueError(f'lgn overlap maps must be provided if synchrony is to be implemented')
 
-        spike_idxs, spike_times = (
+        spike_idxs, spike_times, all_spike_times = (
             lif_model
             .mk_input_spike_indexed_arrays(
                 lgn_response=lgn_layer_responses,
@@ -858,8 +858,52 @@ def run_single_stim_multi_layer_simulation(
                 )
             )
 
+        # pull out newly collated synchronous lgn responses
+
+        start_idxs, end_idxs = (
+            (start_idxs := np.arange(0, len(all_spike_times), params.lgn_params.n_cells)),
+            (start_idxs + 30)
+            )
+
+        # check
+        if (
+                    # final idx should be total len of spike_times sequence (ie n cells in all trial_layers)
+                    (end_idxs[-1] != (n_lgn_layers * params.n_trials * params.lgn_params.n_cells))
+                    or
+                    # number of indices should be same as number of trial_layers (ie len of lgn_response)
+                    (len(start_idxs) != len(lgn_layer_responses))
+                    or
+                    # number of indices should be same as number of trial_layers
+                    (len(lgn_layer_responses) != (n_lgn_layers * params.n_trials))
+                ):
+
+            raise exc.SimulationError("Trial, layer, cell indices don't match expected sizes")
+
+        all_spike_times = tuple(all_spike_times)
+
+        new_lgn_layer_spike_times = tuple(  # trial_layer_responses
+            # all spike times for each cell in trial_layer
+            tuple(all_spike_times[start_idx:end_idx])
+            for start_idx, end_idx in zip(start_idxs, end_idxs)
+            )
+
+        #######
+        # How back into lgn response objects!?
+
+        # each tuple in new_lgn_layer_spike_times should correspond to each LGNLayerResponse
+        # ... in lgn_layer_responses
+        # so simply loop through and replace the lgn_response.cell_spike_times tuple
+        # ... with the tuples in new_lgn_layer_spike_times
+        #######
+
+        for i, lgn_layer_response in enumerate(lgn_layer_responses):
+            # MUTATE!
+            lgn_layer_response.cell_spike_times = new_lgn_layer_spike_times[i]
+
+
+
     else:
-        spike_idxs, spike_times = (
+        spike_idxs, spike_times, _ = (
             lif_model
             .mk_input_spike_indexed_arrays(lgn_response=lgn_layer_responses )
             )
