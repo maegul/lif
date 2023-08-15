@@ -1941,16 +1941,16 @@ class V1Params(ConversionABC):
 
 @dataclass
 class MultiStimulusGeneratorParams(ConversionABC):
-    spat_freqs: Iterable[float]
-    temp_freqs: Iterable[float]
-    orientations: Iterable[float]
+    spat_freqs: Sequence[float]
+    temp_freqs: Sequence[float]
+    orientations: Sequence[float]
     spat_freq_unit: str = 'cpd'
     temp_freq_unit: str = 'hz'
     ori_arc_unit: str = 'deg'
     # mutable default value requires this incantation
-    contrasts: Optional[Iterable[float]] = None
-    amplitudes: Optional[Iterable[float]] = None
-    DC_vals: Optional[Iterable[float]] = None
+    contrasts: Optional[Sequence[float]] = None
+    amplitudes: Optional[Sequence[float]] = None
+    DC_vals: Optional[Sequence[float]] = None
 
 MultiStimulusParams = Tuple[GratingStimulusParams]
 
