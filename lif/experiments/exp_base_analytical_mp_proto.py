@@ -425,7 +425,7 @@ def main():
 
 	pool = mp.Pool(processes=n_procs)
 
-	print(f'Starting Simulations... n_sims: {len(multi_stim_combos)}, n_procs: {n_procs} ({dt.datetime.utcnow().isoformat()})')
+	print(f'Starting Simulations... n_sims: {len(all_param_combos)}, n_procs: {n_procs} ({dt.datetime.utcnow().isoformat()})')
 
 
 	for i, param_combos in enumerate(all_param_combos):
