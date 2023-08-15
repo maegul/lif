@@ -340,6 +340,7 @@ def main():
 					for stim_p in multi_stim_combos
 		)
 
+	# just the variables that are changed
 	all_param_combos_key_vars = tuple(
 			{'sim_params': sp, 'stim_params': stim_p}
 				for sp in all_sim_params_key_vars

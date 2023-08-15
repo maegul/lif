@@ -1148,6 +1148,16 @@ def _mk_stim_results_dir(results_dir: Path, stim_n: int) -> Path:
     return stim_results_dir
 
 
+# def _mk_stim_results_dir(results_dir: Path, stim_n: int) -> Path:
+
+#     if (not results_dir.exists()):
+#         raise ValueError(f'Results directory does not exist: {results_dir}')
+
+#     stim_results_dir = results_dir / f'{stim_n:0>3}'
+
+#     return stim_results_dir
+
+
 def _parse_stim_results_path(stim_results_file: Path) -> Optional[int]:
 
     pattern = re.compile(r'(\d\d\d).pkl')
@@ -1199,7 +1209,7 @@ def save_merge_single_stim_results(
         raise ValueError(f'Stim results directory does not exist: {stim_results_dir}')
 
     partitioned_results = []
-    partitioned_results_files = stim_results_dir.glob('*.pkl')
+    partitioned_results_files = tuple(stim_results_dir.glob('*.pkl'))
 
     for result_file in partitioned_results_files:
         results = _load_pickle_file(result_file)
@@ -1211,7 +1221,16 @@ def save_merge_single_stim_results(
                 for result in partial_results
         )
 
+    # tricky ... save not as a directory, but as a file,
+    # ... which will then be located in the parent directory!
     _save_pickle_file(stim_results_dir.with_suffix('.pkl'), full_results)
+
+    # now remove stim_results_dir and first its contents
+    # contents
+    for results_file in partitioned_results_files:
+        results_file.unlink()
+    # dir
+    stim_results_dir.rmdir()  # should be empty after pkl files removed
 
 
 def get_all_experiment_single_stim_results_files(
