@@ -1,4 +1,4 @@
-from typing import Optional, Union, cast, Tuple, overload, Iterable, Dict, List
+from typing import Any, Optional, Literal, Union, cast, Tuple, overload, Sequence, Iterable, Dict, List
 from textwrap import dedent
 from dataclasses import replace
 import re
@@ -416,14 +416,72 @@ def print_params_for_all_saved_stimuli():
 
 
 
+@overload
 def mk_multi_stimulus_params(
-        multi_params: do.MultiStimulusGeneratorParams
-        ) -> Tuple[do.GratingStimulusParams]:
+        multi_params: do.MultiStimulusGeneratorParams,
+        return_combinations_only: Literal[False] = False
+        ) -> Tuple[do.GratingStimulusParams]: ...
+@overload
+def mk_multi_stimulus_params(
+        multi_params: do.MultiStimulusGeneratorParams,
+        return_combinations_only: Literal[True]
+        ) -> List[Tuple[Tuple[Any, str], ...]]: ...
+def mk_multi_stimulus_params(
+        multi_params: do.MultiStimulusGeneratorParams,
+        return_combinations_only: bool = False
+        ) -> Union[Tuple[do.GratingStimulusParams], List[Tuple[Tuple[Any, str], ...]]]:
     """Make multiple stimulus params from all combinations of parameters provided
 
     Where default value is `[None]`, the fallback will be the default value of the
     stimulus parameters object for these parameters anytime the value passed in is `None`.
     """
+
+    if return_combinations_only:
+
+        # Must be in same order as below!!!
+        prep_params: List[Optional[Tuple[Any, str]]] = [
+            (
+                (multi_params.spat_freqs, 'spat_freq')
+                if (isinstance(multi_params.spat_freqs, Sequence) and len(multi_params.spat_freqs)>1)
+                else None
+            ),
+            (
+                (multi_params.temp_freqs, 'temp_freq')
+                if (isinstance(multi_params.temp_freqs, Sequence) and len(multi_params.temp_freqs)>1)
+                else None
+            ),
+            (
+                (multi_params.orientations, 'orientation')
+                if (isinstance(multi_params.orientations, Sequence) and len(multi_params.orientations)>1)
+                else None
+            ),
+            (
+                (multi_params.contrasts, 'contrast')
+                if (isinstance(multi_params.contrasts, Sequence) and len(multi_params.contrasts)>1)
+                else None
+            ),
+            (
+                (multi_params.amplitudes, 'amplitude')
+                if (isinstance(multi_params.amplitudes, Sequence) and len(multi_params.amplitudes)>1)
+                else None
+            ),
+            (
+                (multi_params.DC_vals, 'DC')
+                if (isinstance(multi_params.DC_vals, Sequence) and len(multi_params.DC_vals)>1)
+                else None
+            ),
+        ]
+
+        # removing Nones
+        prep_varying_params = [v for v in prep_params if (v is not None)]
+        single_params = [
+            [(variable, param_variables[1]) for variable in param_variables[0]]
+            for param_variables in prep_varying_params
+        ]
+
+        all_stim_combos: List[Tuple[Tuple[Any, str], ...]] = list(itertools.product(*single_params))
+
+        return all_stim_combos
 
 
     stim_param_val_combos = itertools.product(

@@ -5,7 +5,7 @@ import itertools
 import copy
 import time
 from pathlib import Path
-from typing import Tuple, Union, Dict, List, TypedDict, Callable, Optional
+from typing import Any, Literal, Tuple, Union, Dict, List, Sequence, TypedDict, Callable, Optional, overload
 import re
 import datetime as dt
 import numpy as np
@@ -41,28 +41,86 @@ from multiprocessing.pool import AsyncResult
 # -
 
 
+# # Utilities for handling multi simulation parameters
+
 class MultiSimAgents(TypedDict):
-	values: List
-	func: Callable
+	values: List[Any]
+	attr_path: str
 
 
+def set_sim_param(sim_params: do.SimulationParams, v: Any, attr_path: str):
+
+	sim_params = copy.deepcopy(sim_params)
+	sim_attribute = sim_params
+	path_elements = attr_path.split('.')
+
+	for i, element in enumerate(path_elements):
+		try:
+			new_attribute = getattr(sim_attribute, element)
+			# if last element, don't assign, as it will be used to assign ...
+			# ... but still need to check if final attribute exists
+			if i < (len(path_elements) - 1):
+				sim_attribute = new_attribute
+		except AttributeError:
+			raise ValueError(
+				f'Attribute "{element}" (from path {attr_path}) does not exist on sim_params')
+
+	setattr(sim_attribute, element, v)  # type: ignore
+
+	return sim_params
+
+
+@overload
 def mk_all_sim_params(
 		sim_params: do.SimulationParams,
-		multi_sim_update_agents: Optional[Tuple[MultiSimAgents, ...]]
-		) -> List[do.SimulationParams]:
+		multi_sim_update_agents: Optional[Tuple[MultiSimAgents, ...]],
+		return_combinations_only: Literal[False] = False
+		) -> List[do.SimulationParams]: ...
+@overload
+def mk_all_sim_params(
+		sim_params: do.SimulationParams,
+		multi_sim_update_agents: Optional[Tuple[MultiSimAgents, ...]],
+		return_combinations_only: Literal[True]
+		) -> List[Tuple[Tuple[Any, str], ...]]: ...
+def mk_all_sim_params(
+		sim_params: do.SimulationParams,
+		multi_sim_update_agents: Optional[Tuple[MultiSimAgents, ...]],
+		return_combinations_only: bool = False
+		) -> Union[List[do.SimulationParams], List[Tuple[Tuple[Any, str], ...]]]:
+	"""
+
+	Examples:
+
+		* Using the return_combinations_only option ...
+
+		```python
+		multi_sim_params_ratios = MultiSimAgents(
+			values=[1, 2, 3, 4, 10], attr_path='lgn_params.spread.ratio')
+
+		multi_sim_params_cv = MultiSimAgents(
+			values=[0.1, 0.2, 0.3], attr_path='lgn_params.orientation.circ_var')
+
+		all_multi_params = (multi_sim_params_cv, multi_sim_params_ratios)
+
+		all_combos = mk_all_sim_params(sim_params, all_multi_params, True)
+		```
+	"""
 	# +
 
 	if multi_sim_update_agents is None:
 		return [sim_params]
 
-	# repeat funcs for each value
-	# ie, for each value, put it in a tuple along with its custom update function
+	# repeat paths for each value
+	# ie, for each value, put it in a tuple along with its custom path
 	all_agents = [
-			[(agent['func'], v) for v in agent['values']]
+			[(v, agent['attr_path']) for v in agent['values']]
 			for agent in multi_sim_update_agents
 		]
 	# nest the sweeps ... ie cross product of all variations
-	all_agent_combos = list(itertools.product(*all_agents))
+	all_agent_combos: List[Tuple[Tuple[Any, str], ...]] = list(itertools.product(*all_agents))
+
+	if return_combinations_only:
+		return all_agent_combos
 
 	# create new sim_params accordingly
 	# sweep through all combinations of values, update sim_params, store in list
@@ -70,11 +128,51 @@ def mk_all_sim_params(
 	for agent_combos in all_agent_combos:
 		new_sim = copy.deepcopy(sim_params)
 		for agent in agent_combos:
-			new_sim = agent[0](new_sim, agent[1])
+			new_sim = set_sim_param(new_sim, agent[0], agent[1])
 		all_sim_params.append(new_sim)
 	# -
 
 	return all_sim_params
+
+
+# class MultiSimAgents(TypedDict):
+# 	values: List
+# 	func: Callable
+
+
+# def mk_all_sim_params(
+# 		sim_params: do.SimulationParams,
+# 		multi_sim_update_agents: Optional[Tuple[MultiSimAgents, ...]]
+# 		) -> List[do.SimulationParams]:
+# 	# +
+
+# 	if multi_sim_update_agents is None:
+# 		return [sim_params]
+
+# 	# repeat funcs for each value
+# 	# ie, for each value, put it in a tuple along with its custom update function
+# 	all_agents = [
+# 			[(agent['func'], v) for v in agent['values']]
+# 			for agent in multi_sim_update_agents
+# 		]
+# 	# nest the sweeps ... ie cross product of all variations
+# 	all_agent_combos = list(itertools.product(*all_agents))
+
+# 	# create new sim_params accordingly
+# 	# sweep through all combinations of values, update sim_params, store in list
+# 	all_sim_params = []
+# 	for agent_combos in all_agent_combos:
+# 		new_sim = copy.deepcopy(sim_params)
+# 		for agent in agent_combos:
+# 			new_sim = agent[0](new_sim, agent[1])
+# 		all_sim_params.append(new_sim)
+# 	# -
+
+# 	return all_sim_params
+
+
+
+# # Main function
 
 def main():
 
@@ -144,9 +242,9 @@ def main():
 
 	# ##  Stim Params
 	# +
-	all_stim_params = [0, 0.2, 0.4, 0.8,  1, 1.2, 1.6, 2, 4]
+	# all_stim_params = [0, 0.2, 0.4, 0.8,  1, 1.2, 1.6, 2, 4]
 	multi_stim_params = do.MultiStimulusGeneratorParams(
-		spat_freqs=all_stim_params,
+		spat_freqs=[0, 0.2, 0.4, 0.8,  1, 1.2, 1.6, 2, 4],
 		temp_freqs=[4],
 		orientations=[90],
 		contrasts=[0.4]
@@ -186,29 +284,24 @@ def main():
 
 	# +
 	# Define parameter sweeps
-	multi_sim_params_ratios = [1, 2, 3, 4]
-	def sim_param_update_ratio(sim_params: do.SimulationParams, value):
-		# sim params will have been deepcopied from original params already
-		sim_params.lgn_params.spread.ratio = value
-		return sim_params
+	multi_sim_params_ratios = MultiSimAgents(
+		values=[1, 2, 3, 4, 10], attr_path='lgn_params.spread.ratio')
 
-	multi_sim_params_cv = [0.1, 0.2, 0.3]
-	def sim_param_update_cv(sim_params: do.SimulationParams, value):
-		# sim params will have been deepcopied from original params already
-		sim_params.lgn_params.orientation.circ_var = value
-		return sim_params
+	multi_sim_params_cv = MultiSimAgents(
+		values=[0.1, 0.2, 0.3], attr_path='lgn_params.orientation.circ_var')
 
-	multi_sim_update_agents: Tuple[MultiSimAgents, ...] = (
-		{'values': multi_sim_params_ratios, 'func': sim_param_update_ratio },
-		{'values': multi_sim_params_cv, 'func': sim_param_update_cv },
-		)
+	multi_sim_update_agents = (multi_sim_params_cv, multi_sim_params_ratios)
+
 
 	# Just make none if want to use only base sim params
 	# multi_sim_update_agents = None
 	# -
 	# +
 	all_sim_params = mk_all_sim_params(sim_params, multi_sim_update_agents)
+	all_sim_params_key_vars = mk_all_sim_params(
+		sim_params, multi_sim_update_agents, return_combinations_only=True)
 	# -
+
 
 
 	# ## Sim Logistics
@@ -229,6 +322,8 @@ def main():
 	# +
 	# Just params
 	multi_stim_combos = stimulus.mk_multi_stimulus_params(sim_params.multi_stim_params)
+	multi_stim_combos_key_vars = stimulus.mk_multi_stimulus_params(
+		sim_params.multi_stim_params, return_combinations_only=True)
 	# Create cache
 	# multi_stim_combos = run.create_stimulus(sim_params, force_central_rf_locations=False)
 	# -
@@ -243,6 +338,12 @@ def main():
 			{'sim_params': sp, 'stim_params': stim_p}
 				for sp in all_sim_params
 					for stim_p in multi_stim_combos
+		)
+
+	all_param_combos_key_vars = tuple(
+			{'sim_params': sp, 'stim_params': stim_p}
+				for sp in all_sim_params_key_vars
+					for stim_p in multi_stim_combos_key_vars
 		)
 	# -
 
@@ -292,6 +393,10 @@ def main():
 	run._save_pickle_file(results_dir / 'simulation_params.pkl', sim_params)
 	run._save_pickle_file(results_dir / 'all_simulation_params.pkl', all_param_combos)
 	run._save_pickle_file(
+		results_dir / 'all_simulation_params_key_vars.pkl',
+		all_param_combos_key_vars
+		)
+	run._save_pickle_file(
 		results_dir / 'lgn_layers.pkl',
 		cells.mk_contrast_lgn_layer_collection_record(all_lgn_layers)
 		)
@@ -330,6 +435,7 @@ def main():
 				'n_stim': i,
 				'params': param_combos['sim_params'],
 				'stim_params': param_combos['stim_params'],
+				'synch_params': synch_params,
 				'lgn_layers': all_lgn_layers,
 				'results_dir': results_dir,
 				'partitioned_sim_lgn_idxs': partitioned_n_sims,
