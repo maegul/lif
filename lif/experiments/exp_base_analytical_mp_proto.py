@@ -284,17 +284,19 @@ def main():
 
 	# +
 	# Define parameter sweeps
-	multi_sim_params_ratios = MultiSimAgents(
-		values=[1, 2, 3, 4, 10], attr_path='lgn_params.spread.ratio')
 
-	multi_sim_params_cv = MultiSimAgents(
-		values=[0.1, 0.2, 0.3], attr_path='lgn_params.orientation.circ_var')
+	# LGN params can't be swept ... only one lgn layer at a time
+	# multi_sim_params_ratios = MultiSimAgents(
+	# 	values=[1, 2, 3, 4, 10], attr_path='lgn_params.spread.ratio')
 
-	multi_sim_update_agents = (multi_sim_params_cv, multi_sim_params_ratios)
+	# multi_sim_params_cv = MultiSimAgents(
+	# 	values=[0.1, 0.2, 0.3], attr_path='lgn_params.orientation.circ_var')
+
+	# multi_sim_update_agents = (multi_sim_params_cv, multi_sim_params_ratios)
 
 
 	# Just make none if want to use only base sim params
-	# multi_sim_update_agents = None
+	multi_sim_update_agents = None
 	# -
 	# +
 	all_sim_params = mk_all_sim_params(sim_params, multi_sim_update_agents)
@@ -342,7 +344,21 @@ def main():
 
 	# just the variables that are changed
 	all_param_combos_key_vars = tuple(
-			{'sim_params': sp, 'stim_params': stim_p}
+			{
+			# sim params may not vary, in which case they will be SimulationParams, so provide None
+			'sim_params': (
+					None
+						if isinstance(sp, do.SimulationParams) else
+					sp
+				)
+			,
+			# if a tuple is empty, that means no changing stimuli in multi stimuli
+			'stim_params': (
+					None
+						if len(stim_p) == 0 else
+					stim_p
+				)
+			}
 				for sp in all_sim_params_key_vars
 					for stim_p in multi_stim_combos_key_vars
 		)
