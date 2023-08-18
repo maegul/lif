@@ -1287,6 +1287,35 @@ def save_merge_all_results(
     _save_pickle_file(results_dir / 'results_data.pkl', all_results)
 
 
+# # Exp Dir handling
+
+# +
+def get_all_single_exp_dirs(
+        exp_dir: Path,
+        exp_re_prefix: str = 'HWS'
+        ) -> Tuple[Tuple[Path, re.Match[str]], ...]:
+
+    hws_exp_dirs = tuple(
+            (hws_dir, re_match)
+            for hws_dir in exp_dir.iterdir()
+            if (
+                (re_match := re.fullmatch(fr'({exp_re_prefix})(\d+)', hws_dir.name)) and
+                hws_dir.is_dir()
+            )
+        )
+
+    return hws_exp_dirs
+
+def mk_incremented_single_exp_dir(exp_dir: Path, exp_re_prefix: str = 'HWS') -> str:
+
+    hws_exp_dirs = get_all_single_exp_dirs(exp_dir, exp_re_prefix)
+
+    max_hws_exp_dir_number = max(tuple(int(d[1].group(2)) for d in hws_exp_dirs))
+
+    return f'{exp_re_prefix}{max_hws_exp_dir_number:0>4}'
+# -
+
+
 def load_meta_data(exp_results_dir: Path) -> Dict:
 
     meta_data_file = exp_results_dir/'meta_data.pkl'
