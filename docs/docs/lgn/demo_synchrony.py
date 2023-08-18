@@ -2572,14 +2572,36 @@ test_lgn.cell_spike_times
 len(test.lgn_responses)
 test.lgn_responses
 # -
-# +
-for result in partitioned_results:
-	for n in range(sim_params.n_trials):
-		print(len(result.get_lgn_response(0).cell_spike_times))
 
-# -
 # Check that LGN spikes match v1 membrane potential
 # +
+test = partitioned_results[6]
+# -
+# +
 px.line(test.get_mem_pot(0)).show()
+# -
+# +
+trial_idx = 1
+v1_mem_pot = test.get_mem_pot(trial_idx)
+# -
+# +
+test_spike_times = np.r_[
+	tuple(
+		spikes.s * 10_000
+		for spikes in test.get_lgn_response(trial_idx).cell_spike_times
+		)
+]
+# -
+# +
+fig = (
+	px
+	.line(v1_mem_pot)
+	.add_scatter(
+			x=test_spike_times,
+			y=np.ones_like(test_spike_times) * -0.07,
+			mode='markers'
+		)
+	)
+fig.show()
 # -
 
