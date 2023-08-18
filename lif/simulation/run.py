@@ -1310,7 +1310,11 @@ def mk_incremented_single_exp_dir(exp_dir: Path, exp_re_prefix: str = 'HWS') -> 
 
     hws_exp_dirs = get_all_single_exp_dirs(exp_dir, exp_re_prefix)
 
-    max_hws_exp_dir_number = max(tuple(int(d[1].group(2)) for d in hws_exp_dirs))
+    if len(hws_exp_dirs) == 0:  # IE, no dirs exist yet
+        max_hws_exp_dir_number = 1  # start at 1
+    else:
+        exp_dir_numbers = tuple(int(d[1].group(2)) for d in hws_exp_dirs)
+        max_hws_exp_dir_number = max(exp_dir_numbers)
 
     return f'{exp_re_prefix}{max_hws_exp_dir_number:0>4}'
 # -

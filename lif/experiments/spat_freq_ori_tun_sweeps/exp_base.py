@@ -187,6 +187,10 @@ def main():
 	exp_dir = Path('/home/ubuntu/lif_hws_data/results_data/ori_spat_freq_tuning')
 	# exp_dir = Path('/Volumes/MagellanSG/PhD/Data/hws_lif')
 	# -
+	# +
+	if not exp_dir.exists():
+		exp_dir.mkdir()
+	# -
 
 
 	# # Params
