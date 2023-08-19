@@ -299,7 +299,7 @@ def main():
 	# -
 	# +
 	synch_params = do.SynchronyParams(
-		False,
+		True,
 		jitter=Time(3, 'ms')
 		)
 	# -
