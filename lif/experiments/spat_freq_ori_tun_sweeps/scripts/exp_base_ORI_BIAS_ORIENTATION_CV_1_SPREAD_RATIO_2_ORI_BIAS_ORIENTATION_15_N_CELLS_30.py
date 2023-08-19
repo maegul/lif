@@ -211,14 +211,14 @@ def main():
 		# N_CELLS: number of LGN cells
 	#
 	lgn_params = do.LGNParams(
-		n_cells=$N_CELLS,
+		n_cells=30,
 		orientation=do.LGNOrientationParams(
-			mean_orientation = ArcLength($ORI_BIAS_ORIENTATION, 'deg'),
-			circ_var = $ORI_BIAS_ORIENTATION_CV
+			mean_orientation = ArcLength(15, 'deg'),
+			circ_var = 1
 			),
 		circ_var=do.LGNCircVarParams('naito_lg_highsf', 'naito'),
 		spread=do.LGNLocationParams(
-			ratio = $SPREAD_RATIO,
+			ratio = 2,
 			distribution_alias = 'jin_etal_on',
 			orientation = ArcLength(90, 'deg')  # default value too
 			),
