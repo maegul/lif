@@ -31,7 +31,7 @@ variables = {
 	"ORI_BIAS_ORIENTATION_CV": [0, 0.2, 0.4, 0.6, 0.8, 1],
 	"SPREAD_RATIO": [1, 2, 3, 5, 7.5, 10],
 	# "ORI_BIAS_ORIENTATION": 0,
-	"ORI_BIAS_ORIENTATION": 30,
+	"ORI_BIAS_ORIENTATION": 45,
 	"N_CELLS": 30,
 	}
 
