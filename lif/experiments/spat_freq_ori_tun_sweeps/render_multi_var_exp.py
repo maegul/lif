@@ -10,7 +10,8 @@ from string import Template
 
 # +
 base_dir = Path('.')
-base_script = base_dir / 'exp_base.py'
+base_script = base_dir / 'exp_base_large_instance_32_cores.py'
+# base_script = base_dir / 'exp_base.py'
 target_dir = base_dir / 'scripts'
 if not target_dir.exists():
 	target_dir.mkdir()
@@ -30,8 +31,9 @@ if not target_dir.exists():
 variables = {
 	"ORI_BIAS_ORIENTATION_CV": [0, 0.2, 0.4, 0.6, 0.8, 1],
 	"SPREAD_RATIO": [1, 2, 3, 5, 7.5, 10],
+	# 0, 15, 30, 45, 60, 75, 90
 	# "ORI_BIAS_ORIENTATION": 0,
-	"ORI_BIAS_ORIENTATION": 45,
+	"ORI_BIAS_ORIENTATION": [60, 75, 90],
 	"N_CELLS": 30,
 	}
 
