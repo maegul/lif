@@ -339,7 +339,7 @@ def main():
 
 	# +
 	# n_procs = 1
-	n_procs = 30  # for large instance (here, 32_cpus)
+	n_procs = 20  # for large instance (here, 32_cpus)
 	n_sims_per_partition = 500
 	n_partitions, partitioned_n_sims = run.mk_n_simulation_partitions(
 		sim_params.n_simulations,
