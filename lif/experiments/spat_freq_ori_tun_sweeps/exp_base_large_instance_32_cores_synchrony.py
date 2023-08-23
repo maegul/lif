@@ -184,7 +184,12 @@ def main():
 
 	# ## Results Dir
 	# +
-	exp_dir = Path('/home/ubuntu/lif_hws_data/results_data/ori_spat_freq_tuning')
+	# for ordinary
+	# exp_dir = Path('/home/ubuntu/lif_hws_data/results_data/ori_spat_freq_tuning')
+
+	# for synchrony
+	exp_dir = Path('/home/ubuntu/lif_hws_data/results_data/ori_spat_freq_tuning_synchrony')
+
 	# exp_dir = Path('/Volumes/MagellanSG/PhD/Data/hws_lif')
 	# -
 	# +
@@ -299,8 +304,8 @@ def main():
 	# -
 	# +
 	synch_params = do.SynchronyParams(
-		False,
-		jitter=Time(3, 'ms')
+		$USE_SYNCHRONY,
+		jitter=Time($JITTER_TIME, 'ms')
 		)
 	# -
 

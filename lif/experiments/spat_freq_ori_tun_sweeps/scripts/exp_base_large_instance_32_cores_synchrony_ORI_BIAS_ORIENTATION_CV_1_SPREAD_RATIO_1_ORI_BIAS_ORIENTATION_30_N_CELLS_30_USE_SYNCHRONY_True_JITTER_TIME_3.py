@@ -184,7 +184,12 @@ def main():
 
 	# ## Results Dir
 	# +
-	exp_dir = Path('/home/ubuntu/lif_hws_data/results_data/ori_spat_freq_tuning')
+	# for ordinary
+	# exp_dir = Path('/home/ubuntu/lif_hws_data/results_data/ori_spat_freq_tuning')
+
+	# for synchrony
+	exp_dir = Path('/home/ubuntu/lif_hws_data/results_data/ori_spat_freq_tuning_synchrony')
+
 	# exp_dir = Path('/Volumes/MagellanSG/PhD/Data/hws_lif')
 	# -
 	# +
@@ -211,14 +216,14 @@ def main():
 		# N_CELLS: number of LGN cells
 	#
 	lgn_params = do.LGNParams(
-		n_cells=$N_CELLS,
+		n_cells=30,
 		orientation=do.LGNOrientationParams(
-			mean_orientation = ArcLength($ORI_BIAS_ORIENTATION, 'deg'),
-			circ_var = $ORI_BIAS_ORIENTATION_CV
+			mean_orientation = ArcLength(30, 'deg'),
+			circ_var = 1
 			),
 		circ_var=do.LGNCircVarParams('naito_lg_highsf', 'naito'),
 		spread=do.LGNLocationParams(
-			ratio = $SPREAD_RATIO,
+			ratio = 1,
 			distribution_alias = 'jin_etal_on',
 			orientation = ArcLength(90, 'deg')  # default value too
 			),
@@ -299,7 +304,7 @@ def main():
 	# -
 	# +
 	synch_params = do.SynchronyParams(
-		False,
+		True,
 		jitter=Time(3, 'ms')
 		)
 	# -
