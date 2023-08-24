@@ -110,6 +110,7 @@ def mk_single_sf_tf_response(
 def mk_response_poisson_spikes(
         st_params: do.SpaceTimeParams,
         response_arrays: Tuple[np.ndarray, ...],
+        log_print: bool = False, log_info: Optional[str] = None,
         ) -> bn.SpikeMonitor:
     """Generate Spike times for each array of continues rate times
 
@@ -121,16 +122,30 @@ def mk_response_poisson_spikes(
 
     bn.start_scope()
 
+    if log_print:
+        print(f'{log_info} ... POISSON SPIKES')
+
+
     n_cells = len(response_arrays)
     rate_arrays = np.column_stack(response_arrays)
+
+    if log_print:
+        print(f'{log_info} ... POISSON SPIKES: shape of rate-arrays: {rate_arrays.shape}')
+
     timed_rate_arrays = bn.TimedArray(
         rate_arrays * bn.Hz,
         dt=st_params.temp_res.s * bn.second)
+
+    if log_print:
+        print(f'{log_info} ... POISSON SPIKES: shape timed_rate_arrays: {timed_rate_arrays.values.shape}')
 
     cells = bn.PoissonGroup(n_cells, rates='timed_rate_arrays(t, i)')
     spikes = bn.SpikeMonitor(cells)
 
     bn.run(st_params.temp_ext.s * bn.second)
+
+    if log_print:
+        print(f'{log_info} ... POISSON SPIKES: Run poisson spike generation')
 
     return spikes
 
@@ -247,6 +262,10 @@ def mk_lgn_response_spikes(
 
 
     spikes = mk_response_poisson_spikes(st_params, response_arrays_for_spiking)
+
+    if log_print:
+        print(f'{log_info} ... LGN-SPIKES: CREATED SPIKES!...')
+
     spike_times = spikes.spike_trains()
 
     # convert to native object type (native to this code base)
