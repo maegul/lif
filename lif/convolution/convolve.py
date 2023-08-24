@@ -146,6 +146,7 @@ def mk_lgn_response_spikes(
         n_trials: None = None,
         n_lgn_layers: None = None,
         n_inputs: None = None,
+        log_print: bool = False, log_info: Optional[str] = None
         ) -> do.LGNLayerResponse: ...
 @overload
 def mk_lgn_response_spikes(
@@ -154,6 +155,7 @@ def mk_lgn_response_spikes(
         n_trials: int = 10,
         n_lgn_layers: None = None,
         n_inputs: None = None,
+        log_print: bool = False, log_info: Optional[str] = None
         ) -> Tuple[do.LGNLayerResponse, ...]: ...
 @overload
 def mk_lgn_response_spikes(
@@ -162,6 +164,7 @@ def mk_lgn_response_spikes(
         n_trials: int,
         n_lgn_layers: int,
         n_inputs: Union[int, Sequence[int]],
+        log_print: bool = False, log_info: Optional[str] = None
         ) -> Tuple[do.LGNLayerResponse, ...]: ...
 def mk_lgn_response_spikes(
         st_params: do.SpaceTimeParams,
@@ -169,6 +172,7 @@ def mk_lgn_response_spikes(
         n_trials: Optional[int] = None,
         n_lgn_layers: Optional[int] = None,
         n_inputs: Optional[Union[int, Sequence[int]]] = None,
+        log_print: bool = False, log_info: Optional[str] = None
         ) -> Union[do.LGNLayerResponse, Tuple[do.LGNLayerResponse, ...]]:
     """
 
@@ -213,6 +217,10 @@ def mk_lgn_response_spikes(
                 # when layers have different "cells" because of synchrony and overlap maps
                 and (n_inputs is not None) and isinstance(n_inputs, (tuple, list))
             ):
+
+        if log_print:
+            print(f'{log_info} ... LGN-SPIKES: Layers and Trials and overlapping regions')
+
         # n_cells = n_inputs
         # repeated idxs for trials but with multiple lgn layers, each with multiple cells
         # Thus ... cells x Trials x LGN Layers
@@ -226,8 +234,17 @@ def mk_lgn_response_spikes(
                 response_arrays[i]
                 for i in repeated_cell_idxs
             )
+
+        if log_print:
+            print(f'{log_info} ... LGN-SPIKES: Len response arrays: {len(response_arrays_for_spiking)}')
+
     else:
         response_arrays_for_spiking = response_arrays
+
+
+    if log_print:
+        print(f'{log_info} ... LGN-SPIKES: Actually creating spikes ...')
+
 
     spikes = mk_response_poisson_spikes(st_params, response_arrays_for_spiking)
     spike_times = spikes.spike_trains()
@@ -242,6 +259,10 @@ def mk_lgn_response_spikes(
             Time(spike_times[ci] / bn.second, 's')
             for ci in cell_indices
         )
+
+    if log_print:
+        print(f'{log_info} ... LGN-SPIKES: Number spike time arrays: {len(all_cell_spike_times)}')
+
 
     # older way ... normal for loop
     # for ci in cell_indices:
@@ -306,6 +327,10 @@ def mk_lgn_response_spikes(
                 and isinstance(n_inputs, (tuple, list))
             ):
 
+        if log_print:
+            print(f'{log_info} ... LGN-SPIKES: Preparing response objects (for synchrony)')
+
+
         # Collect spike times into separate trial-layers
 
         # each pair of values will be the start and end idxs of slices that will provide each
@@ -328,6 +353,10 @@ def mk_lgn_response_spikes(
                 initial=0
                 )
             )
+
+        if log_print:
+            print(f'{log_info} ... LGN-SPIKES: number of trial_idxs: {len(trial_idxs)}')
+
 
         # Make iterable (generator) of each trial-layer by slicing all spike times using
         # values calculated above
@@ -368,6 +397,10 @@ def mk_lgn_response_spikes(
                     for spike_times, responses
                     in zip(cell_spike_times, cell_response_arrays)
             )
+
+
+        if log_print:
+            print(f'{log_info} ... LGN-SPIKES: Number of resposne objects: {len(lgn_response)}')
 
     else:
         lgn_response = do.LGNLayerResponse(

@@ -822,6 +822,9 @@ def run_single_stim_multi_layer_simulation(
     else:
         n_inputs = params.lgn_params.n_cells
 
+    if log_print:
+        print(f'{log_info} ... creating lgn spikes')
+
     # response objects flattened in order of (trials x lgn_layers)
     # eg (trial1-layer1, trial2-layer1, trial1-layer2, trial2-layer2, ...)
     lgn_layer_responses = convolve.mk_lgn_response_spikes(
@@ -829,8 +832,13 @@ def run_single_stim_multi_layer_simulation(
             response_arrays = response_arrays,
             n_trials = params.n_trials,
             n_lgn_layers=n_lgn_layers,
-            n_inputs=n_inputs  # either int or list of ints if synchrony and variable n cells per layer
+            n_inputs=n_inputs,  # either int or list of ints if synchrony and variable n cells per layer
+            log_print=log_print, log_info=log_info
         )
+
+    if log_print:
+        print(f'{log_info} ... Created lgn response objects ... len: {len(lgn_layer_responses)}')
+
 
     # v1 model run and collect results
 
