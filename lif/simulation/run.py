@@ -6,7 +6,7 @@ import math
 import datetime as dt
 import re
 from textwrap import dedent
-from typing import Any, List, Sequence, Dict, Tuple, Optional, Union, cast, overload
+from typing import Any, Literal, List, Sequence, Dict, Tuple, Optional, Union, cast, overload
 from pathlib import Path
 import shutil
 import datetime as dt
@@ -1241,10 +1241,23 @@ def save_merge_single_stim_results(
     stim_results_dir.rmdir()  # should be empty after pkl files removed
 
 
+@overload
 def get_all_experiment_single_stim_results_files(
         results_dir: Path,
-        multi_stim_combos: Tuple
-        ) -> Dict[int, Path]:
+        multi_stim_combos: Tuple,
+        check_for_complete_results: Literal[True]
+        ) -> Tuple[int, ...]: ...
+@overload
+def get_all_experiment_single_stim_results_files(
+        results_dir: Path,
+        multi_stim_combos: Tuple,
+        check_for_complete_results: Literal[False] = False
+        ) -> Dict[int, Path]: ...
+def get_all_experiment_single_stim_results_files(
+        results_dir: Path,
+        multi_stim_combos: Tuple,
+        check_for_complete_results: bool = False
+        ) -> Union[Tuple[int, ...], Dict[int, Path]]:
 
     if (not results_dir.exists()):
         raise ValueError(f'Results directory does not exist: {results_dir}')
@@ -1252,25 +1265,35 @@ def get_all_experiment_single_stim_results_files(
     all_result_files = results_dir.glob('*.pkl')
 
     # match numbers to n_stims
-    result_files_idxs = {}
+    result_files_idxs: dict[int, Path] = {}
     for result_file in all_result_files:
         i = _parse_stim_results_path(result_file)
+        # exclude None as not match
         if i is not None:
             result_files_idxs[i] = result_file
 
-    # checking that idxs match what would be expected by the number of stim combos
-    if not (
-            # exclude None as not match
-            sorted(list(k for k in result_files_idxs.keys()))
-            ==
-            list(range(len(multi_stim_combos)))
-            ):
-        raise exc.SimulationError(
-            f"Stim result numbering doesn't match len of multi_stim comb: {len(multi_stim_combos)}")
+    if check_for_complete_results:
+        missing_result_idxs = tuple(  # which indices of multi_stim_combos don't have a result file
+                set(range(len(multi_stim_combos)))
+                .difference(result_files_idxs.keys())
+            )
 
-    result_files_idxs = cast(Dict[int, Path], result_files_idxs)
+        return missing_result_idxs
 
-    return result_files_idxs
+    else:
+        # checking that idxs match what would be expected by the number of stim combos
+        if not (
+                sorted(list(result_files_idxs.keys()))
+                ==
+                list(range(len(multi_stim_combos)))
+                ):
+
+            raise exc.SimulationError(
+                f"Stim result numbering doesn't match len of multi_stim comb: {len(multi_stim_combos)}")
+
+        result_files_idxs = cast(Dict[int, Path], result_files_idxs)
+
+        return result_files_idxs
 
 def save_merge_all_results(
         results_dir: Path,

@@ -339,8 +339,8 @@ def main():
 
 	# +
 	# n_procs = 1
-	n_procs = 20  # for large instance (here, 32_cpus)
-	n_sims_per_partition = 500
+	n_procs = 25  # for large instance (here, 32_cpus)
+	n_sims_per_partition = 20
 	n_partitions, partitioned_n_sims = run.mk_n_simulation_partitions(
 		sim_params.n_simulations,
 		n_sims_per_partition
@@ -505,14 +505,72 @@ def main():
 	# ## Save single_stim_results file index
 	# +
 	print(f'{meta_data.exp_id} ... Saving result index file')
+
+	print(f'{meta_data.exp_id} ... Checking for any missing results and retrying if necessary')
 	result_files_idx = run.get_all_experiment_single_stim_results_files(
-			results_dir, all_param_combos
+			results_dir, all_param_combos, check_for_complete_results=True
 		)
-	result_files_params_idx = {
-		i: {'path': path, **all_param_combos[i]}
-		for i, path in result_files_idx.items()
-	}
-	run._save_pickle_file(results_dir / 'result_files_params_idx.pkl', result_files_params_idx)
+
+	for i in range(5):  # retry only 5 times then give up if missing results still persist
+		if len(result_files_idx) > 0:
+			print(
+			f'{meta_data.exp_id} ... Missing {len(result_files_idx)} Results! Retrying (n: {i})!!'
+			)
+			missing_param_combos = tuple((i, all_param_combos[i]) for i in result_files_idx)
+
+
+			pool = mp.Pool(processes=n_procs)
+
+			# copied from above ... have to keep in synch now!!
+			# n_missing_stim comes from the missing indices directly ... SO THAT N_STIM IS CORRECT
+			for n_missing_stim, param_combos in missing_param_combos:
+
+				pool.apply_async(
+					func=run.run_partitioned_single_stim,
+					kwds={
+						'n_stim': n_missing_stim,
+						'params': param_combos['sim_params'],
+						'stim_params': param_combos['stim_params'],
+						'synch_params': synch_params,
+						'lgn_layers': all_lgn_layers,
+						'results_dir': results_dir,
+						'partitioned_sim_lgn_idxs': partitioned_n_sims,
+						# Using ADJUSTED OVERLAP MAP as spikes will be duplicated
+						'lgn_overlap_maps': (
+								all_adjusted_lgn_overlap_maps
+									if synch_params.lgn_has_synchrony else
+								None
+							),
+						'log_print': True,
+						'save_membrane_data': False
+					}
+					)
+
+			pool.close()
+			pool.join()
+
+			result_files_idx = run.get_all_experiment_single_stim_results_files(
+					results_dir, all_param_combos, check_for_complete_results=True
+				)
+
+		else:
+			break
+
+
+
+	# result_files_idx = run.get_all_experiment_single_stim_results_files(
+	# 		results_dir, all_param_combos
+	# 	)
+	if len(result_files_idx) == 0:
+		# reproduce actual dict of paths
+		result_files_idx = run.get_all_experiment_single_stim_results_files(
+				results_dir, all_param_combos
+			)
+		result_files_params_idx = {
+			i: {'path': path, **all_param_combos[i]}
+			for i, path in result_files_idx.items()
+		}
+		run._save_pickle_file(results_dir / 'result_files_params_idx.pkl', result_files_params_idx)
 	# -
 
 	print(f'{meta_data.exp_id} ... DONE!\n\n***************\n')
