@@ -1665,7 +1665,7 @@ ContrastLgnLayerCollectionRecord = Dict[ContrastValue, Tuple[LGNLayerRecord]]
 
 @dataclass
 class LGNLayerResponse(ConversionABC):
-    cell_rates: Tuple[np.ndarray, ...]
+    cell_rates: Optional[Tuple[np.ndarray, ...]]
     cell_spike_times: Tuple[Time[np.ndarray], ...]
 
 # methods and parameters for the generation of LGN cells

@@ -233,9 +233,6 @@ def mk_lgn_response_spikes(
                 and (n_inputs is not None) and isinstance(n_inputs, (tuple, list))
             ):
 
-        if log_print:
-            print(f'{log_info} ... LGN-SPIKES: Layers and Trials and overlapping regions')
-
         # n_cells = n_inputs
         # repeated idxs for trials but with multiple lgn layers, each with multiple cells
         # Thus ... cells x Trials x LGN Layers
@@ -250,15 +247,8 @@ def mk_lgn_response_spikes(
                 for i in repeated_cell_idxs
             )
 
-        if log_print:
-            print(f'{log_info} ... LGN-SPIKES: Len response arrays: {len(response_arrays_for_spiking)}')
-
     else:
         response_arrays_for_spiking = response_arrays
-
-
-    if log_print:
-        print(f'{log_info} ... LGN-SPIKES: Actually creating spikes ...')
 
 
     spikes = mk_response_poisson_spikes(st_params, response_arrays_for_spiking)
@@ -282,16 +272,8 @@ def mk_lgn_response_spikes(
     if log_print:
         print(f'{log_info} ... LGN-SPIKES: Number spike time arrays: {len(all_cell_spike_times)}')
 
-
-    # older way ... normal for loop
-    # for ci in cell_indices:
-         # convert to aboslute time values (as will be a Time quantity)
-         # Use seconds to convert and then to store
-    #     cell_spike_times: Time[np.ndarray] = Time(spike_times[ci] / bn.second, 's')
-    #     all_cell_spike_times.append(cell_spike_times)
-    # all_cell_spike_times = tuple(all_cell_spike_times)
-
     # Create response objects
+
     # Trials but not multiple sims/lgn layers
     if (n_trials is not None) and (n_lgn_layers is None):
         n_cells = len(response_arrays)
@@ -373,10 +355,6 @@ def mk_lgn_response_spikes(
                 )
             )
 
-        if log_print:
-            print(f'{log_info} ... LGN-SPIKES: number of trial_idxs: {len(trial_idxs)}')
-
-
         # Make iterable (generator) of each trial-layer by slicing all spike times using
         # values calculated above
         cell_spike_times = (
@@ -390,36 +368,37 @@ def mk_lgn_response_spikes(
         # Collect response arrays into separate trial-layers to pair up with spike times above
 
         # Slicing indices for each layer without trials
-        resp_rate_idxs_base = tuple(it.accumulate(n_inputs, initial=0) )
+        # resp_rate_idxs_base = tuple(it.accumulate(n_inputs, initial=0) )
 
         # take all start indices (of the slice for each layer) and repeat for all trials
-        starts = tuple(it.chain.from_iterable(
-                it.repeat(rr_idx, n_trials)
-                for rr_idx in resp_rate_idxs_base[:-1]
-            ))
+        # starts = tuple(it.chain.from_iterable(
+        #         it.repeat(rr_idx, n_trials)
+        #         for rr_idx in resp_rate_idxs_base[:-1]
+        #     ))
 
         # take all end indices (of the slice for each layer) and repeat for all trials
-        ends = tuple(it.chain.from_iterable(
-                it.repeat(rr_idx, n_trials)
-                for rr_idx in resp_rate_idxs_base[1:]
-            ))
+        # ends = tuple(it.chain.from_iterable(
+        #         it.repeat(rr_idx, n_trials)
+        #         for rr_idx in resp_rate_idxs_base[1:]
+        #     ))
 
         # Generator of each trial-layer response array (should pair up with spike time arrays above)
-        cell_response_arrays = (
-                response_arrays[a : b]
-                for a,b in zip(starts, ends)
-            )
+        # cell_response_arrays = (
+        #         response_arrays[a : b]
+        #         for a,b in zip(starts, ends)
+        #     )
 
         # All lgn responses
         lgn_response = tuple(
-                do.LGNLayerResponse(cell_spike_times = spike_times, cell_rates = responses)
-                    for spike_times, responses
-                    in zip(cell_spike_times, cell_response_arrays)
+                # None for cell_rates, as with synchrony, it's a lot of data
+                # so here, we revert to None, as ....
+                # ... Response rates can be regenerated deterministically from the LGN layer and
+                # ... stimulus parameters
+                # ... should maybe do the same for non-synchrony simulations
+                do.LGNLayerResponse(cell_spike_times = spike_times, cell_rates = None)
+                    for spike_times
+                    in cell_spike_times
             )
-
-
-        if log_print:
-            print(f'{log_info} ... LGN-SPIKES: Number of resposne objects: {len(lgn_response)}')
 
     else:
         lgn_response = do.LGNLayerResponse(
