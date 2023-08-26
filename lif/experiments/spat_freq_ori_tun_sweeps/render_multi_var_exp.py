@@ -33,7 +33,7 @@ variables = {
 	"SPREAD_RATIO": [1, 2, 3, 5, 7.5, 10],
 	# "ORI_BIAS_ORIENTATION": 0,
 	# 0, 15, 30, 45, 60, 75, 90
-	"ORI_BIAS_ORIENTATION": [45, 60],
+	"ORI_BIAS_ORIENTATION": [75, 90],
 	"N_CELLS": 30,
 
 	# synchrony params ... COMMENT OUT
