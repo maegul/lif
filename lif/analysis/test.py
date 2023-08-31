@@ -466,9 +466,19 @@ def hws_conditions_extract(sim: do.SimulationParams, synch: do.SynchronyParams):
 # +
 # -
 # +
-anlys.analyse_run(base_dir)
+anlys.analyse_run(base_dir, spat_freq_ori_key_params_extract, hws_conditions_extract)
 # -
-
+# +
+exp_dirs = anlys.get_all_exp_dirs(base_dir)
+any(
+	anlys.load_experiment_analysis(ed, check_existance=True)
+	for ed in exp_dirs
+	)
+# -
+# +
+for ed in exp_dirs:
+	anlys.load_experiment_analysis(ed, check_existance=True, remove=True)
+# -
 
 # Then ... organise!
 #  - spat_freq + ori conditions (see key params): response ... for each simulation (dataframe?)
