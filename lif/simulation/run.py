@@ -1365,6 +1365,12 @@ def load_sim_params(exp_results_dir: Path) -> do.SimulationParams:
 
     return params
 
+def load_lgn_layers(exp_results_dir: Path) -> Dict[do.ContrastValue, Tuple[do.LGNLayerRecord,...]]:
+
+    lgn_layers_file = exp_results_dir / 'lgn_layers.pkl'
+    lgn_layers = _load_pickle_file(lgn_layers_file)
+
+    return lgn_layers
 
 def load_simulation_results(
         results_dir: Path,

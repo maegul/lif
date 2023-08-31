@@ -1994,11 +1994,15 @@ class SimulationResult(ConversionABC):
         else:
             return True
 
-    def get_spikes(self, n_trial: int) -> np.ndarray:
+    def get_spikes(self, n_trial: int) -> Time[np.ndarray]:
         if isinstance(self.spikes, tuple):
-            return self.spikes[n_trial]
+            spikes = self.spikes[n_trial]
         else:
-            return self.spikes
+            spikes = self.spikes
+
+        spike_times = Time(spikes/bnun.msecond, 'ms')
+
+        return spike_times
 
     def get_mem_pot(self, n_trial: int) -> Optional[np.ndarray]:
         value = (
@@ -2033,3 +2037,10 @@ class SimulationResults(ConversionABC):
     params: SimulationParams
     lgn_layers: ContrastLgnLayerCollection
     results: Dict[str, Tuple[SimulationResult, ...]]
+
+
+@dataclass
+class V1ResponseMetrics(ConversionABC):
+    max_resp: TempFrequency[float]
+    sin_amp: Optional[TempFrequency[float]]
+    fft_f1_amp: Optional[TempFrequency[float]]

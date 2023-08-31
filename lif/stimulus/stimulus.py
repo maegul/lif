@@ -442,32 +442,50 @@ def mk_multi_stimulus_params(
         prep_params: List[Optional[Tuple[Any, str]]] = [
             (
                 (multi_params.spat_freqs, 'spat_freq')
-                if (isinstance(multi_params.spat_freqs, Sequence) and len(multi_params.spat_freqs)>1)
+                if (
+                    isinstance(multi_params.spat_freqs, (Sequence, np.ndarray)) and
+                    len(multi_params.spat_freqs)>1
+                    )
                 else None
             ),
             (
                 (multi_params.temp_freqs, 'temp_freq')
-                if (isinstance(multi_params.temp_freqs, Sequence) and len(multi_params.temp_freqs)>1)
+                if (
+                    isinstance(multi_params.temp_freqs, (Sequence, np.ndarray)) and
+                    len(multi_params.temp_freqs)>1
+                    )
                 else None
             ),
             (
                 (multi_params.orientations, 'orientation')
-                if (isinstance(multi_params.orientations, Sequence) and len(multi_params.orientations)>1)
+                if (
+                    isinstance(multi_params.orientations, (Sequence, np.ndarray)) and
+                    len(multi_params.orientations)>1
+                    )
                 else None
             ),
             (
                 (multi_params.contrasts, 'contrast')
-                if (isinstance(multi_params.contrasts, Sequence) and len(multi_params.contrasts)>1)
+                if (
+                    isinstance(multi_params.contrasts, (Sequence, np.ndarray)) and
+                    len(multi_params.contrasts)>1
+                    )
                 else None
             ),
             (
                 (multi_params.amplitudes, 'amplitude')
-                if (isinstance(multi_params.amplitudes, Sequence) and len(multi_params.amplitudes)>1)
+                if (
+                    isinstance(multi_params.amplitudes, (Sequence, np.ndarray)) and
+                    len(multi_params.amplitudes)>1
+                    )
                 else None
             ),
             (
                 (multi_params.DC_vals, 'DC')
-                if (isinstance(multi_params.DC_vals, Sequence) and len(multi_params.DC_vals)>1)
+                if (
+                    isinstance(multi_params.DC_vals, (Sequence, np.ndarray)) and
+                    len(multi_params.DC_vals)>1
+                    )
                 else None
             ),
         ]
