@@ -423,8 +423,10 @@ def analyse_experiment(
 		result_params_index = None
 
 	if not (len(result_files) == len(new_key_params)):
-		raise ValueError(
-			f'Lengths do not match in {exp_dir}: result files ({len(result_files)}), key params ({len(new_key_params)})')
+		# raise ValueError(
+		# 	f'Lengths do not match in {exp_dir}: result files ({len(result_files)}), key params ({len(new_key_params)})')
+		print(
+			f'WARNING - Lengths do not match in {exp_dir}: result files ({len(result_files)}), key params ({len(new_key_params)})')
 
 	if result_params_index:
 		if not (len(result_files) == len(result_params_index)):
