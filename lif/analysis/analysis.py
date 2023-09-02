@@ -415,14 +415,21 @@ def analyse_experiment(
 
 	result_files = get_all_result_files(exp_dir)
 	new_key_params = mk_key_stim_vars(exp_dir)
-	result_params_index = load_result_params_index(exp_dir)
+
+	try:
+		result_params_index = load_result_params_index(exp_dir)
+	except ValueError:
+		print("Couldn't find/load result_params_index file (probably incomplete simulation)")
+		result_params_index = None
 
 	if not (len(result_files) == len(new_key_params)):
 		raise ValueError(
 			f'Lengths do not match in {exp_dir}: result files ({len(result_files)}), key params ({len(new_key_params)})')
-	if not (len(result_files) == len(result_params_index)):
-		raise ValueError(
-			f'Lengths do not match in {exp_dir}: result files ({len(result_files)}), result_params_index ({len(result_params_index)})')
+
+	if result_params_index:
+		if not (len(result_files) == len(result_params_index)):
+			raise ValueError(
+				f'Lengths do not match in {exp_dir}: result files ({len(result_files)}), result_params_index ({len(result_params_index)})')
 
 	# all response metrics for each result as a python object
 
@@ -435,9 +442,10 @@ def analyse_experiment(
 		result_index = run._parse_stim_results_path(Path(result_file.name))
 		if result_index is None:
 			raise ValueError(f'Failed to parse result file ({result_file})')
-		if not (result_params_index[result_index]['path'].name == result_file.name):
-			raise ValueError(
-				f'result file name and params index mismatch: index: {result_index}')
+		if result_params_index:
+			if not (result_params_index[result_index]['path'].name == result_file.name):
+				raise ValueError(
+					f'result file name and params index mismatch: index: {result_index}')
 
 		results = load_result_file(result_file)
 
@@ -453,10 +461,22 @@ def analyse_experiment(
 
 		# relevant params
 		# V-- dictionary (key is param and unit if applicable)
-		key_params = key_params_extraction_func(
-			result_params_index[result_index]['sim_params'],
-			result_params_index[result_index]['stim_params']
-			)
+		if result_params_index:
+			key_params = key_params_extraction_func(
+				result_params_index[result_index]['sim_params'],
+				result_params_index[result_index]['stim_params']
+				)
+		# revert to backup
+		else:
+			sim_params = load_sim_params(result_file)
+			if not results[0].stimulus_results_key:
+				raise ValueError(
+					'results index not available and stimulus key missing, no way to get stimulus params')
+			stim_signature = results[0].stimulus_results_key
+			st_params, stim_params = stim.mk_params_from_stim_signature(stim_signature)
+
+			key_params = key_params_extraction_func(sim_params, stim_params)
+
 
 		# double check with the result obje params??
 
