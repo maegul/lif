@@ -470,7 +470,7 @@ def analyse_experiment(
 				)
 		# revert to backup
 		else:
-			sim_params = load_sim_params(result_file)
+			sim_params = load_sim_params(exp_dir)
 			if not results[0].stimulus_results_key:
 				raise ValueError(
 					'results index not available and stimulus key missing, no way to get stimulus params')
